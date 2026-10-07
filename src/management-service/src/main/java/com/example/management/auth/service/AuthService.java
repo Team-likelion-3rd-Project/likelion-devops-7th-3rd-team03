@@ -41,16 +41,14 @@ public class AuthService {
         KakaoTokenResponse kakaoToken = kakaoOAuthClient.exchangeToken(authorizationCode);
         KakaoUserResponse kakaoUser = kakaoOAuthClient.getUserInfo(kakaoToken.accessToken());
 
-        var existingUser = userRepository.findByKakaoId(kakaoUser.id());
+        var existingUser = userRepository.findByProviderAndSocialId(User.SocialProvider.KAKAO, String.valueOf(kakaoUser.id()));
         boolean isNewUser = existingUser.isEmpty();
 
+        // 기존 회원이면 소셜 프로필로 덮어쓰지 않고 그대로 로그인시킨다
         User user = existingUser
-                .map(existing -> {
-                    existing.updateProfile(kakaoUser.nickname(), kakaoUser.profileImageUrl(), kakaoUser.email());
-                    return existing;
-                })
                 .orElseGet(() -> userRepository.save(User.builder()
-                        .kakaoId(kakaoUser.id())
+                        .provider(User.SocialProvider.KAKAO)
+                        .socialId(String.valueOf(kakaoUser.id()))
                         .nickname(kakaoUser.nickname())
                         .profileImageUrl(kakaoUser.profileImageUrl())
                         .email(kakaoUser.email())

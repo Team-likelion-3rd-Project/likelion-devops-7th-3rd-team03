@@ -47,10 +47,10 @@ class StatsControllerIntegrationTest {
                 new UsernamePasswordAuthenticationToken(TEST_USER_UUID, null, List.of())
         );
         jdbcTemplate.update("""
-                INSERT INTO users (id, user_id, kakao_id, nickname, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'ACTIVE', NOW(), NOW())
+                INSERT INTO users (id, user_id, provider, social_id, nickname, email, status, created_at, updated_at)
+                VALUES (?, ?, 'KAKAO', ?, ?, ?, 'ACTIVE', NOW(), NOW())
                 ON DUPLICATE KEY UPDATE id = id
-                """, TEST_USER_ID, TEST_USER_UUID, 999999L, "테스트유저");
+                """, TEST_USER_ID, TEST_USER_UUID, "999999", "테스트유저", "test-user@example.com");
 
         linkUuid = UUID.randomUUID().toString();
         jdbcTemplate.update("""
