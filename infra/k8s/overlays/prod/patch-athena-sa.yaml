@@ -1,0 +1,8 @@
+# overlays/prod/patch-athena-sa.yaml
+# base의 role-arn placeholder를 prod 클러스터 실제 IAM Role ARN으로 덮어씀.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: athena-batch-sa
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::834922934330:role/snipy-cluster-athena-cronjob-role"

@@ -1,0 +1,209 @@
+# =====================================================================
+# Management Service CI
+#
+# 목적: management-service 코드가 push/PR 될 때마다
+#       테스트 → (push일 때만) 도커 이미지 빌드 + ECR push 까지 자동화한다.
+#
+# 참고: Dockerfile이 멀티스테이지 빌드로 바뀌면서(Stage 1에서 gradlew bootJar까지
+#       직접 실행), CI에서 별도로 jar를 미리 만들 필요가 없어졌다.
+#       그래서 이 워크플로우는 "테스트"와 "도커 이미지 빌드(=컴파일 포함)"를
+#       분리했다 — ./gradlew build를 또 실행하면 컴파일이 두 번(테스트용 1번,
+#       docker build 안에서 1번) 일어나는 비효율이 생기기 때문.
+#
+# 전제 조건:
+#   - infra/terraform/ecr.tf 로 ECR 저장소(management-service)가 미리 생성돼 있어야 함
+
+
+#   - AWS 자격증명은 GitHub OIDC(role-to-assume)로 처리 — 정적 키 불필요
+#     (Role: arn:aws:iam::834922934330:role/snipy-github-actions-ci)
+# =====================================================================
+
+name: Management Service CI
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'src/management-service/**'
+      - '.github/workflows/management-ci.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'src/management-service/**'
+      - '.github/workflows/management-ci.yml'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # 이 Job은 매 실행마다 새 MySQL 컨테이너를 만들고 외부 Kakao API를 호출하지 않는다.
+    # 운영 비밀값과 분리하기 위해 테스트 전용의 공개된 고정값을 사용한다.
+    env:
+      DB_APP_PASSWORD: ci-app-password
+      DB_MIGRATOR_PASSWORD: ci-migrator-password
+      DB_READONLY_PASSWORD: ci-readonly-password
+      JWT_SECRET: "test-jwt-secret-test-jwt-secret-test-jwt-secret-test-jwt-secret"
+      KAKAO_CLIENT_ID: ci-kakao-client-id
+      KAKAO_CLIENT_SECRET: ""
+      KAKAO_REDIRECT_URI: https://example.com/auth/kakao/callback
+
+    # 테스트 실행 전, 임시로 MySQL/Redis 컨테이너를 띄워준다.
+    # 로컬에서 docker compose up -d mysql redis 하던 것과 동일한 역할.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: shortlink
+        ports:
+          - 3306:3306
+        # 주의: services.options는 docker create 옵션만 지원하고, MySQL 서버
+        # 자체에 넘기는 인자(--default-time-zone)는 지원하지 않는다(unknown flag
+        # 에러로 확인됨). 그래서 컨테이너는 기본 SYSTEM 타임존으로 뜨고,
+        # 아래 마이그레이션 스텝에서 --allow-non-utc로 검증을 우회한다.
+        # 실제 로컬/운영(docker-compose)은 여전히 UTC로 강제되므로 CI 한정 우회.
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      # 1. GitHub 저장소의 코드를 CI 서버(가상 컴퓨터)로 내려받는다.
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      # 2. CI 서버는 매번 완전히 새로 생성되는 빈 컴퓨터이므로 JDK를 매번 새로 설치.
+      - name: JDK 17 설치
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Gradle 의존성 캐시 (두 번째 실행부터 빌드 속도 향상)
+      - name: Gradle 캐시 설정
+        uses: gradle/actions/setup-gradle@v4
+
+      # 로컬의 run-migration.sh를 CI가 대신 실행해 테스트용 DB 스키마를 만든다.
+      - name: MySQL 타임존/마이그레이션 적용
+        working-directory: src/db
+        env:
+          DB_HOST: 127.0.0.1
+          DB_ROOT_USER: root
+          DB_ROOT_PASSWORD: root
+          # APP_PASSWORD는 run-migration.sh가 shortlink_app 계정을 생성할 때 쓰는 값.
+          # 아래 "Gradle 빌드 및 테스트" 스텝의 DB_APP_PASSWORD와 반드시 같은 값이어야
+          # 앱이 그 계정으로 정상 로그인할 수 있다.
+          APP_PASSWORD: ${{ env.DB_APP_PASSWORD }}
+          MIGRATOR_PASSWORD: ${{ env.DB_MIGRATOR_PASSWORD }}
+          READONLY_PASSWORD: ${{ env.DB_READONLY_PASSWORD }}
+        run: |
+          chmod +x run-migration.sh
+          ./run-migration.sh --allow-non-utc
+
+      # build 대신 test만 실행한다. jar 생성은 Dockerfile의 Stage 1이 담당하므로
+      # 여기서는 "컴파일이 되는지 + 테스트가 통과하는지"만 확인하면 충분하다.
+      - name: Gradle 테스트
+        working-directory: src/management-service
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: shortlink
+          DB_APP_USER: shortlink_app
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test
+
+      # 6. 테스트 실패 시에도 원인 파악용 리포트를 남겨둔다.
+      - name: 테스트 결과 업로드 (실패 시에도 확인 가능하게)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: src/management-service/build/reports/tests/
+          retention-days: 5
+
+  build-and-push:
+    name: Build & Push to ECR
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BOT_PUSH_TOKEN }}
+
+      - name: AWS 자격증명 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::834922934330:role/snipy-github-actions-ci
+          aws-region: ap-southeast-1
+
+      - name: ECR 로그인
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Dockerfile이 멀티스테이지라, 이 한 스텝 안에서
+      # (1) Stage 1: 소스 복사 + gradlew bootJar로 컴파일까지 다 하고
+      # (2) Stage 2: 그 결과 jar만 가져와 가벼운 실행 이미지로 포장한다.
+      # 즉 별도로 jar를 미리 만들어둘 필요가 없다.
+      - name: 도커 이미지 빌드 및 ECR push
+        working-directory: src/management-service
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: management-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: kustomize 설치
+        uses: imranismail/setup-kustomize@v2
+
+      - name: 이미지 태그 갱신 커밋 (ArgoCD가 이 커밋을 감지해서 배포)
+        working-directory: infra/k8s/base
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: management-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git fetch origin ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
+            kustomize edit set image $ECR_REGISTRY/$ECR_REPOSITORY=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            git add kustomization.yaml
+            if git diff --cached --quiet; then
+              echo "변경 없음, 종료"
+              exit 0
+            fi
+            git commit -m "chore: management-service 이미지 태그 갱신 ($IMAGE_TAG)"
+            if git push origin HEAD:${{ github.ref_name }}; then
+              echo "push 성공"
+              exit 0
+            fi
+            echo "push 실패, 재시도 ($i/5)"
+            sleep $(( (RANDOM % 5) + 1 ))
+          done
+          echo "최대 재시도 횟수 초과"
+          exit 1

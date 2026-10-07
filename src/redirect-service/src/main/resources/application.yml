@@ -1,0 +1,64 @@
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState, db, redis
+
+spring:
+  application:
+    name: redirect-service
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_APP_USER:shortlink_app}
+    password: ${DB_APP_PASSWORD}
+    hikari:
+      # 기본값(10)으로 두면 HPA max(6 pod) 기준 최대 60개 커넥션이 동시에 열려서
+      # DB(2 vCPU)가 감당 못 하고 컨텍스트 스위칭으로 오히려 느려짐. 캐시 미스 시
+      # 단건 PK 조회뿐이라 커넥션 점유 시간이 짧아 풀을 작게 잡아도 처리량은 충분함.
+      maximum-pool-size: ${DB_HIKARI_MAX_POOL_SIZE:8}
+      minimum-idle: ${DB_HIKARI_MIN_IDLE:2}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate    # 스키마는 run-migration.sh가 만듦. 앱은 검증만
+
+  flyway:
+    enabled: false          # 마이그레이션은 run-migration.sh가 실행 (README "권장" 방식 — EKS 멀티 파드 동시 기동 시 락 대기로 인한 헬스체크 타임아웃 방지)
+
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+
+app:
+  redirect:
+    # management-service와 같은 값으로 유지한다. Compose에서는 .env의 값을 주입한다.
+    cache-ttl: ${REDIRECT_CACHE_TTL:10m}
+    visitor-cookie-name: ${VISITOR_COOKIE_NAME:visitor_id}
+    visitor-cookie-max-age: ${VISITOR_COOKIE_MAX_AGE:365d}
+    visitor-cookie-secure: ${VISITOR_COOKIE_SECURE:false}
+
+  click-event:
+    trust-forwarded-for: ${TRUST_FORWARDED_FOR:true}
+    # infra/terraform/streaming.tf의 aws_kinesis_firehose_delivery_stream.click_events.name
+    firehose-stream-name: ${FIREHOSE_STREAM_NAME:}
+    aws-region: ${AWS_REGION:ap-southeast-1}
+
+  realtime-stats:
+    # Redis는 당일 잠정 통계만 보관한다. 원본 클릭 이벤트가 최종 집계의 기준이다.
+    ttl: ${REALTIME_STATS_TTL:3d}
+    flush-interval: ${REALTIME_STATS_FLUSH_INTERVAL:5s}
+    buffer-capacity: ${REALTIME_STATS_BUFFER_CAPACITY:100000}
+
+logging:
+  level:
+    redirect_service.redirect: ${REDIRECT_LOG_LEVEL:INFO}

@@ -1,0 +1,159 @@
+name: shortlink
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --default-time-zone=+00:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-shortlink}
+      MYSQL_USER: ${DB_APP_USER:-shortlink_app}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD}
+      # migration 컨테이너가 root로 초기 DB/계정을 만들 수 있게 한다.
+      # 포트는 로컬 호스트에만 열리며, root 비밀번호는 .env로만 주입한다.
+      MYSQL_ROOT_HOST: "%"
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  migration:
+    # 애플리케이션보다 먼저 DB 계정과 스키마를 준비하는 일회성 작업이다.
+    image: mysql:8.0
+    working_dir: /migrations
+    entrypoint: ["/bin/bash", "/migrations/run-migration.sh"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-shortlink}
+      DB_ROOT_USER: root
+      DB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      APP_PASSWORD: ${DB_APP_PASSWORD}
+      MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD}
+      READONLY_PASSWORD: ${READONLY_PASSWORD:-readonly_local_pw}
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:-shortlink_migrator}
+    volumes:
+      - ./src/db:/migrations:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  management-service:
+    build:
+      context: ./src/management-service
+    environment:
+      # 컨테이너에서는 localhost가 아닌 Compose 서비스명으로 접속한다.
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-shortlink}
+      DB_APP_USER: ${DB_APP_USER:-shortlink_app}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-shortlink}?serverTimezone=UTC&characterEncoding=UTF-8&rewriteBatchedStatements=true&useSSL=false&allowPublicKeyRetrieval=true
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIRECT_CACHE_TTL: ${REDIRECT_CACHE_TTL:-10m}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_VALIDITY_SECONDS: ${JWT_ACCESS_TOKEN_VALIDITY_SECONDS:-1800}
+      JWT_REFRESH_TOKEN_VALIDITY_SECONDS: ${JWT_REFRESH_TOKEN_VALIDITY_SECONDS:-1209600}
+      SHORT_URL_BASE_URL: ${SHORT_URL_BASE_URL}
+    ports:
+      - "${MANAGEMENT_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migration:
+        condition: service_completed_successfully
+
+  redirect-service:
+    build:
+      context: ./src/redirect-service
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-shortlink}
+      DB_APP_USER: ${DB_APP_USER:-shortlink_app}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-shortlink}?serverTimezone=UTC&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:-shortlink_migrator}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIRECT_CACHE_TTL: ${REDIRECT_CACHE_TTL:-10m}
+      REDIRECT_LOG_LEVEL: ${REDIRECT_LOG_LEVEL:-DEBUG}
+      VISITOR_COOKIE_SECURE: ${VISITOR_COOKIE_SECURE:-false}
+      VISITOR_COOKIE_NAME: ${VISITOR_COOKIE_NAME:-visitor_id}
+      VISITOR_COOKIE_MAX_AGE: ${VISITOR_COOKIE_MAX_AGE:-365d}
+      TRUST_FORWARDED_FOR: ${TRUST_FORWARDED_FOR:-true}
+      REALTIME_STATS_TTL: ${REALTIME_STATS_RETENTION:-3d}
+      REALTIME_STATS_FLUSH_INTERVAL: ${REALTIME_STATS_FLUSH_INTERVAL:-5s}
+      REALTIME_STATS_BUFFER_CAPACITY: ${REALTIME_STATS_BUFFER_CAPACITY:-100000}
+    ports:
+      - "${REDIRECTOR_PORT:-8081}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migration:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./local/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      redirect-service:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./local/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./src/frontend
+    environment:
+      # 브라우저 요청(/api)은 Vite dev proxy를 거쳐 Compose 서비스명으로 전달한다.
+      VITE_API_PROXY_TARGET: http://management-service:8080
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      # 프런트와 백엔드는 같은 Kakao 앱·Redirect URI를 반드시 사용한다.
+      VITE_KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      VITE_KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      management-service:
+        condition: service_started
+
+volumes:
+  mysql-data:
+  grafana-data:

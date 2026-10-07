@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: snipy-ingress
+  annotations:
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-southeast-1:834922934330:certificate/ef026f40-15ef-4b64-8c32-fd75eec6ced5"
+    alb.ingress.kubernetes.io/security-groups: "sg-01aa43e729b72a1f0"
+spec:
+  rules:
+    - host: "snipy.life"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: management-service
+                port:
+                  number: 8080
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: redirect-service
+                port:
+                  number: 8080

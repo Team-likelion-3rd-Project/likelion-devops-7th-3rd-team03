@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redirect-service
+  labels: { app: redirect-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: redirect-service }
+  template:
+    metadata:
+      labels: { app: redirect-service }
+    spec:
+      serviceAccountName: redirect-service-sa
+      # 노드당 최대 2개로 제한 (maxSkew 1 + DoNotSchedule). 노드 3개(min) x 2 = 6 = HPA
+      # maxReplicas라서 정상 범위에선 노드당 2개로 딱 맞게 퍼진다. 더 이상 못 퍼질
+      # 상황이면(예: 노드가 줄어든 상태에서 스케일아웃) 파드를 Pending으로 묶어둬서
+      # cluster-autoscaler가 실제로 노드를 늘리도록 강제한다 — ScheduleAnyway였으면
+      # 그냥 한 노드에 몰아넣고 조용히 넘어갔을 것.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: { app: redirect-service }
+      containers:
+        - name: redirect-service
+          image: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef: { name: redirect-service-config }
+            - secretRef: { name: redirect-service-secrets }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 10
+          resources:
+            # request 250m가 너무 낮아서 스케줄러가 파드를 한 노드(t3.medium, 2vCPU)에
+            # 3개까지 욱여넣었고, 부하 중 그 노드 자체가 CPU 100%까지 참 — limit을
+            # 1000m로 올려도 물리 코어를 나눠 쓰는 파드끼리 계속 쓰로틀됨. request를
+            # 올려서 노드당 밀도를 낮추고, 여유가 없어지면 cluster-autoscaler가 실제로
+            # 노드를 늘리도록 유도한다.
+            requests: { cpu: 500m, memory: 512Mi }
+            limits:   { cpu: 1000m, memory: 1Gi }

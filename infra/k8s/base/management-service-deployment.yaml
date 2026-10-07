@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+  labels: { app: management-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: management-service }
+  template:
+    metadata:
+      labels: { app: management-service }
+    spec:
+      containers:
+        - name: management-service
+          image: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef: { name: management-service-config }
+            - secretRef: { name: management-service-secrets }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 1Gi }

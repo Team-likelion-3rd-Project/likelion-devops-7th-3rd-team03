@@ -1,0 +1,40 @@
+# KST 02:00에 "어제(KST) 하루치"를 집계한다. UTC로는 전날 17:00.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: athena-batch
+  labels: { app: athena-batch }
+spec:
+  schedule: "0 17 * * *"   # KST 02:00, 매일 1회
+  concurrencyPolicy: Forbid       # 이전 실행이 아직 안 끝났으면 새 실행 건너뜀 (같은 날짜 중복 집계 방지)
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800  # 30분 넘으면 강제 종료. 아테나 폴링 무한 대기 방지 쿼리 4개(daily+referrer+device+region)
+      # × 쿼리당 최대 폴링 5분(150회×2초) = 최악 20분 + 여유
+      template:
+        metadata:
+          labels: { app: athena-batch }
+        spec:
+          serviceAccountName: athena-batch-sa
+          restartPolicy: Never
+          containers:
+            - name: athena-batch
+              # management-service와 같은 이미지 — 프로필만 다르게 실행
+              image: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service:latest
+              env:
+                - name: SPRING_PROFILES_ACTIVE
+                  value: batch
+                - name: JAVA_TOOL_OPTIONS
+                  # 1. MaxRAMPercentage=75.0(Heap ~1.5Gi) / Initial=50.0(초기 1Gi)
+                  # 2. Non-Heap(Metaspace, Thread Stack, JDBC Buffer)을 위한 ~512MB 여유 공간 확보 (Limit 2Gi 기준)
+                  # 3. OOM 발생 시 프로세스가 멈추지 않고 즉시 비정상 종료되어 K8s 재시도/실패 신호를 전달하도록 ExitOnOutOfMemoryError 추가
+                  value: "-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError"
+              envFrom:
+                - configMapRef: { name: management-service-config }
+                - secretRef: { name: management-service-secrets }
+                - configMapRef: { name: athena-batch-config }
+              resources:
+                requests: { cpu: 250m, memory: 512Mi }
+                limits:   { cpu: 500m, memory: 2Gi } # 대량 배치 upsert 시 Non-Heap 및 JVM 버퍼 확보를 위해 2Gi로 증설

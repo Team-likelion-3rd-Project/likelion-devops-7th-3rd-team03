@@ -1,0 +1,11 @@
+# overlays/prod/patch-athena-cronjob.yaml
+# base/athena-batch-cronjob.yaml(운영 스케줄: 매일 KST 02:00)을 덮어쓰는 dev 전용 patch.
+# 스케줄만 오버라이드하고 나머지(이미지, 리소스, ConfigMap 참조 등)는 base 값을 그대로 물려받는다.
+# 15분 → 1시간으로 조정: 매시 정각(0분)에 "어제(KST) 하루치"를 재집계한다.
+# 검증 끝나면 이 patch를 kustomization.yaml에서 빼서 dev도 base 스케줄을 쓰게 되돌릴 것.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: athena-batch
+spec:
+  schedule: "0 17 * * *"
