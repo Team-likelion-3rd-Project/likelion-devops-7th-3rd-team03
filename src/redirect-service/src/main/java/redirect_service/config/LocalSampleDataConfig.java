@@ -38,9 +38,9 @@ public class LocalSampleDataConfig {
 
     private void createSampleUserIfAbsent(JdbcTemplate jdbcTemplate) {
         jdbcTemplate.update(
-                "insert into users (user_id, provider, social_id, nickname, email) "
-                        + "select ?, 'KAKAO', ?, ?, ? where not exists (select 1 from users where user_id = ?)",
-                SAMPLE_USER_ID, "9000000001", "로컬 테스트 사용자", "local-sample@example.com", SAMPLE_USER_ID
+                "insert into users (user_id, kakao_id, nickname) "
+                        + "select ?, ?, ? where not exists (select 1 from users where user_id = ?)",
+                SAMPLE_USER_ID, 9_000_000_001L, "로컬 테스트 사용자", SAMPLE_USER_ID
         );
     }
 

@@ -14,7 +14,7 @@ import java.util.UUID;
 /**
  * users 테이블 (V1__init_schema.sql 기준)
  *
- * - 소셜 로그인 전용(카카오/구글/네이버). 자체 회원가입(이메일/비밀번호)은 지원하지 않는다.
+ * - 카카오 소셜 로그인 전용. 자체 회원가입(이메일/비밀번호)은 지원하지 않는다.
  * - 로그인 필수 정책: 익명 사용 없음
  * - 다른 서비스(link-service, stats-service)는 이 엔티티를 직접 참조하지 않고
  *   JWT 클레임(userId)만 신뢰하므로, User는 auth-service 내부에서만 사용된다.
@@ -24,18 +24,13 @@ import java.util.UUID;
  *             (순번이 노출되면 가입자 수와 증가 속도가 추정된다).
  *   user_id - 외부 노출용 UUID. API 응답과 JWT 클레임에는 이 값을 쓴다.
  *             DB가 채워주지 않으므로 애플리케이션이 생성해야 한다(아래 builder에서 처리).
- *
- * provider·socialId로 식별하는 이유:
- *   provider 안에서만 유일한 소셜 회원번호라, 다른 provider와 값이 우연히 같아도
- *   (provider, social_id) 복합 유니크로 충돌하지 않는다. 이메일로 계정을 병합하지 않는다
- *   (직접 입력한 이메일은 본인 확인이 안 된 값).
  */
 @Entity
 @Table(
         name = "users",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_users_user_id", columnNames = "user_id"),
-                @UniqueConstraint(name = "uk_users_provider_social_id", columnNames = {"provider", "social_id"})
+                @UniqueConstraint(name = "uk_users_kakao_id", columnNames = "kakao_id")
         },
         indexes = {
                 @Index(name = "idx_users_created_at", columnList = "created_at")
@@ -54,22 +49,18 @@ public class User {
     @Column(name = "user_id", length = 36, nullable = false, updatable = false)
     private String userId;
 
-    /** 소셜 로그인 제공자. 로그인 시 (provider, socialId)로 기존 회원을 찾는다 */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "provider", length = 20, nullable = false, updatable = false)
-    private SocialProvider provider;
+    /** 카카오 고유 회원번호. 로그인 시 이 값으로 기존 회원을 찾는다 */
+    @Column(name = "kakao_id", nullable = false, updatable = false)
+    private Long kakaoId;
 
-    /** provider 내에서 유일한 소셜 회원 식별자. 숫자 ID도 문자열로 저장한다 */
-    @Column(name = "social_id", length = 255, nullable = false, updatable = false)
-    private String socialId;
-
-    @Column(name = "nickname", length = 50, nullable = false)
+    // 아래 3개는 카카오 "선택 동의항목"이라 사용자가 동의하지 않으면 NULL로 들어온다
+    @Column(name = "nickname", length = 50)
     private String nickname;
 
     @Column(name = "profile_image_url", length = 500)
     private String profileImageUrl;
 
-    @Column(name = "email", length = 100, nullable = false)
+    @Column(name = "email", length = 100)
     private String email;
 
     @Enumerated(EnumType.STRING)
@@ -85,14 +76,20 @@ public class User {
     private LocalDateTime updatedAt;
 
     @Builder
-    private User(SocialProvider provider, String socialId, String nickname, String profileImageUrl, String email) {
+    private User(Long kakaoId, String nickname, String profileImageUrl, String email) {
         this.userId = UUID.randomUUID().toString();
-        this.provider = provider;
-        this.socialId = socialId;
+        this.kakaoId = kakaoId;
         this.nickname = nickname;
         this.profileImageUrl = profileImageUrl;
         this.email = email;
         this.status = UserStatus.ACTIVE;
+    }
+
+    /** 카카오 프로필은 언제든 바뀔 수 있으므로 로그인 때마다 최신값으로 갱신한다 */
+    public void updateProfile(String nickname, String profileImageUrl, String email) {
+        this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
+        this.email = email;
     }
 
     public void withdraw() {
@@ -105,9 +102,5 @@ public class User {
 
     public enum UserStatus {
         ACTIVE, WITHDRAWN
-    }
-
-    public enum SocialProvider {
-        KAKAO, GOOGLE, NAVER
     }
 }

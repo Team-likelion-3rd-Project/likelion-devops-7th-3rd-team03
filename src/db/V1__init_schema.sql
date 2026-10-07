@@ -35,21 +35,20 @@
 CREATE TABLE users (
     id                BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 식별자 (조인용)',
     user_id           VARCHAR(36)  NOT NULL COMMENT '외부 노출용 사용자 식별자 (UUID)',
-    provider          VARCHAR(20)  NOT NULL COMMENT '소셜 로그인 제공자 (KAKAO/GOOGLE/NAVER)',
-    social_id         VARCHAR(255) NOT NULL COMMENT 'provider 내에서 유일한 소셜 회원 식별자',
-    nickname          VARCHAR(50)  NOT NULL COMMENT '닉네임 (중복 허용)',
-    profile_image_url VARCHAR(500) NULL COMMENT '프로필 이미지 URL (소셜 제공 값, 선택)',
-    email             VARCHAR(100) NOT NULL COMMENT '이메일 (중복 허용, 계정 병합에 사용하지 않음)',
+    kakao_id          BIGINT       NOT NULL COMMENT '카카오 고유 회원번호',
+    nickname          VARCHAR(50)  NULL COMMENT '카카오 닉네임 (선택 동의항목, NULL 가능)',
+    profile_image_url VARCHAR(500) NULL COMMENT '카카오 프로필 이미지 URL (선택 동의항목)',
+    email             VARCHAR(100) NULL COMMENT '카카오 이메일 (선택 동의항목, NULL 가능)',
     status            VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '계정 상태 (ACTIVE/WITHDRAWN)',
     created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '가입(최초 로그인) 일시',
     updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '정보 수정 일시',
     -- 이름을 명시하지 않으면 MySQL이 컬럼명 그대로 제약명을 붙여 User.java의
     -- @UniqueConstraint(name = "uk_users_user_id" 등)와 어긋난다. 엔티티와 정확히 맞춘다.
     CONSTRAINT uk_users_user_id UNIQUE (user_id),
-    CONSTRAINT uk_users_provider_social_id UNIQUE (provider, social_id)
+    CONSTRAINT uk_users_kakao_id UNIQUE (kakao_id)
 ) COMMENT '사용자 기본 정보 테이블';
 
--- (provider, social_id)는 UNIQUE 제약으로 인덱스가 이미 자동 생성되므로 별도 인덱스를 만들지 않는다.
+-- kakao_id는 UNIQUE 제약으로 인덱스가 이미 자동 생성되므로 별도 인덱스를 만들지 않는다.
 -- (README "알려진 제약사항 #8" 반영 — 중복 인덱스 제거)
 CREATE INDEX idx_users_created_at ON users(created_at);
 

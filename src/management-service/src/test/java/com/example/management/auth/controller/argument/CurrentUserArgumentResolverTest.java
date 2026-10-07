@@ -34,7 +34,7 @@ class CurrentUserArgumentResolverTest {
 
     @Test
     void resolveArgument_returnsUserMatchedToJwtSubject() throws Exception {
-        User user = User.builder().provider(User.SocialProvider.KAKAO).socialId("1").build();
+        User user = User.builder().kakaoId(1L).build();
         ReflectionTestUtils.setField(user, "id", 10L);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("external-user-id", null));

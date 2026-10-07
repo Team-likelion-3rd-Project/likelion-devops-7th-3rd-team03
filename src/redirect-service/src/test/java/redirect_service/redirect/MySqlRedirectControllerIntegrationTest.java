@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class MySqlRedirectControllerIntegrationTest {
 
-    private static final AtomicLong SOCIAL_ID_SEQUENCE = new AtomicLong(1);
+    private static final AtomicLong KAKAO_ID_SEQUENCE = new AtomicLong(1);
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0")
@@ -107,12 +107,9 @@ class MySqlRedirectControllerIntegrationTest {
     private void insertLink(String slug, String originalUrl, boolean isVisible, LocalDateTime expiresAt) {
         String userExternalId = UUID.randomUUID().toString();
         jdbcTemplate.update(
-                "insert into users (user_id, provider, social_id, nickname, email, status) "
-                        + "values (?, 'KAKAO', ?, ?, ?, 'ACTIVE')",
+                "insert into users (user_id, kakao_id, status) values (?, ?, 'ACTIVE')",
                 userExternalId,
-                String.valueOf(SOCIAL_ID_SEQUENCE.getAndIncrement()),
-                "테스트유저",
-                "test@example.com"
+                KAKAO_ID_SEQUENCE.getAndIncrement()
         );
 
         Long userId = jdbcTemplate.queryForObject(

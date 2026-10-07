@@ -61,25 +61,24 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("login: 기존 회원이면 프로필을 덮어쓰지 않고 isNewUser=false를 반환한다")
-    void login_existingUser_doesNotOverwriteProfileAndReturnsTokens() {
+    @DisplayName("login: 기존 회원이면 프로필을 갱신하고 isNewUser=false를 반환한다")
+    void login_existingUser_updatesProfileAndReturnsTokens() {
         KakaoTokenResponse kakaoToken = new KakaoTokenResponse("kakao-access-token", "bearer", 3600);
         KakaoUserResponse kakaoUser = kakaoUserResponse(100L, "새닉네임", "https://new-image", "new@test.com");
 
-        User existingUser = User.builder().provider(User.SocialProvider.KAKAO).socialId("100")
-                .nickname("옛닉네임").email("old@test.com").build();
+        User existingUser = User.builder().kakaoId(100L).nickname("옛닉네임").email("old@test.com").build();
         ReflectionTestUtils.setField(existingUser, "id", 5L);
 
         when(kakaoOAuthClient.exchangeToken(eq("auth-code"))).thenReturn(kakaoToken);
         when(kakaoOAuthClient.getUserInfo(eq("kakao-access-token"))).thenReturn(kakaoUser);
-        when(userRepository.findByProviderAndSocialId(User.SocialProvider.KAKAO, "100")).thenReturn(Optional.of(existingUser));
+        when(userRepository.findByKakaoId(100L)).thenReturn(Optional.of(existingUser));
         when(jwtTokenProvider.generateAccessToken(existingUser.getUserId())).thenReturn("access-jwt");
 
         LoginResult result = authService.login("auth-code");
 
-        assertThat(existingUser.getNickname()).isEqualTo("옛닉네임");
-        assertThat(existingUser.getEmail()).isEqualTo("old@test.com");
-        assertThat(existingUser.getProfileImageUrl()).isNull();
+        assertThat(existingUser.getNickname()).isEqualTo("새닉네임");
+        assertThat(existingUser.getEmail()).isEqualTo("new@test.com");
+        assertThat(existingUser.getProfileImageUrl()).isEqualTo("https://new-image");
         assertThat(result.isNewUser()).isFalse();
         assertThat(result.accessToken()).isEqualTo("access-jwt");
         assertRawRefreshTokenFormat(result.refreshToken());
@@ -100,7 +99,7 @@ class AuthServiceTest {
 
         when(kakaoOAuthClient.exchangeToken(anyString())).thenReturn(kakaoToken);
         when(kakaoOAuthClient.getUserInfo(anyString())).thenReturn(kakaoUser);
-        when(userRepository.findByProviderAndSocialId(User.SocialProvider.KAKAO, "200")).thenReturn(Optional.empty());
+        when(userRepository.findByKakaoId(200L)).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User saved = invocation.getArgument(0);
             ReflectionTestUtils.setField(saved, "id", 10L);
@@ -114,8 +113,7 @@ class AuthServiceTest {
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
-        assertThat(userCaptor.getValue().getProvider()).isEqualTo(User.SocialProvider.KAKAO);
-        assertThat(userCaptor.getValue().getSocialId()).isEqualTo("200");
+        assertThat(userCaptor.getValue().getKakaoId()).isEqualTo(200L);
         assertThat(userCaptor.getValue().getNickname()).isEqualTo("닉네임");
     }
 
@@ -125,12 +123,12 @@ class AuthServiceTest {
         KakaoTokenResponse kakaoToken = new KakaoTokenResponse("kakao-access-token", "bearer", 3600);
         KakaoUserResponse kakaoUser = kakaoUserResponse(300L, "닉네임", "https://image", "user@test.com");
 
-        User withdrawnUser = User.builder().provider(User.SocialProvider.KAKAO).socialId("300").build();
+        User withdrawnUser = User.builder().kakaoId(300L).build();
         withdrawnUser.withdraw();
 
         when(kakaoOAuthClient.exchangeToken(anyString())).thenReturn(kakaoToken);
         when(kakaoOAuthClient.getUserInfo(anyString())).thenReturn(kakaoUser);
-        when(userRepository.findByProviderAndSocialId(User.SocialProvider.KAKAO, "300")).thenReturn(Optional.of(withdrawnUser));
+        when(userRepository.findByKakaoId(300L)).thenReturn(Optional.of(withdrawnUser));
 
         assertThrows(WithdrawnUserException.class, () -> authService.login("auth-code"));
 
@@ -158,7 +156,7 @@ class AuthServiceTest {
                 .expiresAt(LocalDateTime.now().plusMinutes(10))
                 .build();
 
-        User user = User.builder().provider(User.SocialProvider.KAKAO).socialId("400").build();
+        User user = User.builder().kakaoId(400L).build();
         ReflectionTestUtils.setField(user, "id", 7L);
 
         when(refreshTokenRepository.findByTokenHash(sha256Hex(oldRawToken))).thenReturn(Optional.of(saved));
@@ -216,7 +214,7 @@ class AuthServiceTest {
                 .expiresAt(LocalDateTime.now().plusMinutes(10))
                 .build();
 
-        User withdrawnUser = User.builder().provider(User.SocialProvider.KAKAO).socialId("500").build();
+        User withdrawnUser = User.builder().kakaoId(500L).build();
         ReflectionTestUtils.setField(withdrawnUser, "id", 9L);
         withdrawnUser.withdraw();
 
