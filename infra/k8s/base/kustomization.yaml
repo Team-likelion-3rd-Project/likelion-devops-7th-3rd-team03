@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- management-service-deployment.yaml
+- management-service-service.yaml
+- redirect-service-deployment.yaml
+- redirect-service-service.yaml
+- redirect-service-sa.yaml
+- ingress-with-origin-verify.yaml
+- athena-batch-sa.yaml
+- athena-batch-cronjob.yaml
+- athena-batch-configmap.yaml
+- cluster-secret-store.yaml
+- service-monitor-redirect.yaml
+- service-monitor-management.yaml
+- grafana-dashboards.yaml
+- grafana-dashboard-demo.yaml
+- storageclass-gp3.yaml
+- hpa.yaml
+images:
+- name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+  newName: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+  newTag: b4aa457889c2b593f57630c57f7bc38d4feb258c
+- name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+  newName: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+  newTag: 018497235fbd55cff35021568075e4c31384d61a

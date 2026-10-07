@@ -1,0 +1,109 @@
+name: Frontend CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    # VITE_* 값은 브라우저에 공개되는 빌드 설정이다. GitHub Actions
+    # Repository/Environment Variables에 같은 이름으로 등록해 사용한다.
+    # dev/prod 구분
+    env:
+      VITE_API_BASE_URL: ${{ github.ref_name == 'main' && secrets.PROD_API_BASE_URL || secrets.API_BASE_URL }}
+      VITE_KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+      VITE_KAKAO_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_KAKAO_REDIRECT_URI || secrets.KAKAO_REDIRECT_URI }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # deploy job은 별도 러너에서 실행되므로, 빌드 결과물을 전달한다.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/frontend/dist
+          retention-days: 1
+
+  deploy:
+    name: Deploy frontend to S3
+    needs: build
+
+    # PR은 검증만 한다. 실제 배포는 develop/main 브랜치 push에서만 수행한다.
+    # dev/prod 구분
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      S3_BUCKET: ${{ github.ref_name == 'main' && secrets.PROD_FRONTEND_S3_BUCKET || secrets.FRONTEND_S3_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ github.ref_name == 'main' && secrets.PROD_CLOUDFRONT_DISTRIBUTION_ID || secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Validate deployment configuration
+        run: |
+          test -n "$S3_BUCKET" || {
+            echo "FRONTEND_S3_BUCKET GitHub Secret is required."
+            exit 1
+          }
+
+      - name: AWS 자격증명 설정 (GitHub OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::834922934330:role/snipy-github-actions-ci
+          aws-region: ap-southeast-1
+
+      # 해시된 JS/CSS 파일은 길게 캐시하되, 새 배포를 가리키는 index.html은 매번 확인한다.
+      - name: Upload static assets
+        run: |
+          aws s3 sync dist "s3://$S3_BUCKET" --delete \
+            --exclude "index.html" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      # 배포 ID를 등록한 경우에만 즉시 CloudFront 캐시를 비운다.
+      - name: Invalidate CloudFront cache
+        if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths '/*'

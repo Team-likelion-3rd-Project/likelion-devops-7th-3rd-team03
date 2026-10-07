@@ -1,0 +1,58 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.0'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.springframework.boot:spring-boot-starter-json'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'nl.basjes.parse.useragent:yauaa:8.2.0'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation platform('software.amazon.awssdk:bom:2.28.29')
+	implementation 'software.amazon.awssdk:firehose'
+	// IRSA(redirect-service-sa) 인증은 SDK 기본 자격증명 체인이 자동 처리한다.
+	implementation 'software.amazon.awssdk:sts'
+
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'com.mysql:mysql-connector-j'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-redis-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-flyway'   // MySqlRedirectControllerIntegrationTest: Testcontainers MySQL 스키마 세팅용. 앱 런타임은 flyway.enabled=false
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter:2.0.5'
+	testImplementation 'org.testcontainers:testcontainers-mysql:2.0.5'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.flywaydb:flyway-mysql'
+	testRuntimeOnly 'com.h2database:h2'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+tasks.named('processTestResources') {
+	from('../db') {
+		include 'V*__*.sql'
+		into 'db/migration'
+	}
+}

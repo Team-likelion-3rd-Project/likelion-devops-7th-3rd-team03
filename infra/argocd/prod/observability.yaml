@@ -1,0 +1,120 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: snipy-prod-observability
+  namespace: argocd
+spec:
+  project: default
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 88.5.0
+    helm:
+      releaseName: kube-prometheus
+      values: |
+        # prometheuses/alertmanagers CRD가 커서 ArgoCD sync 결과가 etcd 메시지 크기(2MB)를
+        # 넘어 상태 기록 자체가 실패함 (ResourceExhausted). CRD는 미리 별도로
+        # server-side apply 해두고, 여기서는 차트가 CRD를 다시 관리하지 않게 끈다.
+        crds:
+          enabled: false
+        prometheus:
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
+            serviceMonitorNamespaceSelector: {}
+            enableRemoteWriteReceiver: true
+            # k6 부하테스트 대시보드(grafana.com 19665)가 histogram_quantile()로 latency를
+            # 조회해서 native histogram이 필요함 (load-test/job.yaml.template의
+            # K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true와 세트).
+            enableFeatures: ["native-histograms"]
+            retention: 15d
+            resources:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { cpu: 1000m, memory: 2Gi }
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: gp3
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests: { storage: 20Gi }
+        grafana:
+          admin:
+            existingSecret: grafana-admin-credentials
+          # replicaCount 1 + RWO(EBS) PVC 조합에서 기본 RollingUpdate 전략을 쓰면,
+          # 새 pod가 다른 노드에 뜰 때 기존 pod가 아직 볼륨을 붙잡고 있어
+          # Multi-Attach 에러로 영원히 데드락됨. 볼륨을 공유 못 하니 기존 pod를
+          # 먼저 내리는 Recreate로 바꿔야 함.
+          deploymentStrategy:
+            type: Recreate
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          persistence:
+            enabled: true
+            storageClassName: gp3
+            size: 5Gi
+          # Grafana 13부터 플러그인 방식 렌더러가 제거돼서 별도 서비스로만 붙일 수 있음.
+          # 헤드리스 Chromium이 메모리를 많이 써서 Grafana 프로세스와 분리하는 게 맞음.
+          imageRenderer:
+            enabled: true
+            image:
+              tag: v5.10.1
+            resources:
+              requests: { cpu: 250m, memory: 256Mi }
+              limits: { cpu: 1000m, memory: 1Gi }
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests: { cpu: 25m, memory: 64Mi }
+              limits: { cpu: 100m, memory: 128Mi }
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: gp3
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests: { storage: 2Gi }
+        # grafana-admin-credentials 시크릿을 수동 kubectl create 없이 ESO로 자동 생성.
+        # aws_secretsmanager_secret.grafana_admin_password (modules/app-secrets)를 그대로 당겨온다.
+        extraManifests:
+          - apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: grafana-admin-credentials
+            spec:
+              secretStoreRef:
+                name: aws-secrets-manager
+                kind: ClusterSecretStore
+              target:
+                name: grafana-admin-credentials
+                template:
+                  mergePolicy: Merge # 기본값 Replace면 template.data가 통째로 덮어써서
+                    # data:로 따로 가져온 admin-password가 사라짐
+                  data:
+                    admin-user: admin
+              data:
+                - secretKey: admin-password
+                  remoteRef:
+                    key: snipy-cluster/app/grafana-admin-password
+        # EKS 관리형 컨트롤 플레인이라 노출되지 않는 컴포넌트 — 켜봤자 타겟이 영구 Down으로 남음
+        kubeControllerManager:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeEtcd:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # alertmanagers/prometheuses CRD가 커서 client-side apply 시
+        # last-applied-configuration 어노테이션이 262144바이트 제한을 넘어 동기화 실패함

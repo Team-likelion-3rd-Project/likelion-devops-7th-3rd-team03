@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: snipy-ingress
+  annotations:
+    # dev 전용 ACM 인증서 발급 후 채우기 (ap-southeast-1, dev.snipy.life 도메인)
+    # CloudFront용 인증서(us-east-1)와는 별개 — ALB용은 terraform이 안 만들어주고 수동 발급.
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-southeast-1:834922934330:certificate/713e044f-c1ed-4172-82cb-dfa44315cfcd"
+    # env/dev terraform apply 후 `terraform output alb_security_group_id`로 채우기
+    alb.ingress.kubernetes.io/security-groups: "sg-093c32791f9894268"
+spec:
+  rules:
+    - host: "dev.snipy.life"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: management-service
+                port:
+                  number: 8080
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: redirect-service
+                port:
+                  number: 8080

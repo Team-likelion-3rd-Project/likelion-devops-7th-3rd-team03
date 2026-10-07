@@ -1,0 +1,47 @@
+# AWS Load Balancer Controller가 이 Ingress를 보고 ALB를 자동 생성합니다.
+# ALB 생성 후 DNS 이름을 확인해서 terraform.tfvars의 origin_alb_domain_name에 채우고
+# 다시 terraform apply 하면 CloudFront가 이 ALB를 오리진으로 연결합니다.
+#
+#   kubectl get ingress snipy-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: snipy-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # ap-southeast-1 리전의 ALB용 ACM 인증서 (CloudFront용과는 별도 — providers.tf의 기본 리전)
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-southeast-1:834922934330:certificate/ef026f40-15ef-4b64-8c32-fd75eec6ced5"
+    # CloudFront 프리픽스 리스트만 인바운드 허용 (직접 인터넷 접근 차단)
+    # terraform output alb_security_group_id 값으로 교체 — 이 SG를 지정하면
+    # 컨트롤러가 별도 프론트엔드 SG를 자동 생성하지 않고 이 SG만 사용함
+    alb.ingress.kubernetes.io/security-groups: "1차 apply 후 채우기"
+    # 헬스체크 경로 설정
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/liveness
+spec:
+  rules:
+    - host: "snipy.life" # var.domain_name과 동일한 값으로 교체
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: management-service
+                port:
+                  number: 8080
+          # TODO: ALB는 "/{shortcode}" 같은 경로 변수 문법을 모르고 '*'/'?' 와일드카드만 지원함.
+          # 지금의 '/*'는 임시 스텁 — 프론트엔드(/  프리픽스)도 내부적으로 '/*'로 매칭되기 때문에
+          # 이 규칙과 우선순위가 겹쳐서 둘 중 하나가 죽은 규칙이 됨. 백엔드/프론트 라우팅 완성 후
+          # (예: redirect-service 전용 prefix, 또는 프론트를 서브도메인으로 분리) 재설계 필요.
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: redirect-service
+                port:
+                  number: 8080
