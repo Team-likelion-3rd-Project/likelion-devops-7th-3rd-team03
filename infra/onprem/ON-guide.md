@@ -60,7 +60,7 @@ control-plane이 1대라서 **고가용성은 없습니다.** control-plane이 �
 | Pod CIDR | `10.244.0.0/16` | VM 서브넷(192.168.x.x)과 겹치지 않아야 함. **Calico 기본값(192.168.0.0/16)을 그대로 쓰면 겹침** |
 | Service CIDR | `10.96.0.0/12` (kubeadm 기본) | |
 
-**참고:** VMware의 VMnet8 서브넷은 설치 시 자동으로 정해집니다. 이 환경에서는 `192.168.122.0/24`로 잡혀서 그 대역으로 맞췄습니다. VM의 DHCP 범위(`.128` 이상)와 겹치지 않도록 고정 IP는 `.11`, `.21`, `.22`로 정했습니다.
+**참고:** VMware의 VMnet8 서브넷은 설치 시 PC마다 자동으로 정해지므로, 2부 A단계에서 `192.168.122.0/24`로 직접 맞춥니다. VM의 DHCP 범위(`.128` 이상)와 겹치지 않도록 고정 IP는 `.11`, `.21`, `.22`로 정했습니다.
 
 ## 1.5 런타임·CNI
 
@@ -94,7 +94,7 @@ NetworkPolicy를 쓸 수 있어서 Flannel 대신 Calico를 선택했습니다.
 
 | 단계 | 어디서 | 무엇을 |
 |---|---|---|
-| A | 호스트(Windows) | VMware Workstation Pro 설치, 네트워크 서브넷 확인 |
+| A | 호스트(Windows) | VMware Workstation Pro 설치, VMnet8 서브넷을 192.168.122.0으로 설정 |
 | B | VMware | VM 3대 생성 + Ubuntu 설치 |
 | C | 각 VM | 고정 IP 설정, SSH 접속 확인, 스크립트 파일 옮기기 |
 | D | 각 VM (root) | `node-common.sh` 실행 |
@@ -107,10 +107,16 @@ NetworkPolicy를 쓸 수 있어서 Flannel 대신 Calico를 선택했습니다.
 
 1. **VMware Workstation Pro** 설치: Broadcom 사이트에서 계정을 만들고 내려받습니다. 개인 사용 무료이며 약관은 설치 전에 확인하세요.
 2. **Ubuntu Server 26.04 LTS ISO** (amd64) 다운로드: https://ubuntu.com/download/server
-3. **네트워크 서브넷 확인:** VMware가 NAT 서브넷을 자동으로 정합니다 (이 환경에서는 `192.168.122.0/24`). 이 값을 그대로 쓰고 바꿀 필요는 없습니다.
+3. **네트워크 서브넷을 `192.168.122.0`으로 맞춥니다 (Windows, VMware Workstation).**
+   VMware는 VMnet8(NAT)의 서브넷을 설치할 때 자동으로 정하므로 PC마다 다를 수 있습니다. 이 가이드의 IP는 `192.168.122.x`를 전제로 하니, 아래 순서로 맞춰 주세요.
+   1. `Edit` → `Virtual Network Editor` 실행
+   2. 오른쪽 아래 `Change Settings` 클릭 (관리자 권한)
+   3. 목록에서 `VMnet8` (Type: NAT) 선택
+   4. `Subnet IP`를 `192.168.122.0`, `Subnet mask`를 `255.255.255.0`으로 변경 후 `Apply` → `OK`
+   - 이미 VM을 만들어 둔 경우 변경 후 VM을 재부팅하세요. 같은 VMnet8을 쓰는 다른 VM이 있다면 그 VM의 IP도 바뀝니다.
    - VM의 DHCP 주소는 보통 `.128`~`.254` 범위에서 배정됩니다. 고정 IP(`.11`, `.21`, `.22`)는 그 범위 밖이라 겹치지 않습니다.
    - 게이트웨이는 보통 서브넷의 `.2`(`192.168.122.2`)입니다. 아래 C단계에서 VM에서 `ip route`로 직접 확인하세요.
-   - 서브넷이 다르게 잡힌 PC에서는 1부 1.4절의 IP 표와 스크립트의 `192.168.122.x`를 실제 서브넷으로 바꿔야 합니다.
+   - Mac(VMware Fusion)에는 이 도구가 없어서 이 가이드에서 확인하지 못했습니다. Mac은 서브넷을 확인해서 다르면 1부 1.4절의 IP 표와 스크립트의 `192.168.122.x`를 실제 서브넷으로 바꿔야 합니다.
 
 ## B. VM 3대 생성
 
@@ -303,7 +309,8 @@ systemctl stop kubelet           # 이 시각을 기록
 systemctl start kubelet          # 원래대로 되돌리기
 ```
 - 기록할 것: ① `stop` 한 시각 ② w2가 `NotReady`로 표시된 시각 ③ `start` 후 `Ready`로 돌아온 시각.
-- 참고: 쿠버네티스 기본값으로는 노드가 응답을 멈춘 뒤 약 40초 후 `NotReady`로 표시되고, 그 노드의 파드는 기본 5분 뒤에 다른 노드로 옮겨집니다 (공식 문서 기준, 직접 측정해서 확인해 보세요).
+- 참고: 쿠버네티스 기본값으로는 노드가 응답을 멈춘 뒤 약 40초 후 `NotReady`로 표시되고, 그 노드의 파드는 기본 5분 뒤에 다른 노드로 옮겨집니다 (공식 문서 기준).
+- 실측 예 (Ubuntu 26.04, 워커 1대의 kubelet 중지): 중지 후 **약 44초** 만에 `NotReady`, **약 5분** 뒤 그 노드의 파드가 퇴출되어 다른 워커에서 새 파드가 6~18초 안에 `Running`, kubelet 재시작 후 **약 2초** 만에 `Ready`로 복귀했습니다. 노드가 돌아와도 파드는 원래 노드로 되돌아가지 않습니다.
 
 ## G. 문제 해결
 
@@ -318,7 +325,7 @@ systemctl start kubelet          # 원래대로 되돌리기
 | 파드가 계속 재시작 | containerd 의 `SystemdCgroup` 가 false | `grep SystemdCgroup /etc/containerd/config.toml` |
 | `kubectl top` 실패 | metrics-server 인증서 검증 | `cp-addons.sh` 가 `--kubelet-insecure-tls` 를 붙입니다 |
 | VM 재부팅 후 IP 변경 | DHCP 로 돌아감 | netplan 의 고정 IP 설정 확인 |
-| 호스트에서 VM 접속 안 됨 | VMnet8 서브넷 불일치 | Virtual Network Editor 의 서브넷 확인 |
+| 호스트에서 VM 접속 안 됨 | VMnet8 서브넷 불일치 | A단계 3번대로 Virtual Network Editor 에서 서브넷을 192.168.122.0 으로 설정 |
 | 토큰 만료 (join 실패) | 기본 24시간 | cp1 에서 `kubeadm token create --print-join-command` |
 | `kubectl` 이 `localhost:8080` 으로 접속 시도 | root 가 아닌 계정에서 실행했거나 kubeconfig 가 없음 | cp1 에서 `sudo -i` 로 root 셸에서 실행하거나, F-1 의 (선택) 복사 명령 사용 |
 
