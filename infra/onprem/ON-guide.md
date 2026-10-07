@@ -317,12 +317,7 @@ systemctl start kubelet          # 원래대로 되돌리기
 | 증상 | 원인 | 해결 |
 |---|---|---|
 | `kubeadm init` 이 preflight 에서 실패 (swap) | swap 이 켜져 있음 | `node-common.sh` 재실행, `swapon --show` 로 확인 |
-| `sudo: A terminal is required to authenticate` | 한 줄 원격 명령에 터미널이 없음 | 접속한 뒤 `sudo -i`로 root 셸에서 실행 (또는 `ssh -t` 사용) |
-| `[ERROR FileExisting-conntrack]: conntrack not found` | `conntrack` 패키지 미설치 (이전 버전 스크립트) | 최신 `node-common.sh` 를 다시 복사해 3대에서 재실행 |
 | `E: Could not get lock /var/lib/dpkg/lock-frontend ... held by process ... (unattended-upgr)` | 자동 업데이트가 apt 를 잡고 있음 (VM 을 켠 직후에 흔함) | `node-common.sh` 는 최대 10분 자동 대기합니다. 직접 기다리려면 `while pgrep -x unattended-upgr >/dev/null; do sleep 5; done` 후 재실행 |
-| 노드가 계속 NotReady | CNI(Calico) 미기동 | `kubectl -n calico-system get pods`, Pod CIDR 이 `10.244.0.0/16` 인지 확인 |
-| Calico 파드 CrashLoop | Pod CIDR 이 VM 서브넷과 겹침 | `cp-init.sh` 의 CIDR 확인 (기본값 192.168.0.0/16 사용 금지) |
-| 파드가 계속 재시작 | containerd 의 `SystemdCgroup` 가 false | `grep SystemdCgroup /etc/containerd/config.toml` |
 | `kubectl top` 실패 | metrics-server 인증서 검증 | `cp-addons.sh` 가 `--kubelet-insecure-tls` 를 붙입니다 |
 | VM 재부팅 후 IP 변경 | DHCP 로 돌아감 | netplan 의 고정 IP 설정 확인 |
 | 호스트에서 VM 접속 안 됨 | VMnet8 서브넷 불일치 | A단계 3번대로 Virtual Network Editor 에서 서브넷을 192.168.122.0 으로 설정 |
