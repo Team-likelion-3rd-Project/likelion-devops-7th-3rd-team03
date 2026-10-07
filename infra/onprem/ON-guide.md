@@ -42,7 +42,7 @@ flowchart TB
 | 항목 | 값 | 비고 |
 |---|---|---|
 | 가상화 도구 | VMware Workstation Pro (Windows), VMware Fusion (Mac) | 개인 사용 무료(약관은 설치 전 확인) |
-| OS | Ubuntu Server 24.04 LTS (amd64) | kubeadm 공식 문서 기준 배포판. Mac(Apple Silicon)은 arm64 ISO |
+| OS | Ubuntu Server 26.04 LTS (amd64) | 이 가이드는 26.04.1(커널 7.0, containerd 2.2.2)에서 검증함. Mac(Apple Silicon)은 arm64 ISO |
 | 노드 수 | 3대 (control-plane 1 + worker 2) | |
 | 사양 | 각 2 vCPU / 4GB RAM / 30GB 디스크 | 합계 6 vCPU, 12GB. control-plane 최소 요구사항은 2 vCPU·2GB |
 | 호스트명 | `k8s-cp1`, `k8s-w1`, `k8s-w2` | |
@@ -106,7 +106,7 @@ NetworkPolicy를 쓸 수 있어서 Flannel 대신 Calico를 선택했습니다.
 ## A. 호스트 준비 (직접 해야 함)
 
 1. **VMware Workstation Pro** 설치: Broadcom 사이트에서 계정을 만들고 내려받습니다. 개인 사용 무료이며 약관은 설치 전에 확인하세요.
-2. **Ubuntu Server 24.04 LTS ISO** (amd64) 다운로드: https://ubuntu.com/download/server
+2. **Ubuntu Server 26.04 LTS ISO** (amd64) 다운로드: https://ubuntu.com/download/server
 3. **네트워크 서브넷 확인:** VMware가 NAT 서브넷을 자동으로 정합니다 (이 환경에서는 `192.168.122.0/24`). 이 값을 그대로 쓰고 바꿀 필요는 없습니다.
    - VM의 DHCP 주소는 보통 `.128`~`.254` 범위에서 배정됩니다. 고정 IP(`.11`, `.21`, `.22`)는 그 범위 밖이라 겹치지 않습니다.
    - 게이트웨이는 보통 서브넷의 `.2`(`192.168.122.2`)입니다. 아래 C단계에서 VM에서 `ip route`로 직접 확인하세요.
