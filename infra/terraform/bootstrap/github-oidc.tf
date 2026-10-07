@@ -31,6 +31,8 @@ resource "aws_iam_role" "github_actions_ci" {
           "token.actions.githubusercontent.com:sub" = [
             "repo:Team-likelion-2nd-Project@312237597/likelion-devops-7th-team03@1320904339:ref:refs/heads/develop",
             "repo:Team-likelion-2nd-Project@312237597/likelion-devops-7th-team03@1320904339:ref:refs/heads/main",
+            "repo:Team-likelion-3rd-Project@336729042/likelion-devops-7th-3rd-team03@1400844527:ref:refs/heads/develop",
+            "repo:Team-likelion-3rd-Project@336729042/likelion-devops-7th-3rd-team03@1400844527:ref:refs/heads/main",
           ]
         }
         # 이미지 push가 실제로 일어나는 develop/main push 이벤트에서만 assume 허용
