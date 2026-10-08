@@ -1,5 +1,6 @@
 package com.example.management.auth.controller;
 
+import com.example.management.auth.domain.SocialProvider;
 import com.example.management.auth.exception.AuthExceptionHandler;
 import com.example.management.auth.exception.InvalidRefreshTokenException;
 import com.example.management.auth.exception.WithdrawnUserException;
@@ -50,7 +51,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /kakao/login: 정상 코드면 토큰과 isNewUser를 반환한다")
     void kakaoLogin_success_returnsTokens() throws Exception {
-        when(authService.login("auth-code"))
+        when(authService.login(SocialProvider.KAKAO, "auth-code", null))
                 .thenReturn(new LoginResult("access-jwt", "refresh-raw", true));
 
         mockMvc.perform(post("/api/auth/kakao/login")
@@ -65,19 +66,19 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /kakao/login: 카카오 API 호출이 실패하면 400을 반환한다")
     void kakaoLogin_kakaoApiFails_returns400() throws Exception {
-        when(authService.login("bad-code")).thenThrow(new RestClientException("kakao down"));
+        when(authService.login(SocialProvider.KAKAO, "bad-code", null)).thenThrow(new RestClientException("kakao down"));
 
         mockMvc.perform(post("/api/auth/kakao/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"code\":\"bad-code\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("카카오 로그인 처리에 실패했습니다. 다시 시도해주세요."));
+                .andExpect(jsonPath("$.message").value("소셜 로그인 처리에 실패했습니다. 다시 시도해주세요."));
     }
 
     @Test
     @DisplayName("POST /kakao/login: 탈퇴한 사용자면 403을 반환한다")
     void kakaoLogin_withdrawnUser_returns403() throws Exception {
-        when(authService.login("code")).thenThrow(new WithdrawnUserException("user-uuid"));
+        when(authService.login(SocialProvider.KAKAO, "code", null)).thenThrow(new WithdrawnUserException("user-uuid"));
 
         mockMvc.perform(post("/api/auth/kakao/login")
                         .contentType(MediaType.APPLICATION_JSON)

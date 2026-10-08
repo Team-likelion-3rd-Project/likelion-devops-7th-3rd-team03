@@ -5,6 +5,7 @@ import com.example.management.auth.argument.CurrentUserArgumentResolver;
 import com.example.management.auth.domain.User;
 import com.example.management.auth.repository.UserRepository;
 import com.example.management.common.exception.AuthenticationRequiredException;
+import com.example.management.auth.domain.SocialProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -34,7 +35,7 @@ class CurrentUserArgumentResolverTest {
 
     @Test
     void resolveArgument_returnsUserMatchedToJwtSubject() throws Exception {
-        User user = User.builder().provider(User.SocialProvider.KAKAO).socialId("1").build();
+        User user = User.builder().provider(SocialProvider.KAKAO).socialId("1").build();
         ReflectionTestUtils.setField(user, "id", 10L);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("external-user-id", null));
