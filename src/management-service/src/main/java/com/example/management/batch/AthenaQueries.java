@@ -1,5 +1,9 @@
 package com.example.management.batch;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
@@ -11,15 +15,18 @@ import java.time.format.DateTimeFormatter;
  * 실제 날짜 필터는 clicked_at을 KST로 변환한 값으로 다시 거른다.
  *
  * is_bot=true는 모든 집계에서 제외한다 (LinkDailyStat.clickCount 주석 참고).
+ *
+ * AWS 환경 전용 SQL 제공자. app.batch.engine=athena(기본값)일 때만 등록된다.
  */
-final class AthenaQueries {
+@Component
+@Profile("batch")
+@ConditionalOnProperty(name = "app.batch.engine", havingValue = "athena", matchIfMissing = true)
+final class AthenaQueries implements ClickStatsQueries {
 
     private static final DateTimeFormatter YMD = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    private AthenaQueries() {
-    }
-
-    static String dailyStats(LocalDate targetDateKst) {
+    @Override
+    public String dailyStats(LocalDate targetDateKst) {
         LocalDate prevUtcPartition = targetDateKst.minusDays(1);
 
         return """
@@ -45,7 +52,8 @@ final class AthenaQueries {
         );
     }
 
-    static String dimensionStats(LocalDate targetDateKst, String dimensionType) {
+    @Override
+    public String dimensionStats(LocalDate targetDateKst, String dimensionType) {
         LocalDate prevUtcPartition = targetDateKst.minusDays(1);
         String dimensionColumn = dimensionColumn(dimensionType);
 
