@@ -49,6 +49,7 @@ app:
 
   click-event:
     trust-forwarded-for: ${TRUST_FORWARDED_FOR:true}
+    sink: ${CLICK_EVENT_SINK:firehose}   # firehose(AWS) | log(온프렘)
     # infra/terraform/streaming.tf의 aws_kinesis_firehose_delivery_stream.click_events.name
     firehose-stream-name: ${FIREHOSE_STREAM_NAME:}
     aws-region: ${AWS_REGION:ap-southeast-1}
