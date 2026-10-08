@@ -3,6 +3,7 @@ package redirect_service.clicklog.processor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -18,9 +19,13 @@ import tools.jackson.databind.json.JsonMapper;
  * 완성된 클릭 이벤트를 Firehose(Direct PUT)로 비동기 전송해 S3에 적재한다.
  * 리다이렉트 응답 경로와 완전히 분리돼 있고(별도 스레드풀 + bounded 큐),
  * 전송 실패는 로깅만 하고 삼킨다 — 리다이렉트 자체는 절대 실패하면 안 된다.
+ *
+ * AWS 환경 전용 발행기. app.click-event.sink=firehose(기본값)일 때만 등록된다.
+ * 조건은 FirehoseConfig와 반드시 동일하게 유지한다.
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "app.click-event.sink", havingValue = "firehose", matchIfMissing = true)   // 추가
 @RequiredArgsConstructor
 public class FirehoseClickEventPublisher {
 

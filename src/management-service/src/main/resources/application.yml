@@ -75,6 +75,8 @@ spring:
     web-application-type: none
 
 app:
+  batch:
+    engine: ${BATCH_ENGINE:athena}   # athena(AWS) | duckdb(온프렘, 예정)
   athena:
     workgroup: ${ATHENA_WORKGROUP}
     database: ${ATHENA_DATABASE:snipy_click_logs}

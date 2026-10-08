@@ -2,6 +2,8 @@ package com.example.management.batch;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.athena.AthenaClient;
@@ -13,39 +15,47 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+/**
+ * AWS 환경 전용 쿼리 실행기. app.batch.engine=athena(기본값)일 때만 등록된다.
+ * 온프렘(engine=duckdb)에서는 이 빈이 뜨지 않으므로 ATHENA_WORKGROUP이 없어도 기동된다.
+ */
 @Slf4j
 @Component
 @Profile("batch")
+@ConditionalOnProperty(name = "app.batch.engine", havingValue = "athena", matchIfMissing = true)
 @RequiredArgsConstructor
-public class AthenaQueryExecutor {
+public class AthenaQueryExecutor implements ClickQueryExecutor {
 
     private static final int MAX_POLL_ATTEMPTS = 150; // 2초 간격 x 150회 = 최대 5분 폴링 대기
     private static final long POLL_INTERVAL_MS = 2000L;
 
     private final AthenaClient athenaClient;
 
+    @Value("${app.athena.workgroup}")
+    private String workgroup;
+
+    @Value("${app.athena.database:snipy_click_logs}")
+    private String database;
+
     /**
      * 쿼리를 비동기로 실행하고 완료될 때까지 대기한 뒤,
      * 결과를 chunkSize 단위로 스트리밍하여 consumer에게 넘겨 처리합니다.
      *
      * @param sql 실행할 SQL
-     * @param workgroup Athena 워크그룹
-     * @param database 대상 DB명
      * @param chunkSize 한 번에 처리할 row 단위 (예: 1000)
      * @param rowMapper String 리스트 -> 엔티티/DTO 변환 함수
      * @param chunkConsumer 청크 단위 데이터를 소비할 콜백 (예: repository::upsertAll)
      * @return 전체 처리된 row 수 (헤더 제외)
      */
+    @Override
     public <T> long executeStreaming(
             String sql,
-            String workgroup,
-            String database,
             int chunkSize,
             Function<List<String>, T> rowMapper,
             Consumer<List<T>> chunkConsumer) {
 
         // 1. 쿼리 실행 시작
-        String queryExecutionId = startQueryExecution(sql, workgroup, database);
+        String queryExecutionId = startQueryExecution(sql);
         log.info("[athena-executor] 쿼리 실행 시작. executionId={}", queryExecutionId);
 
         // 2. 쿼리 완료 대기 (POLLING)
@@ -56,7 +66,7 @@ public class AthenaQueryExecutor {
         return streamResults(queryExecutionId, chunkSize, rowMapper, chunkConsumer);
     }
 
-    private String startQueryExecution(String sql, String workgroup, String database) {
+    private String startQueryExecution(String sql) {
         StartQueryExecutionRequest request = StartQueryExecutionRequest.builder()
                 .queryString(sql)
                 .workGroup(workgroup)

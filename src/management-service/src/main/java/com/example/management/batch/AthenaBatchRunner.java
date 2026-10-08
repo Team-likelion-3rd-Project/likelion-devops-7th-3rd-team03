@@ -2,7 +2,6 @@ package com.example.management.batch;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
@@ -14,11 +13,14 @@ import java.time.ZoneId;
 import java.util.List;
 
 /**
- * K8s CronJob 진입점. "어제(KST) 하루치" 클릭 로그를 Athena로 집계해서
+ * K8s CronJob 진입점. "어제(KST) 하루치" 클릭 로그를 집계해서
  * link_daily_stats / link_daily_dimension_stats에 UPSERT하고 종료한다.
  *
+ * 집계 엔진은 app.batch.engine으로 선택한다 (athena: AWS 기본값 / duckdb: 온프렘, 예정).
+ * 이 클래스는 ClickQueryExecutor / ClickStatsQueries 인터페이스에만 의존한다.
+ *
  * OOM 방지를 위해 대량 쿼리 결과를 전체 List로 적재하지 않고,
- * Athena SDK Paginator 기반 스트리밍(CHUNK_SIZE=1000)으로 처리합니다.
+ * 청크(CHUNK_SIZE=1000) 단위 스트리밍으로 처리합니다.
  *
  * 실행: SPRING_PROFILES_ACTIVE=batch, SPRING_MAIN_WEB_APPLICATION_TYPE=none
  *
@@ -40,16 +42,11 @@ public class AthenaBatchRunner implements CommandLineRunner {
     public static final int EXIT_GENERAL_ERROR = 1;
     public static final int EXIT_CIRCUIT_BREAKER = 2;
 
-    private final AthenaQueryExecutor queryExecutor;
+    private final ClickQueryExecutor queryExecutor;
+    private final ClickStatsQueries queries;
     private final DailyStatsUpsertRepository dailyStatsRepository;
     private final DimensionStatsUpsertRepository dimensionStatsRepository;
     private final ApplicationContext applicationContext;
-
-    @Value("${app.athena.workgroup}")
-    private String workgroup;
-
-    @Value("${app.athena.database:snipy_click_logs}")
-    private String database;
 
     @Override
     public void run(String... args) {
@@ -82,12 +79,10 @@ public class AthenaBatchRunner implements CommandLineRunner {
     }
 
     private void runDailyStats(LocalDate targetDate) {
-        String sql = AthenaQueries.dailyStats(targetDate);
+        String sql = queries.dailyStats(targetDate);
         // 전체 List 대신 청크(1,000건) 단위 스트리밍 소비
         long processedRows = queryExecutor.executeStreaming(
                 sql,
-                workgroup,
-                database,
                 CHUNK_SIZE,
                 DailyStatRow::from,
                 dailyStatsRepository::upsertAll
@@ -98,12 +93,10 @@ public class AthenaBatchRunner implements CommandLineRunner {
 
     private void runDimensionStats(LocalDate targetDate) {
         for (String dimensionType : List.of("REFERRER", "DEVICE", "REGION")) {
-            String sql = AthenaQueries.dimensionStats(targetDate, dimensionType);
+            String sql = queries.dimensionStats(targetDate, dimensionType);
 
             long processedRows = queryExecutor.executeStreaming(
                     sql,
-                    workgroup,
-                    database,
                     CHUNK_SIZE,
                     values -> DimensionStatRow.from(values, dimensionType),
                     dimensionStatsRepository::upsertAll
