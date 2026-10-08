@@ -41,6 +41,7 @@ import java.util.UUID;
                 @Index(name = "idx_users_created_at", columnList = "created_at")
         }
 )
+
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
@@ -105,9 +106,5 @@ public class User {
 
     public enum UserStatus {
         ACTIVE, WITHDRAWN
-    }
-
-    public enum SocialProvider {
-        KAKAO, GOOGLE, NAVER
     }
 }

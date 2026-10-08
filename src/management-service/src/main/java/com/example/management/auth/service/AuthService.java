@@ -1,9 +1,9 @@
 package com.example.management.auth.service;
 
-import com.example.management.auth.client.KakaoOAuthClient;
-import com.example.management.auth.client.dto.KakaoTokenResponse;
-import com.example.management.auth.client.dto.KakaoUserResponse;
+import com.example.management.auth.client.SocialOAuthClientRegistry;
+import com.example.management.auth.client.SocialProfile;
 import com.example.management.auth.domain.RefreshToken;
+import com.example.management.auth.domain.SocialProvider;
 import com.example.management.auth.domain.User;
 import com.example.management.auth.exception.InvalidRefreshTokenException;
 import com.example.management.auth.exception.WithdrawnUserException;
@@ -32,26 +32,25 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final KakaoOAuthClient kakaoOAuthClient;
+    private final SocialOAuthClientRegistry socialOAuthClientRegistry;
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
 
     @Transactional
-    public LoginResult login(String authorizationCode) {
-        KakaoTokenResponse kakaoToken = kakaoOAuthClient.exchangeToken(authorizationCode);
-        KakaoUserResponse kakaoUser = kakaoOAuthClient.getUserInfo(kakaoToken.accessToken());
+    public LoginResult login(SocialProvider provider, String code, String state) {
+        SocialProfile profile = socialOAuthClientRegistry.get(provider).authenticate(code, state);
 
-        var existingUser = userRepository.findByProviderAndSocialId(User.SocialProvider.KAKAO, String.valueOf(kakaoUser.id()));
+        var existingUser = userRepository.findByProviderAndSocialId(provider, profile.socialId());
         boolean isNewUser = existingUser.isEmpty();
 
         // 기존 회원이면 소셜 프로필로 덮어쓰지 않고 그대로 로그인시킨다
         User user = existingUser
                 .orElseGet(() -> userRepository.save(User.builder()
-                        .provider(User.SocialProvider.KAKAO)
-                        .socialId(String.valueOf(kakaoUser.id()))
-                        .nickname(kakaoUser.nickname())
-                        .profileImageUrl(kakaoUser.profileImageUrl())
-                        .email(kakaoUser.email())
+                        .provider(provider)
+                        .socialId(profile.socialId())
+                        .nickname(profile.nickname())
+                        .profileImageUrl(profile.profileImageUrl())
+                        .email(profile.email())
                         .build()));
 
         if (!user.isActive()) {

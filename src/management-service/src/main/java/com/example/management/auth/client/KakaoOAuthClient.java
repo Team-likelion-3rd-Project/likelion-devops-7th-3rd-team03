@@ -3,6 +3,7 @@ package com.example.management.auth.client;
 import com.example.management.auth.client.dto.KakaoTokenResponse;
 import com.example.management.auth.client.dto.KakaoUserResponse;
 import com.example.management.auth.config.KakaoProperties;
+import com.example.management.auth.domain.SocialProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -13,7 +14,7 @@ import org.springframework.web.client.RestClient;
 
 /** 카카오 로그인 REST API 연동. 인가코드를 토큰으로 교환하고, 토큰으로 사용자 정보를 조회한다. */
 @Component
-public class KakaoOAuthClient {
+public class KakaoOAuthClient implements SocialOAuthClient {
 
     private static final String TOKEN_URI = "https://kauth.kakao.com/oauth/token";
     private static final String USER_INFO_URI = "https://kapi.kakao.com/v2/user/me";
@@ -24,6 +25,18 @@ public class KakaoOAuthClient {
     public KakaoOAuthClient(RestClient.Builder restClientBuilder, KakaoProperties kakaoProperties) {
         this.restClient = restClientBuilder.build();
         this.kakaoProperties = kakaoProperties;
+    }
+
+    @Override
+    public SocialProvider provider() {
+        return SocialProvider.KAKAO;
+    }
+
+    @Override
+    public SocialProfile authenticate(String code, String state) {
+        KakaoTokenResponse token = exchangeToken(code);
+        KakaoUserResponse user = getUserInfo(token.accessToken());
+        return new SocialProfile(String.valueOf(user.id()), user.nickname(), user.profileImageUrl(), user.email());
     }
 
     public KakaoTokenResponse exchangeToken(String code) {
