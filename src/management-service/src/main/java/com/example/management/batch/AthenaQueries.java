@@ -94,8 +94,13 @@ final class AthenaQueries implements ClickStatsQueries {
         };
     }
 
+    /**
+     * 파티션 조건 전체를 괄호로 한 번 더 감싼다.
+     * 감싸지 않으면 뒤에 붙는 "AND is_bot = false"가 OR보다 먼저 결합되어
+     * 전날 파티션에는 봇 필터가 적용되지 않는다.
+     */
     private static String partitionFilter(LocalDate prevUtc, LocalDate currentUtc) {
-        return "(%s) OR (%s)".formatted(partitionEquals(prevUtc), partitionEquals(currentUtc));
+        return "((%s) OR (%s))".formatted(partitionEquals(prevUtc), partitionEquals(currentUtc));
     }
 
     private static String partitionEquals(LocalDate date) {
