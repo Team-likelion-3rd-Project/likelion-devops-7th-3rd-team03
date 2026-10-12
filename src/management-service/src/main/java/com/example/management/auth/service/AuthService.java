@@ -11,6 +11,9 @@ import com.example.management.auth.jwt.JwtProperties;
 import com.example.management.auth.jwt.JwtTokenProvider;
 import com.example.management.auth.repository.RefreshTokenRepository;
 import com.example.management.auth.repository.UserRepository;
+import com.example.management.auth.signup.ProfileImageUrlPolicy;
+import com.example.management.auth.signup.SignupSession;
+import com.example.management.auth.signup.SignupSessionStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +25,7 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -35,29 +39,41 @@ public class AuthService {
     private final SocialOAuthClientRegistry socialOAuthClientRegistry;
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
+    private final SignupSessionStore signupSessionStore;
 
+    /**
+     * 가입된 회원이면 토큰을 발급한다. 소셜 프로필로 기존 회원 정보를 덮어쓰지 않는다.
+     * 미가입이면 회원을 만들지 않고 가입 대기 세션을 저장한 뒤 signupToken과 prefill을 돌려준다.
+     * prefill 값은 소셜 응답에 없으면 null이며, 사용자가 추가정보 페이지에서 채우고 가입 API가 검증한다.
+     */
     @Transactional
     public LoginResult login(SocialProvider provider, String code, String state) {
         SocialProfile profile = socialOAuthClientRegistry.get(provider).authenticate(code, state);
 
-        var existingUser = userRepository.findByProviderAndSocialId(provider, profile.socialId());
-        boolean isNewUser = existingUser.isEmpty();
+        Optional<User> existingUser = userRepository.findByProviderAndSocialId(provider, profile.socialId());
+        if (existingUser.isEmpty()) {
+            return startSignup(provider, profile);
+        }
 
-        // 기존 회원이면 소셜 프로필로 덮어쓰지 않고 그대로 로그인시킨다
-        User user = existingUser
-                .orElseGet(() -> userRepository.save(User.builder()
-                        .provider(provider)
-                        .socialId(profile.socialId())
-                        .nickname(profile.nickname())
-                        .profileImageUrl(profile.profileImageUrl())
-                        .email(profile.email())
-                        .build()));
-
+        User user = existingUser.get();
         if (!user.isActive()) {
             throw new WithdrawnUserException(user.getUserId());
         }
 
-        return issueTokens(user, isNewUser);
+        return new LoginResult.Authenticated(issueTokens(user));
+    }
+
+    private LoginResult startSignup(SocialProvider provider, SocialProfile profile) {
+        SignupSession session = new SignupSession(
+                provider,
+                profile.socialId(),
+                profile.nickname(),
+                profile.email(),
+                // 가입 API가 거부할 이미지 URL은 미리 비워서 FE가 기본 아이콘을 보여주게 한다
+                ProfileImageUrlPolicy.allowedOrNull(profile.profileImageUrl())
+        );
+        String signupToken = signupSessionStore.save(session);
+        return new LoginResult.SignupRequired(signupToken, session);
     }
 
     @Transactional
@@ -73,7 +89,7 @@ public class AuthService {
      * noRollbackFor로 명시하지 않으면 delete까지 함께 롤백되어 폐기됐어야 할 토큰이 남는다.
      */
     @Transactional(noRollbackFor = { InvalidRefreshTokenException.class, WithdrawnUserException.class })
-    public LoginResult reissue(String refreshToken) {
+    public AuthTokens reissue(String refreshToken) {
         RefreshToken saved = refreshTokenRepository.findByTokenHash(hash(refreshToken))
                 .orElseThrow(InvalidRefreshTokenException::new);
 
@@ -91,10 +107,10 @@ public class AuthService {
             throw new WithdrawnUserException(user.getUserId());
         }
 
-        return issueTokens(user, false);
+        return issueTokens(user);
     }
 
-    private LoginResult issueTokens(User user, boolean isNewUser) {
+    private AuthTokens issueTokens(User user) {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getUserId());
         String rawRefreshToken = generateRefreshToken();
 
@@ -104,7 +120,7 @@ public class AuthService {
                 .expiresAt(LocalDateTime.now().plusSeconds(jwtProperties.refreshTokenValiditySeconds()))
                 .build());
 
-        return new LoginResult(accessToken, rawRefreshToken, isNewUser);
+        return new AuthTokens(accessToken, rawRefreshToken);
     }
 
     /** SecureRandom 32바이트를 Base64 URL-safe(패딩 없음)로 인코딩한 원본 refresh token */

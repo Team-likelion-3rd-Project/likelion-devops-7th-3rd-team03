@@ -7,11 +7,14 @@ import com.example.management.auth.domain.SocialProvider;
 import com.example.management.auth.domain.RefreshToken;
 import com.example.management.auth.domain.User;
 import com.example.management.auth.exception.InvalidRefreshTokenException;
+import com.example.management.auth.exception.SignupSessionStoreException;
 import com.example.management.auth.exception.WithdrawnUserException;
 import com.example.management.auth.jwt.JwtProperties;
 import com.example.management.auth.jwt.JwtTokenProvider;
 import com.example.management.auth.repository.RefreshTokenRepository;
 import com.example.management.auth.repository.UserRepository;
+import com.example.management.auth.signup.SignupSession;
+import com.example.management.auth.signup.SignupSessionStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,7 +36,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -53,6 +55,8 @@ class AuthServiceTest {
     private SocialOAuthClient kakaoOAuthClient;
     @Mock
     private JwtTokenProvider jwtTokenProvider;
+    @Mock
+    private SignupSessionStore signupSessionStore;
 
     private AuthService authService;
 
@@ -60,15 +64,14 @@ class AuthServiceTest {
     void setUp() {
         // JwtProperties는 record라 굳이 mock하지 않고 실제 값으로 생성한다
         JwtProperties jwtProperties = new JwtProperties("test-secret", 1800L, 1209600L);
-        authService = new AuthService(userRepository, refreshTokenRepository, socialOAuthClientRegistry, jwtTokenProvider, jwtProperties);
+        authService = new AuthService(userRepository, refreshTokenRepository, socialOAuthClientRegistry,
+                jwtTokenProvider, jwtProperties, signupSessionStore);
     }
 
     @Test
-    @DisplayName("login: 기존 회원이면 프로필을 덮어쓰지 않고 isNewUser=false를 반환한다")
+    @DisplayName("login: 기존 회원이면 프로필을 덮어쓰지 않고 토큰을 발급한다")
     void login_existingUser_doesNotOverwriteProfileAndReturnsTokens() {
-        when(socialOAuthClientRegistry.get(SocialProvider.KAKAO)).thenReturn(kakaoOAuthClient);
-        when(kakaoOAuthClient.authenticate("auth-code", null))
-                .thenReturn(new SocialProfile("100", "새닉네임", "https://new-image", "new@test.com"));
+        givenKakaoProfile(new SocialProfile("100", "새닉네임", "https://new-image", "new@test.com"));
 
         User existingUser = User.builder().provider(SocialProvider.KAKAO).socialId("100")
                 .nickname("옛닉네임").email("old@test.com").build();
@@ -82,50 +85,85 @@ class AuthServiceTest {
         assertThat(existingUser.getNickname()).isEqualTo("옛닉네임");
         assertThat(existingUser.getEmail()).isEqualTo("old@test.com");
         assertThat(existingUser.getProfileImageUrl()).isNull();
-        assertThat(result.isNewUser()).isFalse();
-        assertThat(result.accessToken()).isEqualTo("access-jwt");
-        assertRawRefreshTokenFormat(result.refreshToken());
+
+        assertThat(result).isInstanceOf(LoginResult.Authenticated.class);
+        AuthTokens tokens = ((LoginResult.Authenticated) result).tokens();
+        assertThat(tokens.accessToken()).isEqualTo("access-jwt");
+        assertRawRefreshTokenFormat(tokens.refreshToken());
 
         verify(userRepository, never()).save(any());
+        verifyNoInteractions(signupSessionStore);
 
         ArgumentCaptor<RefreshToken> captor = ArgumentCaptor.forClass(RefreshToken.class);
         verify(refreshTokenRepository).save(captor.capture());
         assertThat(captor.getValue().getUserId()).isEqualTo(5L);
-        assertThat(captor.getValue().getTokenHash()).isEqualTo(sha256Hex(result.refreshToken()));
+        assertThat(captor.getValue().getTokenHash()).isEqualTo(sha256Hex(tokens.refreshToken()));
     }
 
     @Test
-    @DisplayName("login: 신규 회원이면 User를 생성하고 isNewUser=true를 반환한다")
-    void login_newUser_createsUserAndReturnsIsNewUserTrue() {
-        when(socialOAuthClientRegistry.get(SocialProvider.KAKAO)).thenReturn(kakaoOAuthClient);
-        when(kakaoOAuthClient.authenticate("auth-code", null))
-                .thenReturn(new SocialProfile("200", "닉네임", "https://image", "user@test.com"));
-
+    @DisplayName("login: 신규 회원이면 회원을 만들지 않고 가입 세션을 저장한 뒤 signupToken과 prefill을 반환한다")
+    void login_newUser_startsSignupWithoutCreatingUser() {
+        givenKakaoProfile(new SocialProfile("200", "닉네임", "https://image", "user@test.com"));
         when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "200")).thenReturn(Optional.empty());
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            User saved = invocation.getArgument(0);
-            ReflectionTestUtils.setField(saved, "id", 10L);
-            return saved;
-        });
-        when(jwtTokenProvider.generateAccessToken(anyString())).thenReturn("access-jwt");
+        when(signupSessionStore.save(any(SignupSession.class))).thenReturn("signup-token");
 
         LoginResult result = authService.login(SocialProvider.KAKAO, "auth-code", null);
 
-        assertThat(result.isNewUser()).isTrue();
+        SignupSession expected = new SignupSession(
+                SocialProvider.KAKAO, "200", "닉네임", "user@test.com", "https://image");
+        verify(signupSessionStore).save(expected);
+        assertThat(result).isEqualTo(new LoginResult.SignupRequired("signup-token", expected));
 
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
-        assertThat(userCaptor.getValue().getProvider()).isEqualTo(SocialProvider.KAKAO);
-        assertThat(userCaptor.getValue().getSocialId()).isEqualTo("200");
-        assertThat(userCaptor.getValue().getNickname()).isEqualTo("닉네임");
+        verify(userRepository, never()).save(any());
+        verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
     }
 
     @Test
-    @DisplayName("login: 탈퇴한 회원이면 WithdrawnUserException을 던지고 토큰을 발급하지 않는다")
+    @DisplayName("login: 신규 회원의 이메일·닉네임·이미지가 없어도 예외 없이 null prefill로 가입 세션을 만든다")
+    void login_newUserWithoutEmailAndNickname_startsSignupWithNullPrefill() {
+        givenKakaoProfile(new SocialProfile("210", null, null, null));
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "210")).thenReturn(Optional.empty());
+        when(signupSessionStore.save(any(SignupSession.class))).thenReturn("signup-token");
+
+        LoginResult result = authService.login(SocialProvider.KAKAO, "auth-code", null);
+
+        SignupSession expected = new SignupSession(SocialProvider.KAKAO, "210", null, null, null);
+        assertThat(result).isEqualTo(new LoginResult.SignupRequired("signup-token", expected));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("login: 소셜 이미지 URL이 https가 아니면 prefill에서 비운다")
+    void login_newUserWithNonHttpsImage_dropsImageFromPrefill() {
+        givenKakaoProfile(new SocialProfile("220", "닉네임", "http://image", "user@test.com"));
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "220")).thenReturn(Optional.empty());
+        when(signupSessionStore.save(any(SignupSession.class))).thenReturn("signup-token");
+
+        authService.login(SocialProvider.KAKAO, "auth-code", null);
+
+        ArgumentCaptor<SignupSession> captor = ArgumentCaptor.forClass(SignupSession.class);
+        verify(signupSessionStore).save(captor.capture());
+        assertThat(captor.getValue().profileImageUrl()).isNull();
+        assertThat(captor.getValue().nickname()).isEqualTo("닉네임");
+    }
+
+    @Test
+    @DisplayName("login: 가입 세션 저장에 실패하면 예외가 그대로 전파된다")
+    void login_newUser_signupSessionStoreFails_propagates() {
+        givenKakaoProfile(new SocialProfile("230", "닉네임", null, "user@test.com"));
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "230")).thenReturn(Optional.empty());
+        when(signupSessionStore.save(any(SignupSession.class)))
+                .thenThrow(new SignupSessionStoreException("down", new RuntimeException()));
+
+        assertThrows(SignupSessionStoreException.class, () -> authService.login(SocialProvider.KAKAO, "auth-code", null));
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("login: 탈퇴한 회원이면 WithdrawnUserException을 던지고 토큰도 가입 세션도 만들지 않는다")
     void login_withdrawnUser_throwsWithdrawnUserException() {
-        when(socialOAuthClientRegistry.get(SocialProvider.KAKAO)).thenReturn(kakaoOAuthClient);
-        when(kakaoOAuthClient.authenticate("auth-code", null))
-                .thenReturn(new SocialProfile("300", "닉네임", "https://image", "user@test.com"));
+        givenKakaoProfile(new SocialProfile("300", "닉네임", "https://image", "user@test.com"));
 
         User withdrawnUser = User.builder().provider(SocialProvider.KAKAO).socialId("300").build();
         withdrawnUser.withdraw();
@@ -134,7 +172,7 @@ class AuthServiceTest {
 
         assertThrows(WithdrawnUserException.class, () -> authService.login(SocialProvider.KAKAO, "auth-code", null));
 
-        verifyNoInteractions(jwtTokenProvider);
+        verifyNoInteractions(jwtTokenProvider, signupSessionStore);
         verify(refreshTokenRepository, never()).save(any());
     }
 
@@ -165,10 +203,9 @@ class AuthServiceTest {
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
         when(jwtTokenProvider.generateAccessToken(user.getUserId())).thenReturn("new-access-jwt");
 
-        LoginResult result = authService.reissue(oldRawToken);
+        AuthTokens result = authService.reissue(oldRawToken);
 
         assertThat(result.accessToken()).isEqualTo("new-access-jwt");
-        assertThat(result.isNewUser()).isFalse();
         assertRawRefreshTokenFormat(result.refreshToken());
         assertThat(result.refreshToken()).isNotEqualTo(oldRawToken);
 
@@ -228,6 +265,11 @@ class AuthServiceTest {
         verify(refreshTokenRepository).delete(saved);
         verify(refreshTokenRepository, never()).save(any());
         verifyNoInteractions(jwtTokenProvider);
+    }
+
+    private void givenKakaoProfile(SocialProfile profile) {
+        when(socialOAuthClientRegistry.get(SocialProvider.KAKAO)).thenReturn(kakaoOAuthClient);
+        when(kakaoOAuthClient.authenticate("auth-code", null)).thenReturn(profile);
     }
 
     /** AuthService가 생성하는 원본 refresh token 포맷(SecureRandom 32바이트 → Base64 URL-safe)인지 확인 */
