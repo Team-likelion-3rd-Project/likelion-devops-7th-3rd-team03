@@ -3,6 +3,7 @@ package com.example.management.auth.controller;
 import com.example.management.auth.controller.dto.LoginResponse;
 import com.example.management.auth.controller.dto.RefreshTokenRequest;
 import com.example.management.auth.controller.dto.SocialLoginRequest;
+import com.example.management.auth.controller.dto.TokenResponse;
 import com.example.management.auth.domain.SocialProvider;
 import com.example.management.auth.exception.UnsupportedProviderException;
 import com.example.management.auth.service.AuthService;
@@ -35,8 +36,8 @@ public class AuthController {
     }
 
     @PostMapping("/reissue")
-    public ResponseEntity<LoginResponse> reissue(@RequestBody RefreshTokenRequest request) {
-        LoginResponse response = LoginResponse.from(authService.reissue(request.refreshToken()));
+    public ResponseEntity<TokenResponse> reissue(@RequestBody RefreshTokenRequest request) {
+        TokenResponse response = TokenResponse.from(authService.reissue(request.refreshToken()));
         return ResponseEntity.ok(response);
     }
 

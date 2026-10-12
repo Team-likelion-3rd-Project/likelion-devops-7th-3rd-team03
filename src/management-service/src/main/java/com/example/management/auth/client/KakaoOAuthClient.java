@@ -17,7 +17,8 @@ import org.springframework.web.client.RestClient;
 public class KakaoOAuthClient implements SocialOAuthClient {
 
     private static final String TOKEN_URI = "https://kauth.kakao.com/oauth/token";
-    private static final String USER_INFO_URI = "https://kapi.kakao.com/v2/user/me";
+    // secure_resource=true: 이미지 URL을 https로 받는다(기본값 false면 http로 내려와 프로필 이미지 규칙에서 걸러진다)
+    private static final String USER_INFO_URI = "https://kapi.kakao.com/v2/user/me?secure_resource=true";
 
     private final RestClient restClient;
     private final KakaoProperties kakaoProperties;
