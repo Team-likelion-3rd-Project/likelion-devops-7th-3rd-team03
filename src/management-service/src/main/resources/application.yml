@@ -55,6 +55,10 @@ kakao:
   client-secret: ${KAKAO_CLIENT_SECRET:}
   redirect-uri: ${KAKAO_REDIRECT_URI}
 
+signup:
+  # 미가입 소셜 사용자의 가입 대기 세션(Redis) 유효 시간
+  session-ttl: ${SIGNUP_SESSION_TTL:15m}
+  
 google:
   client-id: ${GOOGLE_CLIENT_ID:}
   client-secret: ${GOOGLE_CLIENT_SECRET:}

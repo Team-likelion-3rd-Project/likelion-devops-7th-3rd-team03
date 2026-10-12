@@ -30,6 +30,17 @@ public class AuthExceptionHandler {
     }
 
     /**
+     * 가입 대기 세션 저장소(Redis) 장애. 처리하지 않으면 /error로 포워드되는데, /error는 permitAll이 아니라서
+     * 클라이언트가 서버 오류 대신 401을 받게 된다. 그래서 여기서 명시적으로 500으로 응답한다.
+     */
+    @ExceptionHandler(SignupSessionStoreException.class)
+    public ResponseEntity<Map<String, String>> handleSignupSessionStoreFailure(SignupSessionStoreException e) {
+        log.error("가입 대기 세션 저장소 오류", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "일시적인 오류로 가입을 진행할 수 없습니다. 잠시 후 다시 시도해주세요."));
+    }
+
+    /**
      * 소셜 provider API(토큰 교환/사용자 조회) 호출이 실패하면 RestClient가 unchecked
      * RestClientException을 던진다 — 이미 사용됐거나 만료된 인가코드(invalid_grant)가
      * 가장 흔한 원인이다. 원인 상세는 클라이언트에 노출하지 않고 서버 로그에만 남긴다.
