@@ -104,6 +104,12 @@ services:
       REALTIME_STATS_TTL: ${REALTIME_STATS_RETENTION:-3d}
       REALTIME_STATS_FLUSH_INTERVAL: ${REALTIME_STATS_FLUSH_INTERVAL:-5s}
       REALTIME_STATS_BUFFER_CAPACITY: ${REALTIME_STATS_BUFFER_CAPACITY:-100000}
+      # ▼ 추가: 로컬은 온프렘 모드. 클릭 이벤트를 파일로 기록하고 Fluent Bit이 수집한다
+      CLICK_EVENT_SINK: ${CLICK_EVENT_SINK:-log}
+      CLICK_EVENT_LOG_PATH: /var/log/snipy/click-events.log
+    # ▼ 추가: 클릭 이벤트 로그 파일 (Fluent Bit과 공유 예정)
+    volumes:
+      - click-logs:/var/log/snipy
     ports:
       - "${REDIRECTOR_PORT:-8081}:8080"
     depends_on:
@@ -157,3 +163,4 @@ services:
 volumes:
   mysql-data:
   grafana-data:
+  click-logs:   # ▼ 추가
