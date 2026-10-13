@@ -202,15 +202,26 @@ services:
     restart: "no"
 
   # 클릭 이벤트 수집기 (AWS의 Firehose 역할)
-  # redirect-service와 같은 볼륨을 붙여 click-events.log를 읽는다.
+  # redirect-service와 같은 볼륨을 붙여 click-events.log를 읽고, SeaweedFS에 적재한다.
   fluent-bit:
     image: fluent/fluent-bit:3.2.10
+    environment:
+      # Fluent Bit의 S3 출력은 AWS 표준 환경변수로 인증한다
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-snipy-click-logs}
+      # 운영 기준 5분(Firehose와 동일). 로컬 테스트 시 .env에서 1m 등으로 줄인다.
+      S3_UPLOAD_TIMEOUT: ${S3_UPLOAD_TIMEOUT:-5m}
     volumes:
       - ./local/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
       - click-logs:/var/log/snipy:ro
       - fluent-bit-state:/fluent-bit/state
+      - fluent-bit-s3-buffer:/fluent-bit/s3-buffer
     depends_on:
-      - redirect-service
+      redirect-service:
+        condition: service_started
+      seaweedfs-init:
+        condition: service_completed_successfully
 
 volumes:
   mysql-data:
@@ -218,3 +229,4 @@ volumes:
   click-logs:
   seaweedfs-data:
   fluent-bit-state:
+  fluent-bit-s3-buffer:
