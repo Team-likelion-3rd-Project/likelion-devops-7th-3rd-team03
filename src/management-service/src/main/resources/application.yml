@@ -100,3 +100,5 @@ app:
     s3-use-ssl: ${DUCKDB_S3_USE_SSL:false}
     memory-limit: ${DUCKDB_MEMORY_LIMIT:512MB}
     temp-directory: ${DUCKDB_TEMP_DIRECTORY:/tmp/duckdb}
+    # 이미지에 미리 받아둔 확장 위치 (Dockerfile에서 ENV로 지정). 로컬 IDE 실행 시엔 비워둔다
+    extension-directory: ${DUCKDB_EXTENSION_DIRECTORY:}
