@@ -104,6 +104,12 @@ services:
       REALTIME_STATS_TTL: ${REALTIME_STATS_RETENTION:-3d}
       REALTIME_STATS_FLUSH_INTERVAL: ${REALTIME_STATS_FLUSH_INTERVAL:-5s}
       REALTIME_STATS_BUFFER_CAPACITY: ${REALTIME_STATS_BUFFER_CAPACITY:-100000}
+      # ▼ 추가: 로컬은 온프렘 모드. 클릭 이벤트를 파일로 기록하고 Fluent Bit이 수집한다
+      CLICK_EVENT_SINK: ${CLICK_EVENT_SINK:-log}
+      CLICK_EVENT_LOG_PATH: /var/log/snipy/click-events.log
+    # ▼ 추가: 클릭 이벤트 로그 파일 (Fluent Bit과 공유 예정)
+    volumes:
+      - click-logs:/var/log/snipy
     ports:
       - "${REDIRECTOR_PORT:-8081}:8080"
     depends_on:
@@ -154,6 +160,73 @@ services:
       management-service:
         condition: service_started
 
+  # 온프렘 클릭 로그 저장소 (S3 호환). AWS 환경의 S3 역할을 대신한다.
+  # MinIO 커뮤니티 버전 종료(2026.04)로 SeaweedFS를 사용한다.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    # 비밀값을 파일로 커밋하지 않도록, 기동 시 .env 값으로 S3 인증 설정을 만든다.
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        cat > /tmp/s3.json <<EOF
+        {"identities":[{"name":"local","credentials":[{"accessKey":"$${S3_ACCESS_KEY}","secretKey":"$${S3_SECRET_KEY}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+        EOF
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+    volumes:
+      - seaweedfs-data:/data
+    ports:
+      - "${S3_PORT:-8333}:8333"
+
+  # 클릭 로그 버킷 자동 생성 (1회 실행 후 종료)
+  seaweedfs-init:
+    # 2.23 이상은 기본 체크섬 방식이 바뀌어 일부 S3 호환 저장소와 맞지 않을 수 있어 그 이전 버전으로 고정
+    image: amazon/aws-cli:2.17.0
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      AWS_DEFAULT_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-snipy-click-logs}
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        until aws --endpoint-url http://seaweedfs:8333 s3 ls >/dev/null 2>&1; do
+          echo "waiting for seaweedfs..."; sleep 2
+        done
+        aws --endpoint-url http://seaweedfs:8333 s3 mb "s3://$${S3_BUCKET}" || true
+        echo "bucket ready: $${S3_BUCKET}"
+    depends_on:
+      - seaweedfs
+    restart: "no"
+
+  # 클릭 이벤트 수집기 (AWS의 Firehose 역할)
+  # redirect-service와 같은 볼륨을 붙여 click-events.log를 읽고, SeaweedFS에 적재한다.
+  fluent-bit:
+    image: fluent/fluent-bit:3.2.10
+    environment:
+      # Fluent Bit의 S3 출력은 AWS 표준 환경변수로 인증한다
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-snipy-click-logs}
+      # 운영 기준 5분(Firehose와 동일). 로컬 테스트 시 .env에서 1m 등으로 줄인다.
+      S3_UPLOAD_TIMEOUT: ${S3_UPLOAD_TIMEOUT:-5m}
+    volumes:
+      - ./local/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - click-logs:/var/log/snipy:ro
+      - fluent-bit-state:/fluent-bit/state
+      - fluent-bit-s3-buffer:/fluent-bit/s3-buffer
+    depends_on:
+      redirect-service:
+        condition: service_started
+      seaweedfs-init:
+        condition: service_completed_successfully
+
 volumes:
   mysql-data:
   grafana-data:
+  click-logs:
+  seaweedfs-data:
+  fluent-bit-state:
+  fluent-bit-s3-buffer:

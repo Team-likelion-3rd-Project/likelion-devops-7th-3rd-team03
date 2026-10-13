@@ -2,6 +2,7 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
+    <!-- 기존: 클릭 이벤트 콘솔 관측 로그 (모든 환경) -->
     <appender name="CLICK_EVENT_ASYNC" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>10000</queueSize>
         <discardingThreshold>0</discardingThreshold>
@@ -11,6 +12,39 @@
 
     <logger name="click.event" level="INFO" additivity="false">
         <appender-ref ref="CLICK_EVENT_ASYNC"/>
+    </logger>
+
+    <!--
+        추가: 온프렘 클릭 이벤트 파일 (CLICK_EVENT_SINK=log일 때 LogClickEventPublisher만 사용)
+        Fluent Bit이 이 파일을 tail해서 SeaweedFS로 적재한다. 매 줄이 순수 JSON이어야 한다.
+        파일 출력 설정은 2차 #148(예준님) 작업을 기반으로 했다.
+    -->
+    <property name="CLICK_EVENT_LOG_PATH" value="${CLICK_EVENT_LOG_PATH:-logs/click-events/click-events.log}"/>
+
+    <appender name="CLICK_EVENT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${CLICK_EVENT_LOG_PATH}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${CLICK_EVENT_LOG_PATH}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>2</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 데이터 수집 경로라서 큐가 차도 버리지 않는다 (neverBlock=false).
+         호출 스레드는 @Async 실행기라 요청 처리에는 영향이 없다. -->
+    <appender name="CLICK_EVENT_FILE_ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>10000</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>false</neverBlock>
+        <appender-ref ref="CLICK_EVENT_FILE"/>
+    </appender>
+
+    <logger name="click.event.file" level="INFO" additivity="false">
+        <appender-ref ref="CLICK_EVENT_FILE_ASYNC"/>
     </logger>
 
     <root level="INFO">
