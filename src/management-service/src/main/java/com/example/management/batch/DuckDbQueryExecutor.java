@@ -41,6 +41,7 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
     private final boolean s3UseSsl;
     private final String memoryLimit;
     private final String tempDirectory;
+    private final String extensionDirectory;
 
     public DuckDbQueryExecutor(
             @Value("${app.duckdb.s3-endpoint:}") String s3Endpoint,
@@ -49,7 +50,9 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             @Value("${app.duckdb.s3-region:us-east-1}") String s3Region,
             @Value("${app.duckdb.s3-use-ssl:false}") boolean s3UseSsl,
             @Value("${app.duckdb.memory-limit:512MB}") String memoryLimit,
-            @Value("${app.duckdb.temp-directory:/tmp/duckdb}") String tempDirectory) {
+            @Value("${app.duckdb.temp-directory:/tmp/duckdb}") String tempDirectory,
+            @Value("${app.duckdb.extension-directory:}") String extensionDirectory)
+    {
         this.s3Endpoint = s3Endpoint;
         this.s3AccessKey = s3AccessKey;
         this.s3SecretKey = s3SecretKey;
@@ -57,6 +60,7 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
         this.s3UseSsl = s3UseSsl;
         this.memoryLimit = memoryLimit;
         this.tempDirectory = tempDirectory;
+        this.extensionDirectory = extensionDirectory;
     }
 
     @Override
@@ -116,6 +120,11 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
         // S3 설정이 없으면 로컬 파일만 읽는다 (단위 테스트용)
         if (s3Endpoint == null || s3Endpoint.isBlank()) {
             return;
+        }
+
+        // 이미지에 미리 받아둔 확장을 쓴다. 온프렘은 외부 인터넷이 막혀 있을 수 있다
+        if (extensionDirectory != null && !extensionDirectory.isBlank()) {
+            statement.execute("SET extension_directory = " + quote(extensionDirectory));
         }
 
         // 이미지에 미리 설치돼 있으면 INSTALL은 아무 일도 하지 않는다
