@@ -201,8 +201,20 @@ services:
       - seaweedfs
     restart: "no"
 
+  # 클릭 이벤트 수집기 (AWS의 Firehose 역할)
+  # redirect-service와 같은 볼륨을 붙여 click-events.log를 읽는다.
+  fluent-bit:
+    image: fluent/fluent-bit:3.2.10
+    volumes:
+      - ./local/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - click-logs:/var/log/snipy:ro
+      - fluent-bit-state:/fluent-bit/state
+    depends_on:
+      - redirect-service
+
 volumes:
   mysql-data:
   grafana-data:
   click-logs:
   seaweedfs-data:
+  fluent-bit-state:
