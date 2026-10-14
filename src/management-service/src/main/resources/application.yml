@@ -107,3 +107,8 @@ app:
     threads: ${DUCKDB_THREADS:2}
     preserve-insertion-order: ${DUCKDB_PRESERVE_INSERTION_ORDER:false}
     exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:false}
+    # SeaweedFS 접속·IO 오류 재시도. 최대 대기 합계는 약 2+4+8 = 14초 (jitter로 ±)
+    retry:
+      max-attempts: ${DUCKDB_RETRY_MAX_ATTEMPTS:4}
+      initial-delay-ms: ${DUCKDB_RETRY_INITIAL_DELAY_MS:2000}
+      max-delay-ms: ${DUCKDB_RETRY_MAX_DELAY_MS:30000}

@@ -106,8 +106,7 @@ class DuckDbQueriesTest {
     }
 
     private List<List<String>> run(String sql) {
-        DuckDbQueryExecutor executor = new DuckDbQueryExecutor(
-                "", "", "", "us-east-1", false, "256MB", base.resolve("duckdb-tmp").toString(), "", 0, false);
+        DuckDbQueryExecutor executor = DuckDbQueryExecutor.localOnly(base.resolve("duckdb-tmp").toString(), 1, 0, 0);
         List<List<String>> rows = new ArrayList<>();
         executor.executeStreaming(sql, 100, values -> values, rows::addAll);
         return rows;
