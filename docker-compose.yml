@@ -223,16 +223,23 @@ services:
       seaweedfs-init:
         condition: service_completed_successfully
 
-  # 온프렘 일별 집계 배치 (k8s에서는 CronJob이 매일 실행)
+    # 온프렘 일별 집계 배치 (k8s에서는 CronJob이 매일 실행)
   # 로컬에서는 필요할 때 직접 실행한다: docker compose run --rm batch 2026-10-13
   batch:
     build:
       context: ./src/management-service
     # docker compose up 할 때 같이 뜨지 않도록 프로필로 분리. run으로 지정하면 실행된다
-    profiles: [ "batch" ]
+    profiles: ["batch"]
+    # ▼ k8s CronJob의 memory limit과 같은 조건. 넘으면 커널이 OOMKilled로 죽인다 (스왑 금지)
+    mem_limit: ${BATCH_MEM_LIMIT:-2g}
+    memswap_limit: ${BATCH_MEM_LIMIT:-2g}
     environment:
       SPRING_PROFILES_ACTIVE: batch
       BATCH_ENGINE: duckdb
+      # ▼ 기본값은 현재 AWS CronJob과 동일. 실험할 때 셸 환경변수로 덮어쓴다
+      JAVA_TOOL_OPTIONS: ${BATCH_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError}
+      # ▼ DuckDB 메모리 상한
+      DUCKDB_MEMORY_LIMIT: ${DUCKDB_MEMORY_LIMIT:-512MB}
       # DB (management-service와 동일)
       DB_HOST: mysql
       DB_PORT: 3306
@@ -252,7 +259,6 @@ services:
       DUCKDB_CLICK_LOG_BASE: s3://${S3_BUCKET:-snipy-click-logs}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
-      DUCKDB_MEMORY_LIMIT: ${DUCKDB_MEMORY_LIMIT:-512MB}
     depends_on:
       mysql:
         condition: service_healthy
