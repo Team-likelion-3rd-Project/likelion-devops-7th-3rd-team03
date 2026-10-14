@@ -30,6 +30,17 @@ export class ApiError extends Error {
   }
 }
 
+// 백엔드 오류 본문은 두 가지다. auth 오류는 {"message": "..."}, 입력 검증 오류는 {"code":400,"error":{"message":"..."}}.
+// 가능하면 message만 꺼내 사용자에게 보여준다.
+function errorMessage(text) {
+  try {
+    const body = JSON.parse(text)
+    return body.message || body.error?.message || text
+  } catch {
+    return text
+  }
+}
+
 export async function apiFetch(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   if (auth) {
@@ -49,7 +60,7 @@ export async function apiFetch(path, { method = 'GET', body, auth = true } = {})
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new ApiError(res.status, text || `요청에 실패했습니다 (${res.status})`)
+    throw new ApiError(res.status, errorMessage(text) || `요청에 실패했습니다 (${res.status})`)
   }
   if (res.status === 204) return null
   return res.json()

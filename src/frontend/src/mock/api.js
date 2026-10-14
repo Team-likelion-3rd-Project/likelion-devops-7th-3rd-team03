@@ -69,12 +69,12 @@ export function cacheInvalidate(shortCode) {
 }
 
 // ---------------------------------------------------------------------------
-// Auth - 카카오 OAuth 대신 닉네임만으로 즉시 로그인되는 목업.
+// Auth - 소셜 OAuth 대신 닉네임만으로 즉시 로그인되는 목업.
 // 세션은 sessionStorage에 user_id만 저장 (JWT/Redis 세션 대체)
 // ---------------------------------------------------------------------------
 const SESSION_KEY = 'linkshortener_session_v1'
 
-export async function mockKakaoLogin(nickname) {
+export async function mockSocialLogin(provider, nickname) {
   await delay()
   return withDb((db) => {
     let user = db.users.find((u) => u.nickname === nickname && !u.deleted_at)
@@ -92,8 +92,8 @@ export async function mockKakaoLogin(nickname) {
       db.oauth_accounts.push({
         id: nextId(db, 'oauth_accounts'),
         user_id: user.id,
-        provider: 'KAKAO',
-        provider_user_id: `kakao_${user.id}_${Date.now()}`,
+        provider: provider.toUpperCase(),
+        provider_user_id: `${provider.toLowerCase()}_${user.id}_${Date.now()}`,
         connected_at: nowIso(),
       })
     }
