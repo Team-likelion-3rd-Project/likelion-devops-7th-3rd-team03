@@ -6,7 +6,8 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
-import { KakaoCallback } from './pages/KakaoCallback'
+import { AuthCallback } from './pages/AuthCallback'
+import { SignupProfile } from './pages/SignupProfile'
 import { Dashboard } from './pages/Dashboard'
 import { LinkStats } from './pages/LinkStats'
 import { StatsDashboard } from './pages/StatsDashboard'
@@ -21,7 +22,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/auth/kakao/callback" element={<KakaoCallback />} />
+            <Route path="/auth/:provider/callback" element={<AuthCallback />} />
+            <Route path="/signup/profile" element={<SignupProfile />} />
             <Route
               path="/dashboard"
               element={
