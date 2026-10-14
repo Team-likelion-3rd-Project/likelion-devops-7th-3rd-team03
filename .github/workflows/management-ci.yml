@@ -36,7 +36,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    # 이 Job은 매 실행마다 새 MySQL 컨테이너를 만들고 외부 Kakao API를 호출하지 않는다.
+    # 이 Job은 매 실행마다 새 MySQL 컨테이너를 만들고 외부 OAuth API(카카오·구글·네이버)를 호출하지 않는다.
     # 운영 비밀값과 분리하기 위해 테스트 전용의 공개된 고정값을 사용한다.
     env:
       DB_APP_PASSWORD: ci-app-password
@@ -46,6 +46,13 @@ jobs:
       KAKAO_CLIENT_ID: ci-kakao-client-id
       KAKAO_CLIENT_SECRET: ""
       KAKAO_REDIRECT_URI: https://example.com/auth/kakao/callback
+      # 구글·네이버는 일부러 비워 둔다. 비활성 provider 설정이 비어 있어도 앱이 기동하는지 함께 확인한다.
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_REDIRECT_URI: ""
+      NAVER_CLIENT_ID: ""
+      NAVER_CLIENT_SECRET: ""
+      NAVER_REDIRECT_URI: ""
 
     # 테스트 실행 전, 임시로 MySQL/Redis 컨테이너를 띄워준다.
     # 로컬에서 docker compose up -d mysql redis 하던 것과 동일한 역할.
