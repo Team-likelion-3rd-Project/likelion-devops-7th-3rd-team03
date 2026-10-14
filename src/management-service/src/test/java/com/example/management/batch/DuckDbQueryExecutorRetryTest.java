@@ -100,4 +100,20 @@ class DuckDbQueryExecutorRetryTest {
         assertThat(real.backoffDelayMs(3)).isBetween(4000L, 8000L);    // 8초 기준
         assertThat(real.backoffDelayMs(10)).isBetween(15000L, 30000L); // 최대 30초에서 멈춤
     }
+
+    @Test
+    void DuckDB가_감싸서_던진_예외도_원본_메시지로_판단해_재시도한다() {
+        // 장애 주입 테스트(SeaweedFS 재기동 중)에서 실제로 받은 예외 형태
+        String root = "HTTP Error: HTTP GET error on '/snipy-click-logs/?encoding-type=url&list-type=2&prefix=year%3D' (HTTP 500)";
+        AtomicInteger calls = new AtomicInteger();
+
+        executor.withRetry(() -> {
+            if (calls.incrementAndGet() < 2) {
+                throw new SQLException("java.sql.SQLException: " + root, new SQLException(root));
+            }
+            return 0L;
+        });
+
+        assertThat(calls.get()).isEqualTo(2);
+    }
 }

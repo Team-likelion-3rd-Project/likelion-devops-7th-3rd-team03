@@ -70,7 +70,7 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             @Value("${app.duckdb.extension-directory:}") String extensionDirectory,
             @Value("${app.duckdb.threads:2}") int threads,
             @Value("${app.duckdb.preserve-insertion-order:false}") boolean preserveInsertionOrder,
-            @Value("${app.duckdb.retry.max-attempts:4}") int maxAttempts,
+            @Value("${app.duckdb.retry.max-attempts:8}") int maxAttempts,
             @Value("${app.duckdb.retry.initial-delay-ms:2000}") long initialDelayMs,
             @Value("${app.duckdb.retry.max-delay-ms:30000}") long maxDelayMs) {
         this.s3Endpoint = s3Endpoint;
@@ -170,9 +170,13 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
     /**
      * 기다리면 해결될 수 있는 오류인지 판단한다.
      * DuckDB는 오류 종류를 메시지 앞부분("IO Error:", "HTTP Error:" 등)으로 구분한다.
+     *
+     * DuckDB JDBC는 쿼리 준비(prepare) 단계의 오류를 SQLException으로 한 번 더 감싸며,
+     * 이때 바깥 메시지 앞에 "java.sql.SQLException: "이 붙는다. 그래서 가장 안쪽 원인의 메시지로 판단한다.
+     * (장애 주입 테스트에서 실제 확인: SeaweedFS 재기동 중 HTTP 500이 감싸진 채로 전달됨)
      */
     static boolean isRetryable(SQLException e) {
-        String message = e.getMessage() == null ? "" : e.getMessage();
+        String message = rootMessage(e);
         // 파일이 없으면 기다려도 생기지 않는다 (해당 날짜 데이터 없음)
         if (message.contains("No files found")) {
             return false;
@@ -186,6 +190,15 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             return HTTP_5XX.matcher(message).find();
         }
         return false;
+    }
+
+    /** 원인 예외를 끝까지 따라가 가장 안쪽 메시지를 꺼낸다 */
+    private static String rootMessage(Throwable e) {
+        Throwable current = e;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null ? "" : current.getMessage();
     }
 
     /** exponential backoff + jitter (Backoff 참고) */
