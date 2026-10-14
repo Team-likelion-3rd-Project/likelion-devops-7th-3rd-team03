@@ -98,7 +98,12 @@ app:
     s3-secret-key: ${S3_SECRET_KEY:}
     s3-region: ${S3_REGION:us-east-1}
     s3-use-ssl: ${DUCKDB_S3_USE_SSL:false}
-    memory-limit: ${DUCKDB_MEMORY_LIMIT:512MB}
+    memory-limit: ${DUCKDB_MEMORY_LIMIT:256MB}
     temp-directory: ${DUCKDB_TEMP_DIRECTORY:/tmp/duckdb}
     # 이미지에 미리 받아둔 확장 위치 (Dockerfile에서 ENV로 지정). 로컬 IDE 실행 시엔 비워둔다
     extension-directory: ${DUCKDB_EXTENSION_DIRECTORY:}
+    # 메모리 튜닝 (OOM 실험 결과)
+    # 스레드마다 버퍼를 따로 잡으므로 코어 수에 따라 메모리가 달라지지 않게 고정한다
+    threads: ${DUCKDB_THREADS:2}
+    preserve-insertion-order: ${DUCKDB_PRESERVE_INSERTION_ORDER:false}
+    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:false}

@@ -27,6 +27,7 @@ import java.util.function.Function;
  *  - jdbc_stream_results로 결과를 한 번에 메모리에 올리지 않고 스트리밍한다.
  *  - memory_limit으로 DuckDB가 쓰는 메모리 상한을 둔다. DuckDB 메모리는 JVM 힙 밖(네이티브)에서
  *    잡히므로, 컨테이너 limit 안에서 JVM 힙과 나눠 써야 한다.
+ *  - threads, preserve_insertion_order로 스레드별 버퍼 사용량을 줄인다.
  */
 @Slf4j
 @Component
@@ -42,6 +43,8 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
     private final String memoryLimit;
     private final String tempDirectory;
     private final String extensionDirectory;
+    private final int threads;
+    private final boolean preserveInsertionOrder;
 
     public DuckDbQueryExecutor(
             @Value("${app.duckdb.s3-endpoint:}") String s3Endpoint,
@@ -49,10 +52,11 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             @Value("${app.duckdb.s3-secret-key:}") String s3SecretKey,
             @Value("${app.duckdb.s3-region:us-east-1}") String s3Region,
             @Value("${app.duckdb.s3-use-ssl:false}") boolean s3UseSsl,
-            @Value("${app.duckdb.memory-limit:512MB}") String memoryLimit,
+            @Value("${app.duckdb.memory-limit:256MB}") String memoryLimit,
             @Value("${app.duckdb.temp-directory:/tmp/duckdb}") String tempDirectory,
-            @Value("${app.duckdb.extension-directory:}") String extensionDirectory)
-    {
+            @Value("${app.duckdb.extension-directory:}") String extensionDirectory,
+            @Value("${app.duckdb.threads:2}") int threads,
+            @Value("${app.duckdb.preserve-insertion-order:false}") boolean preserveInsertionOrder) {
         this.s3Endpoint = s3Endpoint;
         this.s3AccessKey = s3AccessKey;
         this.s3SecretKey = s3SecretKey;
@@ -61,6 +65,8 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
         this.memoryLimit = memoryLimit;
         this.tempDirectory = tempDirectory;
         this.extensionDirectory = extensionDirectory;
+        this.threads = threads;
+        this.preserveInsertionOrder = preserveInsertionOrder;
     }
 
     @Override
@@ -116,6 +122,13 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
         statement.execute("SET memory_limit = " + quote(memoryLimit));
         // memory_limit을 넘는 중간 결과는 디스크로 내려 쓴다 (OOM 대신 느려지는 쪽을 택함)
         statement.execute("SET temp_directory = " + quote(tempDirectory));
+        // 스레드마다 읽기 버퍼를 따로 잡으므로, 스레드 수가 곧 메모리 사용량에 비례한다.
+        // 0이면 DuckDB 기본값(CPU 코어 수). 컨테이너 안에서도 호스트 전체 코어 수를 보고 띄운다
+        if (threads > 0) {
+            statement.execute("SET threads = " + threads);
+        }
+        // 최종 결과는 ORDER BY로 정렬하므로 중간 처리 순서를 유지할 필요가 없다. 끄면 버퍼가 줄어든다
+        statement.execute("SET preserve_insertion_order = " + preserveInsertionOrder);
 
         // S3 설정이 없으면 로컬 파일만 읽는다 (단위 테스트용)
         if (s3Endpoint == null || s3Endpoint.isBlank()) {

@@ -102,12 +102,12 @@ class DuckDbQueriesTest {
     }
 
     private DuckDbQueries queries() {
-        return new DuckDbQueries(base.toString().replace('\\', '/'));
+        return new DuckDbQueries(base.toString().replace('\\', '/'), true);
     }
 
     private List<List<String>> run(String sql) {
         DuckDbQueryExecutor executor = new DuckDbQueryExecutor(
-                "", "", "", "us-east-1", false, "256MB", base.resolve("duckdb-tmp").toString(), "");
+                "", "", "", "us-east-1", false, "256MB", base.resolve("duckdb-tmp").toString(), "", 0, false);
         List<List<String>> rows = new ArrayList<>();
         executor.executeStreaming(sql, 100, values -> values, rows::addAll);
         return rows;

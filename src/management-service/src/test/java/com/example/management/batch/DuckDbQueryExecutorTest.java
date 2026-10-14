@@ -17,7 +17,7 @@ class DuckDbQueryExecutorTest {
 
     private DuckDbQueryExecutor executor() {
         // S3 설정을 비워서 로컬 파일만 읽는다 (네트워크 불필요)
-        return new DuckDbQueryExecutor("", "", "", "us-east-1", false, "256MB", tempDir.toString(), "");    }
+        return new DuckDbQueryExecutor("", "", "", "us-east-1", false, "256MB", tempDir.toString(), "", 0, false); }
 
     @Test
     void 결과를_chunkSize_단위로_나눠서_전달한다() {
