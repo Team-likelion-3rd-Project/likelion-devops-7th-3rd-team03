@@ -1,5 +1,6 @@
 package com.example.management.auth.controller;
 
+import com.example.management.auth.controller.dto.SignupRequest;
 import com.example.management.auth.controller.dto.LoginResponse;
 import com.example.management.auth.controller.dto.RefreshTokenRequest;
 import com.example.management.auth.controller.dto.SocialLoginRequest;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -26,6 +28,13 @@ public class AuthController {
     public ResponseEntity<LoginResponse> login(@PathVariable String provider, @RequestBody SocialLoginRequest request) {
         LoginResponse response = LoginResponse.from(
                 authService.login(parseProvider(provider), request.code(), request.state()));
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/signup")
+    public ResponseEntity<TokenResponse> signup(@Valid @RequestBody SignupRequest request) {
+        TokenResponse response = TokenResponse.from(authService.signup(
+                request.signupToken(), request.nickname(), request.email(), request.profileImageUrl()));
         return ResponseEntity.ok(response);
     }
 
