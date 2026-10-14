@@ -85,7 +85,20 @@ spring:
 
 app:
   batch:
-    engine: ${BATCH_ENGINE:athena}   # athena(AWS) | duckdb(온프렘, 예정)
+    engine: ${BATCH_ENGINE:athena}   # athena(AWS) | duckdb(온프렘)
   athena:
     workgroup: ${ATHENA_WORKGROUP}
     database: ${ATHENA_DATABASE:snipy_click_logs}
+  # 온프렘(BATCH_ENGINE=duckdb) 전용. SeaweedFS(S3 호환)에서 클릭 로그를 읽는다.
+  duckdb:
+    # 클릭 로그 위치 (Fluent Bit이 적재하는 버킷). 이 아래에 year=/month=/day= 폴더가 있다
+    click-log-base: ${DUCKDB_CLICK_LOG_BASE:s3://snipy-click-logs}
+    s3-endpoint: ${DUCKDB_S3_ENDPOINT:}          # 예: seaweedfs:8333 (http:// 없이)
+    s3-access-key: ${S3_ACCESS_KEY:}
+    s3-secret-key: ${S3_SECRET_KEY:}
+    s3-region: ${S3_REGION:us-east-1}
+    s3-use-ssl: ${DUCKDB_S3_USE_SSL:false}
+    memory-limit: ${DUCKDB_MEMORY_LIMIT:512MB}
+    temp-directory: ${DUCKDB_TEMP_DIRECTORY:/tmp/duckdb}
+    # 이미지에 미리 받아둔 확장 위치 (Dockerfile에서 ENV로 지정). 로컬 IDE 실행 시엔 비워둔다
+    extension-directory: ${DUCKDB_EXTENSION_DIRECTORY:}

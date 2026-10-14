@@ -8,6 +8,7 @@ import com.example.management.auth.domain.RefreshToken;
 import com.example.management.auth.domain.User;
 import com.example.management.auth.exception.InvalidRefreshTokenException;
 import com.example.management.auth.exception.SignupSessionStoreException;
+import com.example.management.auth.exception.SignupSessionExpiredException;
 import com.example.management.auth.exception.WithdrawnUserException;
 import com.example.management.auth.jwt.JwtProperties;
 import com.example.management.auth.jwt.JwtTokenProvider;
@@ -23,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -174,6 +176,133 @@ class AuthServiceTest {
 
         verifyNoInteractions(jwtTokenProvider, signupSessionStore);
         verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("signup: 세션의 provider·socialId와 입력값으로 회원을 만들고 토큰을 발급한다")
+    void signup_validSession_createsUserAndIssuesTokens() {
+        SignupSession session = new SignupSession(SocialProvider.GOOGLE, "g-100", "소셜닉", "social@test.com", "https://social-image");
+        when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 10L);
+            return saved;
+        });
+        when(jwtTokenProvider.generateAccessToken(anyString())).thenReturn("access-jwt");
+
+        AuthTokens tokens = authService.signup("signup-token", "입력닉", "input@test.com", "https://input-image");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        User created = userCaptor.getValue();
+        assertThat(created.getProvider()).isEqualTo(SocialProvider.GOOGLE);
+        assertThat(created.getSocialId()).isEqualTo("g-100");
+        assertThat(created.getNickname()).isEqualTo("입력닉");
+        assertThat(created.getEmail()).isEqualTo("input@test.com");
+        assertThat(created.getProfileImageUrl()).isEqualTo("https://input-image");
+
+        assertThat(tokens.accessToken()).isEqualTo("access-jwt");
+        assertRawRefreshTokenFormat(tokens.refreshToken());
+        verify(jwtTokenProvider).generateAccessToken(created.getUserId());
+
+        ArgumentCaptor<RefreshToken> tokenCaptor = ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository).save(tokenCaptor.capture());
+        assertThat(tokenCaptor.getValue().getUserId()).isEqualTo(10L);
+    }
+
+    @Test
+    @DisplayName("signup: 프로필 이미지가 빈 문자열이면 null로 저장한다")
+    void signup_emptyProfileImage_savesNull() {
+        SignupSession session = new SignupSession(SocialProvider.KAKAO, "110", null, null, null);
+        when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.signup("signup-token", "닉네임", "user@test.com", "");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        assertThat(userCaptor.getValue().getProfileImageUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("signup: 가입 세션이 없으면(만료·재사용) SignupSessionExpiredException을 던지고 아무것도 만들지 않는다")
+    void signup_expiredSession_throwsAndCreatesNothing() {
+        when(signupSessionStore.consume("expired-token")).thenReturn(Optional.empty());
+
+        assertThrows(SignupSessionExpiredException.class,
+                () -> authService.signup("expired-token", "닉네임", "user@test.com", null));
+
+        verifyNoInteractions(userRepository, jwtTokenProvider, refreshTokenRepository);
+    }
+
+    @Test
+    @DisplayName("signup: 가입 세션 저장소 장애는 그대로 전파된다")
+    void signup_sessionStoreFails_propagates() {
+        when(signupSessionStore.consume("signup-token"))
+                .thenThrow(new SignupSessionStoreException("down", new RuntimeException()));
+
+        assertThrows(SignupSessionStoreException.class,
+                () -> authService.signup("signup-token", "닉네임", "user@test.com", null));
+
+        verifyNoInteractions(userRepository, jwtTokenProvider, refreshTokenRepository);
+    }
+
+    @Test
+    @DisplayName("signup: 동시 가입으로 유니크 위반이 나면 먼저 가입된 회원으로 토큰을 발급한다")
+    void signup_duplicateSocialAccount_issuesTokensForExistingUser() {
+        SignupSession session = new SignupSession(SocialProvider.KAKAO, "120", null, null, null);
+        when(signupSessionStore.consume("second-token")).thenReturn(Optional.of(session));
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("uk_users_provider_social_id"));
+
+        User existingUser = User.builder().provider(SocialProvider.KAKAO).socialId("120")
+                .nickname("먼저가입").email("first@test.com").build();
+        ReflectionTestUtils.setField(existingUser, "id", 11L);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "120")).thenReturn(Optional.of(existingUser));
+        when(jwtTokenProvider.generateAccessToken(existingUser.getUserId())).thenReturn("access-jwt");
+
+        AuthTokens tokens = authService.signup("second-token", "나중입력", "second@test.com", null);
+
+        assertThat(tokens.accessToken()).isEqualTo("access-jwt");
+        assertThat(existingUser.getNickname()).isEqualTo("먼저가입");
+
+        ArgumentCaptor<RefreshToken> tokenCaptor = ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository).save(tokenCaptor.capture());
+        assertThat(tokenCaptor.getValue().getUserId()).isEqualTo(11L);
+    }
+
+    @Test
+    @DisplayName("signup: 유니크 위반 뒤 찾은 회원이 탈퇴 상태면 WithdrawnUserException을 던진다")
+    void signup_duplicateWithdrawnUser_throwsWithdrawnUserException() {
+        SignupSession session = new SignupSession(SocialProvider.KAKAO, "130", null, null, null);
+        when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
+        when(userRepository.saveAndFlush(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("uk_users_provider_social_id"));
+
+        User withdrawnUser = User.builder().provider(SocialProvider.KAKAO).socialId("130").build();
+        withdrawnUser.withdraw();
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "130")).thenReturn(Optional.of(withdrawnUser));
+
+        assertThrows(WithdrawnUserException.class,
+                () -> authService.signup("signup-token", "닉네임", "user@test.com", null));
+
+        verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
+    }
+
+    @Test
+    @DisplayName("signup: 유니크 위반이 아닌 무결성 오류(회원이 없음)는 그대로 던진다")
+    void signup_integrityViolationWithoutExistingUser_rethrows() {
+        SignupSession session = new SignupSession(SocialProvider.KAKAO, "140", null, null, null);
+        when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
+        DataIntegrityViolationException violation = new DataIntegrityViolationException("other");
+        when(userRepository.saveAndFlush(any(User.class))).thenThrow(violation);
+        when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "140")).thenReturn(Optional.empty());
+
+        DataIntegrityViolationException thrown = assertThrows(DataIntegrityViolationException.class,
+                () -> authService.signup("signup-token", "닉네임", "user@test.com", null));
+
+        assertThat(thrown).isSameAs(violation);
+        verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
     }
 
     @Test

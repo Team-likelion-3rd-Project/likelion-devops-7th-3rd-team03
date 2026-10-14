@@ -6,6 +6,7 @@ import com.example.management.auth.domain.RefreshToken;
 import com.example.management.auth.domain.SocialProvider;
 import com.example.management.auth.domain.User;
 import com.example.management.auth.exception.InvalidRefreshTokenException;
+import com.example.management.auth.exception.SignupSessionExpiredException;
 import com.example.management.auth.exception.WithdrawnUserException;
 import com.example.management.auth.jwt.JwtProperties;
 import com.example.management.auth.jwt.JwtTokenProvider;
@@ -17,6 +18,8 @@ import com.example.management.auth.signup.SignupSessionStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -74,6 +77,41 @@ public class AuthService {
         );
         String signupToken = signupSessionStore.save(session);
         return new LoginResult.SignupRequired(signupToken, session);
+    }
+
+    /**
+     * 가입 대기 세션을 소비해 회원을 만들고 토큰을 발급한다. 입력값은 컨트롤러에서 검증을 마친 상태로 들어온다.
+     * provider·socialId는 세션 값만 쓰고, 닉네임·이메일·이미지는 사용자가 입력한 값을 쓴다.
+     * 유니크 위반 뒤에는 같은 트랜잭션에서 다시 조회할 수 없으므로 메서드 전체를 트랜잭션으로 묶지 않는다
+     * (저장·조회·토큰 저장은 각각 리포지토리 트랜잭션으로 실행된다).
+     */
+    public AuthTokens signup(String signupToken, String nickname, String email, String profileImageUrl) {
+        SignupSession session = signupSessionStore.consume(signupToken)
+                .orElseThrow(SignupSessionExpiredException::new);
+
+        User user = createUserOrFindExisting(session, nickname, email, profileImageUrl);
+        if (!user.isActive()) {
+            throw new WithdrawnUserException(user.getUserId());
+        }
+
+        return issueTokens(user);
+    }
+
+    private User createUserOrFindExisting(SignupSession session, String nickname, String email, String profileImageUrl) {
+        User newUser = User.builder()
+                .provider(session.provider())
+                .socialId(session.socialId())
+                .nickname(nickname)
+                .email(email)
+                .profileImageUrl(StringUtils.hasLength(profileImageUrl) ? profileImageUrl : null)
+                .build();
+        try {
+            return userRepository.saveAndFlush(newUser);
+        } catch (DataIntegrityViolationException e) {
+            // 다른 탭에서 같은 소셜 계정으로 먼저 가입이 끝난 경우: 먼저 가입된 회원으로 로그인 처리한다
+            return userRepository.findByProviderAndSocialId(session.provider(), session.socialId())
+                    .orElseThrow(() -> e);
+        }
     }
 
     @Transactional

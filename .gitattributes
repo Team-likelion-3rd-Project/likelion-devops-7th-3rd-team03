@@ -1,1 +1,4 @@
-*.sh text eol=lf
+# 리눅스 컨테이너에서 실행·해석되는 파일은 Windows에서도 LF로 유지한다
+*.sh        text eol=lf
+*.conf      text eol=lf
+Dockerfile  text eol=lf
