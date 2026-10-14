@@ -46,6 +46,8 @@ public class DailyStatsUpsertRepository {
     private final int bisectFloor;
     private final int circuitBreakerThreshold;
     private final Sleeper sleeper;
+    /** 재시도 대기 상한. 재시도 횟수가 늘어도 대기가 과도하게 길어지지 않게 한다 */
+    private static final long MAX_BACKOFF_MILLIS = 30_000L;
 
     @Autowired
     public DailyStatsUpsertRepository(NamedParameterJdbcTemplate jdbcTemplate,
@@ -220,8 +222,8 @@ public class DailyStatsUpsertRepository {
     }
 
     private void sleepBackoff(int attempt) {
-        long backoffMs = baseBackoffMillis * (1L << (attempt - 1));
-        sleeper.sleep(backoffMs);
+        // 같은 시점에 실패한 재시도들이 동시에 DB에 몰리지 않도록 대기 시간에 jitter를 섞는다
+        sleeper.sleep(Backoff.equalJitter(baseBackoffMillis, MAX_BACKOFF_MILLIS, attempt));
     }
 
     private String sampleRange(List<AthenaBatchRunner.DailyStatRow> chunk) {

@@ -188,14 +188,9 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
         return false;
     }
 
-    /** exponential backoff + jitter. 대기 시간의 절반은 고정, 나머지 절반은 무작위로 흔든다 */
+    /** exponential backoff + jitter (Backoff 참고) */
     long backoffDelayMs(int attempt) {
-        long exponential = Math.min(maxDelayMs, initialDelayMs * (1L << Math.min(attempt - 1, 20)));
-        if (exponential <= 0) {
-            return 0;
-        }
-        long half = exponential / 2;
-        return half + ThreadLocalRandom.current().nextLong(exponential - half + 1);
+        return Backoff.equalJitter(initialDelayMs, maxDelayMs, attempt);
     }
 
     private static void sleep(long delayMs) {
