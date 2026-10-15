@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+  namespace: snipy
+spec:
+  # cp-addons.sh로 설치한 ingress-nginx (NodePort 30080).
+  ingressClassName: nginx
+  rules:
+    # host를 지정하지 않아 http://<워커 IP>:30080 으로 오는 요청을 모두 받는다.
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

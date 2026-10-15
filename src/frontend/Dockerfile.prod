@@ -1,0 +1,27 @@
+# 운영용 프론트 이미지. Vite로 빌드한 정적 파일을 nginx로 서빙하고 /api는 백엔드로 넘긴다.
+# VITE_* 는 빌드할 때 번들에 들어가니 값을 바꾸면 다시 빌드한다. 공개 값만 쓴다.
+# /api를 넘길 곳(API_UPSTREAM)은 실행할 때 환경 변수로 정한다.
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+# ARG는 RUN에서 환경 변수로 보이고, Vite는 환경 변수를 .env 파일보다 우선한다.
+ARG VITE_API_BASE_URL=/api
+ARG VITE_SOCIAL_PROVIDERS=kakao
+ARG VITE_KAKAO_CLIENT_ID=
+ARG VITE_KAKAO_REDIRECT_URI=
+ARG VITE_GOOGLE_CLIENT_ID=
+ARG VITE_GOOGLE_REDIRECT_URI=
+ARG VITE_NAVER_CLIENT_ID=
+ARG VITE_NAVER_REDIRECT_URI=
+RUN npm run build
+
+FROM nginx:1.27-alpine
+# nginx 이미지는 시작할 때 /etc/nginx/templates/*.template 을 envsubst로 치환해 default.conf를 만든다.
+# API_ 로 시작하는 변수만 치환해서 $uri 같은 nginx 변수는 그대로 둔다.
+ENV NGINX_ENVSUBST_FILTER=API_
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
