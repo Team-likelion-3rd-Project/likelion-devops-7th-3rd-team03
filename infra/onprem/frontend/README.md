@@ -67,7 +67,7 @@
    ```
 3. cp1에서 적용한다.
    ```bash
-   kubectl apply -k ~/frontend
+   kubectl apply -k /home/k8s/frontend
    kubectl -n snipy rollout status deploy/frontend
    kubectl -n snipy get pods -o wide
    ```
@@ -105,4 +105,5 @@ kubectl -n snipy rollout restart deploy/frontend
 
 - 이미지를 tar로 직접 넣는다. 워커가 늘면 `WORKERS`에 추가해야 한다. CI/CD 단계에서 GHCR로 옮길 예정이다.
 - `/api`가 호스트 PC의 백엔드에 의존한다. 호스트가 꺼지면 API가 실패한다.
+- `API_UPSTREAM`을 클러스터 서비스 이름으로 바꾸면 그 서비스가 먼저 있어야 한다. nginx는 시작할 때 주소를 확인해서, 없으면 파드가 뜨지 못한다.
 - 구글 로그인은 터널로만 된다. 모두가 같은 주소로 쓰려면 HTTPS 도메인이 필요하다.
