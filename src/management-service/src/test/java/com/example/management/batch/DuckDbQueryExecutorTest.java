@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,7 +18,8 @@ class DuckDbQueryExecutorTest {
 
     private DuckDbQueryExecutor executor() {
         // S3 설정을 비워서 로컬 파일만 읽는다 (네트워크 불필요)
-        return new DuckDbQueryExecutor("", "", "", "us-east-1", false, "256MB", tempDir.toString(), "");    }
+        return DuckDbQueryExecutor.localOnly(tempDir.toString(), 1, 0, 0);
+    }
 
     @Test
     void 결과를_chunkSize_단위로_나눠서_전달한다() {
@@ -56,4 +58,5 @@ class DuckDbQueryExecutorTest {
 
         assertThat(rows).containsExactly(List.of("1", "2"));
     }
+
 }

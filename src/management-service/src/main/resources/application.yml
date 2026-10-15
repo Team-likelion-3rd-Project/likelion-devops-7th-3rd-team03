@@ -98,7 +98,19 @@ app:
     s3-secret-key: ${S3_SECRET_KEY:}
     s3-region: ${S3_REGION:us-east-1}
     s3-use-ssl: ${DUCKDB_S3_USE_SSL:false}
-    memory-limit: ${DUCKDB_MEMORY_LIMIT:512MB}
+    memory-limit: ${DUCKDB_MEMORY_LIMIT:256MB}
     temp-directory: ${DUCKDB_TEMP_DIRECTORY:/tmp/duckdb}
     # 이미지에 미리 받아둔 확장 위치 (Dockerfile에서 ENV로 지정). 로컬 IDE 실행 시엔 비워둔다
     extension-directory: ${DUCKDB_EXTENSION_DIRECTORY:}
+    # 메모리 튜닝 (OOM 실험 결과)
+    # 스레드마다 버퍼를 따로 잡으므로 코어 수에 따라 메모리가 달라지지 않게 고정한다
+    threads: ${DUCKDB_THREADS:2}
+    preserve-insertion-order: ${DUCKDB_PRESERVE_INSERTION_ORDER:false}
+    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:false}
+    # SeaweedFS 접속·IO 오류 재시도
+    # SeaweedFS 재기동 후 요청 수신까지 실측 34초 → 최소 대기 합계가 약 2배(60초)가 되도록 설정
+    # 대기: 2 → 4 → 8 → 16 → 30 → 30 → 30초 (각각 jitter로 50~100%), 합계 약 60~120초
+    retry:
+      max-attempts: ${DUCKDB_RETRY_MAX_ATTEMPTS:8}
+      initial-delay-ms: ${DUCKDB_RETRY_INITIAL_DELAY_MS:2000}
+      max-delay-ms: ${DUCKDB_RETRY_MAX_DELAY_MS:30000}

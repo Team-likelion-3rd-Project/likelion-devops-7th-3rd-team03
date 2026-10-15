@@ -14,8 +14,10 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 /**
  * 온프렘 환경 전용 쿼리 실행기. app.batch.engine=duckdb일 때만 등록된다.
@@ -27,12 +29,21 @@ import java.util.function.Function;
  *  - jdbc_stream_results로 결과를 한 번에 메모리에 올리지 않고 스트리밍한다.
  *  - memory_limit으로 DuckDB가 쓰는 메모리 상한을 둔다. DuckDB 메모리는 JVM 힙 밖(네이티브)에서
  *    잡히므로, 컨테이너 limit 안에서 JVM 힙과 나눠 써야 한다.
+ *  - threads, preserve_insertion_order로 스레드별 버퍼 사용량을 줄인다.
+ *
+ * 재시도:
+ *  - SeaweedFS 접속·IO 오류, HTTP 5xx만 재시도한다 (exponential backoff + jitter).
+ *  - 파일 없음, 인증 실패, 메모리 부족, SQL 오류는 기다려도 해결되지 않으므로 즉시 실패한다.
+ *  - 결과를 일부 적재한 뒤 실패해도 처음부터 다시 실행한다. upsert라 중복 집계되지 않는다.
+ *  - chunkConsumer(MySQL upsert)의 예외는 여기서 재시도하지 않는다. upsert 저장소에 자체 재시도가 있다.
  */
 @Slf4j
 @Component
 @Profile("batch")
 @ConditionalOnProperty(name = "app.batch.engine", havingValue = "duckdb")
 public class DuckDbQueryExecutor implements ClickQueryExecutor {
+
+    private static final Pattern HTTP_5XX = Pattern.compile("\\(HTTP 5\\d\\d\\)");
 
     private final String s3Endpoint;
     private final String s3AccessKey;
@@ -42,6 +53,11 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
     private final String memoryLimit;
     private final String tempDirectory;
     private final String extensionDirectory;
+    private final int threads;
+    private final boolean preserveInsertionOrder;
+    private final int maxAttempts;
+    private final long initialDelayMs;
+    private final long maxDelayMs;
 
     public DuckDbQueryExecutor(
             @Value("${app.duckdb.s3-endpoint:}") String s3Endpoint,
@@ -49,10 +65,14 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             @Value("${app.duckdb.s3-secret-key:}") String s3SecretKey,
             @Value("${app.duckdb.s3-region:us-east-1}") String s3Region,
             @Value("${app.duckdb.s3-use-ssl:false}") boolean s3UseSsl,
-            @Value("${app.duckdb.memory-limit:512MB}") String memoryLimit,
+            @Value("${app.duckdb.memory-limit:256MB}") String memoryLimit,
             @Value("${app.duckdb.temp-directory:/tmp/duckdb}") String tempDirectory,
-            @Value("${app.duckdb.extension-directory:}") String extensionDirectory)
-    {
+            @Value("${app.duckdb.extension-directory:}") String extensionDirectory,
+            @Value("${app.duckdb.threads:2}") int threads,
+            @Value("${app.duckdb.preserve-insertion-order:false}") boolean preserveInsertionOrder,
+            @Value("${app.duckdb.retry.max-attempts:8}") int maxAttempts,
+            @Value("${app.duckdb.retry.initial-delay-ms:2000}") long initialDelayMs,
+            @Value("${app.duckdb.retry.max-delay-ms:30000}") long maxDelayMs) {
         this.s3Endpoint = s3Endpoint;
         this.s3AccessKey = s3AccessKey;
         this.s3SecretKey = s3SecretKey;
@@ -61,6 +81,17 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
         this.memoryLimit = memoryLimit;
         this.tempDirectory = tempDirectory;
         this.extensionDirectory = extensionDirectory;
+        this.threads = threads;
+        this.preserveInsertionOrder = preserveInsertionOrder;
+        this.maxAttempts = Math.max(1, maxAttempts);
+        this.initialDelayMs = initialDelayMs;
+        this.maxDelayMs = maxDelayMs;
+    }
+
+    /** 테스트용: S3 없이 로컬 파일만 읽는 실행기 */
+    static DuckDbQueryExecutor localOnly(String tempDirectory, int maxAttempts, long initialDelayMs, long maxDelayMs) {
+        return new DuckDbQueryExecutor("", "", "", "us-east-1", false, "256MB", tempDirectory, "",
+                2, false, maxAttempts, initialDelayMs, maxDelayMs);
     }
 
     @Override
@@ -69,6 +100,14 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             int chunkSize,
             Function<List<String>, T> rowMapper,
             Consumer<List<T>> chunkConsumer) {
+        return withRetry(() -> executeOnce(sql, chunkSize, rowMapper, chunkConsumer));
+    }
+
+    private <T> long executeOnce(
+            String sql,
+            int chunkSize,
+            Function<List<String>, T> rowMapper,
+            Consumer<List<T>> chunkConsumer) throws SQLException {
 
         Properties props = new Properties();
         // 결과를 전부 메모리에 올리지 않고 행 단위로 읽어온다
@@ -107,15 +146,99 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
                 log.info("[duckdb-executor] 쿼리 완료. 총 처리 rows={}", totalProcessedRows);
                 return totalProcessedRows;
             }
-        } catch (SQLException e) {
-            throw new IllegalStateException("DuckDB 쿼리 실패: " + e.getMessage(), e);
         }
+    }
+
+    /** 재시도 대상인 SQLException만 다시 시도한다. 그 외 예외(upsert 실패 등)는 그대로 전파된다. */
+    <T> T withRetry(SqlCall<T> call) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return call.call();
+            } catch (SQLException e) {
+                if (!isRetryable(e) || attempt >= maxAttempts) {
+                    throw new IllegalStateException(
+                            "DuckDB 쿼리 실패 (시도 %d/%d): %s".formatted(attempt, maxAttempts, e.getMessage()), e);
+                }
+                long delayMs = backoffDelayMs(attempt);
+                log.warn("[duckdb-executor] 일시적 오류로 재시도. attempt={}/{} delayMs={} cause={}",
+                        attempt, maxAttempts, delayMs, firstLine(e.getMessage()));
+                sleep(delayMs);
+            }
+        }
+    }
+
+    /**
+     * 기다리면 해결될 수 있는 오류인지 판단한다.
+     * DuckDB는 오류 종류를 메시지 앞부분("IO Error:", "HTTP Error:" 등)으로 구분한다.
+     *
+     * DuckDB JDBC는 쿼리 준비(prepare) 단계의 오류를 SQLException으로 한 번 더 감싸며,
+     * 이때 바깥 메시지 앞에 "java.sql.SQLException: "이 붙는다. 그래서 가장 안쪽 원인의 메시지로 판단한다.
+     * (장애 주입 테스트에서 실제 확인: SeaweedFS 재기동 중 HTTP 500이 감싸진 채로 전달됨)
+     */
+    static boolean isRetryable(SQLException e) {
+        String message = rootMessage(e);
+        // 파일이 없으면 기다려도 생기지 않는다 (해당 날짜 데이터 없음)
+        if (message.contains("No files found")) {
+            return false;
+        }
+        // 접속 실패, 읽기 중 연결 끊김
+        if (message.startsWith("IO Error")) {
+            return true;
+        }
+        // 서버 일시 오류(5xx)만 재시도. 4xx(인증 실패, 권한 없음)는 설정 문제라 재시도해도 같다
+        if (message.startsWith("HTTP Error")) {
+            return HTTP_5XX.matcher(message).find();
+        }
+        return false;
+    }
+
+    /** 원인 예외를 끝까지 따라가 가장 안쪽 메시지를 꺼낸다 */
+    private static String rootMessage(Throwable e) {
+        Throwable current = e;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null ? "" : current.getMessage();
+    }
+
+    /** exponential backoff + jitter (Backoff 참고) */
+    long backoffDelayMs(int attempt) {
+        return Backoff.equalJitter(initialDelayMs, maxDelayMs, attempt);
+    }
+
+    private static void sleep(long delayMs) {
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("DuckDB 재시도 대기 중 인터럽트", interrupted);
+        }
+    }
+
+    private static String firstLine(String message) {
+        if (message == null) {
+            return "";
+        }
+        int newline = message.indexOf('\n');
+        return newline < 0 ? message : message.substring(0, newline);
+    }
+
+    @FunctionalInterface
+    interface SqlCall<T> {
+        T call() throws SQLException;
     }
 
     private void configure(Statement statement) throws SQLException {
         statement.execute("SET memory_limit = " + quote(memoryLimit));
         // memory_limit을 넘는 중간 결과는 디스크로 내려 쓴다 (OOM 대신 느려지는 쪽을 택함)
         statement.execute("SET temp_directory = " + quote(tempDirectory));
+        // 스레드마다 읽기 버퍼를 따로 잡으므로, 스레드 수가 곧 메모리 사용량에 비례한다.
+        // 고정하지 않으면 서버 코어 수에 따라 메모리 사용량이 달라진다
+        if (threads > 0) {
+            statement.execute("SET threads = " + threads);
+        }
+        // 최종 결과는 ORDER BY로 정렬하므로 중간 처리 순서를 유지할 필요가 없다. 끄면 버퍼가 줄어든다
+        statement.execute("SET preserve_insertion_order = " + preserveInsertionOrder);
 
         // S3 설정이 없으면 로컬 파일만 읽는다 (단위 테스트용)
         if (s3Endpoint == null || s3Endpoint.isBlank()) {

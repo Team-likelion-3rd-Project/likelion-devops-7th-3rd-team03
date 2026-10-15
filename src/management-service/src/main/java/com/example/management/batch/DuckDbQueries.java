@@ -33,28 +33,39 @@ final class DuckDbQueries implements ClickStatsQueries {
             + "'referrer_category': 'VARCHAR', 'is_bot': 'BOOLEAN'}";
 
     private final String clickLogBase;
+    private final boolean exactVisitorCount;
 
-    DuckDbQueries(@Value("${app.duckdb.click-log-base:s3://snipy-click-logs}") String clickLogBase) {
+    DuckDbQueries(
+            @Value("${app.duckdb.click-log-base:s3://snipy-click-logs}") String clickLogBase,
+            @Value("${app.duckdb.exact-visitor-count:false}") boolean exactVisitorCount) {
         this.clickLogBase = clickLogBase.endsWith("/")
                 ? clickLogBase.substring(0, clickLogBase.length() - 1)
                 : clickLogBase;
+        this.exactVisitorCount = exactVisitorCount;
     }
 
     @Override
     public String dailyStats(LocalDate targetDateKst) {
+        // 정확한 값(COUNT DISTINCT)은 방문자 ID를 전부 메모리에 들고 있어야 해서 대량 데이터에서 OOM 위험이 크다.
+        // 기본은 Athena(APPROX_DISTINCT)와 같은 근사치(HyperLogLog)로, 메모리를 거의 일정하게 쓴다
+        String visitorCount = exactVisitorCount
+                ? "COUNT(DISTINCT visitor_id)"
+                : "approx_count_distinct(visitor_id)";
+
         return """
                 WITH events AS (%s)
                 SELECT
                   link_id,
                   CAST(stat_date AS VARCHAR) AS stat_date,
                   COUNT(*) AS click_count,
-                  COUNT(DISTINCT visitor_id) AS visitor_count
+                  %s AS visitor_count
                 FROM events
                 WHERE stat_date = DATE '%s'
                 GROUP BY link_id, stat_date
                 ORDER BY link_id
                 """.formatted(
                 events(targetDateKst, "visitor_id"),
+                visitorCount,
                 targetDateKst.format(YMD)
         );
     }
