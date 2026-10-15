@@ -4,6 +4,7 @@
 
 - `src/frontend/Dockerfile.prod`, `src/frontend/nginx/default.conf.template`: 운영 이미지
 - `infra/onprem/frontend/*.yaml`: `snipy` 네임스페이스에 Deployment(2개), Service, Ingress
+- `infra/onprem/base/namespace.yaml`: `snipy` 네임스페이스. 다른 서비스와 공용이라 서비스 폴더 밖에 둔다
 - `infra/onprem/frontend/build-and-load.sh`: 이미지를 빌드해서 워커 두 대에 넣는다. 레지스트리가 없어서 tar로 옮긴다.
 
 ```
@@ -61,12 +62,13 @@
 순서
 
 1. 위에서 고른 방식으로 `build-and-load.sh`를 실행한다. 워커마다 VM 사용자 비밀번호를 묻는다.
-2. 매니페스트를 cp1로 복사한다.
+2. 매니페스트를 cp1로 복사한다. 네임스페이스(`base`)도 같이 보낸다.
    ```bash
-   scp -r infra/onprem/frontend k8s@192.168.122.11:~/
+   scp -r infra/onprem/base infra/onprem/frontend k8s@192.168.122.11:~/
    ```
-3. cp1에서 적용한다.
+3. cp1에서 네임스페이스를 먼저 만들고 프론트를 적용한다. `snipy` 네임스페이스는 백엔드, DB와 같이 쓰는 공용이라 `frontend` 폴더에 두지 않았다.
    ```bash
+   kubectl apply -f /home/k8s/base/namespace.yaml
    kubectl apply -k /home/k8s/frontend
    kubectl -n snipy rollout status deploy/frontend
    kubectl -n snipy get pods -o wide
@@ -79,6 +81,10 @@
 - `<접속 주소>/dashboard`에서 새로고침해도 404가 아니다
 - 로그인, 가입, 대시보드 이동. 같은 계정으로 다시 로그인하면 가입 폼 없이 들어간다
 - 파드를 하나 지워도(`kubectl -n snipy delete pod <이름>`) 접속이 유지되고 새 파드가 뜬다
+
+## 지울 때
+
+프론트만 지우려면 `kubectl delete -k /home/k8s/frontend`를 쓴다. 이 폴더의 Deployment, Service, Ingress만 지워지고 `snipy` 네임스페이스는 남는다. 네임스페이스는 `base`에서만 관리하고, 서비스 폴더에는 `Namespace`를 두지 않는다. 네임스페이스를 지우면 백엔드, DB, PVC까지 같이 지워지니 직접 `kubectl delete ns snipy`를 하지 않는다.
 
 ## 프론트 코드를 바꿨을 때
 
