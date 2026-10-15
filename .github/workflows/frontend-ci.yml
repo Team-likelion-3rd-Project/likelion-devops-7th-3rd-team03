@@ -30,6 +30,13 @@ jobs:
       VITE_API_BASE_URL: ${{ github.ref_name == 'main' && secrets.PROD_API_BASE_URL || secrets.API_BASE_URL }}
       VITE_KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
       VITE_KAKAO_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_KAKAO_REDIRECT_URI || secrets.KAKAO_REDIRECT_URI }}
+      # 구글·네이버: 등록되지 않은 Secret은 빈 값이 되어 빌드는 그대로 통과한다.
+      VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      VITE_GOOGLE_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_GOOGLE_REDIRECT_URI || secrets.GOOGLE_REDIRECT_URI }}
+      VITE_NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+      VITE_NAVER_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_NAVER_REDIRECT_URI || secrets.NAVER_REDIRECT_URI }}
+      # 로그인 버튼을 보여줄 provider (콤마 구분 소문자, 예: kakao,google)
+      VITE_SOCIAL_PROVIDERS: ${{ github.ref_name == 'main' && secrets.PROD_SOCIAL_PROVIDERS || secrets.SOCIAL_PROVIDERS }}
 
     steps:
       - name: Checkout
