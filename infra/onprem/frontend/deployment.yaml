@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: snipy
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  # 새 파드가 준비된 뒤에 옛 파드를 내린다. 배포 중에도 접속이 끊기지 않는다.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      # 워커 두 대에 나눠 올린다. control-plane은 taint 때문에 제외된다.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: frontend
+      containers:
+        - name: nginx
+          # 레지스트리가 없어서 build-and-load.sh로 워커에 미리 넣어 둔 이미지를 쓴다.
+          image: snipy-frontend:onprem
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          env:
+            # nginx가 /api를 넘기는 백엔드. 지금은 호스트 PC의 compose 백엔드다 (VMware NAT 호스트 주소 .1 + 호스트 포트).
+            # 클러스터에 백엔드가 올라가면 서비스 주소로 바꾼다 (예: http://management-service.snipy.svc.cluster.local:8080).
+            - name: API_UPSTREAM
+              value: "http://192.168.122.1:18082"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
