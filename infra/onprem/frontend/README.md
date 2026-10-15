@@ -3,7 +3,7 @@
 프론트를 nginx 이미지로 만들어 VM 클러스터(cp1 + 워커 2대)에 올린다. 클러스터는 [ON-guide.md](../ON-guide.md)대로 구축된 상태여야 한다.
 
 - `src/frontend/Dockerfile.prod`, `src/frontend/nginx/default.conf.template`: 운영 이미지
-- `infra/onprem/frontend/*.yaml`: `snipy` 네임스페이스에 Deployment(2개), Service, Ingress
+- `infra/onprem/frontend/*.yaml`: `snipy` 네임스페이스에 Deployment(파드 2개), Service, Ingress
 - `infra/onprem/base/namespace.yaml`: `snipy` 네임스페이스. 다른 서비스와 공용이라 서비스 폴더 밖에 둔다
 - `infra/onprem/frontend/build-and-load.sh`: 이미지를 빌드해서 워커 두 대에 넣는다. 레지스트리가 없어서 tar로 옮긴다.
 
