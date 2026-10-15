@@ -1,24 +1,32 @@
-# {{프로젝트명}} ({{PROJECT_NAME_EN}})
+# Snipy (URL Shortener & Link Management Platform)
 
-> **협업이 처음이신가요?** 이슈 생성부터 PR 머지까지 전 과정은 [협업 가이드](./docs/GUIDE.md)를 먼저 읽어주세요.
+[![Team](https://img.shields.io/badge/Team-Team_03-6366F1?style=for-the-badge&logo=probot&logoColor=white)](https://github.com/Team-likelion-3rd-Project/likelion-devops-7th-3rd-team03)
+[![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://www.mysql.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.mysql.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=for-the-badge&logo=terraform&logoColor=white)](https://kubernetes.io/)
+[![Argo CD](https://img.shields.io/badge/Argo_CD-EF7B4D?style=for-the-badge&logo=argocd&logoColor=white)](https://argoproj.github.io/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com/)
+[![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=FF9900)](https://aws.amazon.com/)
 
-![Team](https://img.shields.io/badge/Team-team--03-151515?style=for-the-badge)
-<!-- 사용 기술만 남기고 나머지는 삭제 -->
-![React](https://img.shields.io/badge/React-151515?style=for-the-badge&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-151515?style=for-the-badge&logo=typescript&logoColor=3178C6)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-151515?style=for-the-badge&logo=springboot&logoColor=6DB33F)
-![MySQL](https://img.shields.io/badge/MySQL-151515?style=for-the-badge&logo=mysql&logoColor=4479A1)
-![AWS](https://img.shields.io/badge/AWS-151515?style=for-the-badge&logo=amazonwebservices&logoColor=FF9900)
-
-> **{{한 문장 소개 — 누구의 어떤 문제를, 어떻게 해결하는 서비스인가}}**
+> **단축 URL·QR 생성부터 유입 데이터 분석까지, 스마트한 마케팅 팀을 위한 올인원 링크 관리 플랫폼**
+> 
+> **Snipy**는 긴 URL을 짧은 링크와 QR 코드로 즉시 변환해 온·오프라인에 배포하고, 배포 이후의 목적지 제어·팀 권한 관리(RBAC)·실시간 유입 분석을 대규모 트래픽 환경에서도 끊김 없이 수행하는 링크 운영 플랫폼입니다.
 
 [![데모 영상](https://img.youtube.com/vi/{{YOUTUBE_ID}}/maxresdefault.jpg)]({{YOUTUBE_URL}})
 
-{{서비스 2~3문장 설명. 대상 사용자와 핵심 가치 중심으로.}}
+마케팅 캠페인 링크의 온·오프라인 통합 배포와 팀 스페이스 기반의 안전한 공동 관리 환경을 제공합니다. 특히 관리 서비스와 고속 리다이렉트 서비스를 MSA로 격리하고, 비동기 로그 파이프라인 및 K8s 오토스케일링을 구축하여 대량 유입 시에도 지연 없는 고가용성을 보장합니다.
 
-- **배포 주소:** {{https://example.com}}
-- **시연 영상:** [YouTube]({{YOUTUBE_URL}})
-- **문서 최종 정리일:** `YYYY-MM-DD` / **구현 기준일:** `YYYY-MM-DD`
+- **배포 주소:** [서비스 바로가기]({{https://example.com}})
+- **시연 영상:** [YouTube 시연 영상]({{YOUTUBE_URL}})
+- **문서 최종 정리일:** `2026-10-15` / **구현 기준일:** `2026-10-15`
+
+---
 
 ---
 
