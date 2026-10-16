@@ -1,0 +1,50 @@
+# 클라우드는 Terraform(env/*/main.tf)이 만드는 ConfigMap을 온프렘은 매니페스트로 둔다.
+# 접속 주소는 워커 w1(192.168.122.21) 기준이다. NodePort라 w2(.22)로 접속해도 되지만,
+# redirect URI와 short URL은 한 주소로 정해야 해서 w1로 고정한다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: management-service-config
+data:
+  DB_HOST: "mysql"
+  DB_PORT: "3306"
+  DB_NAME: "shortlink"
+  DB_APP_USER: "shortlink_app"
+  DB_HIKARI_MAX_POOL_SIZE: "4"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIRECT_CACHE_TTL: "10m"
+  SIGNUP_SESSION_TTL: "15m"
+  JWT_ACCESS_TOKEN_VALIDITY_SECONDS: "1800"
+  JWT_REFRESH_TOKEN_VALIDITY_SECONDS: "1209600"
+  # 프론트(ingress-nginx NodePort 30080) 주소로 돌아온다. 카카오 콘솔에도 같은 값을 등록한다.
+  KAKAO_REDIRECT_URI: "http://192.168.122.21:30080/auth/kakao/callback"
+  # 구글은 IP·HTTP redirect URI를 받지 않아 localhost 터널(infra/onprem/frontend/README.md)로만 쓸 수 있다.
+  # 구글 클라이언트 값이 비어 있으면 구글 로그인은 꺼진 상태로 뜬다.
+  GOOGLE_REDIRECT_URI: "http://localhost:3000/auth/google/callback"
+  # 브라우저는 프론트의 nginx를 거쳐 같은 출처로 /api를 부른다. 터널로 접속하는 경우를 위해 localhost도 둔다.
+  CORS_ALLOWED_ORIGINS: "http://192.168.122.21:30080,http://localhost:3000"
+  # 단축 URL은 redirect-service NodePort(30081)로 나간다. 프론트(30080)와 경로가 겹치지 않게 포트를 나눴다.
+  SHORT_URL_BASE_URL: "http://192.168.122.21:30081"
+  JAVA_TOOL_OPTIONS: "-Xms256m -Xmx384m"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redirect-service-config
+data:
+  DB_HOST: "mysql"
+  DB_PORT: "3306"
+  DB_NAME: "shortlink"
+  DB_APP_USER: "shortlink_app"
+  DB_HIKARI_MAX_POOL_SIZE: "4"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIRECT_CACHE_TTL: "10m"
+  # 온프렘은 Firehose 대신 파일 로그로 클릭 이벤트를 남긴다. 수집(Fluent Bit)은 #69에서 붙인다.
+  CLICK_EVENT_SINK: "log"
+  # NodePort로 프록시 없이 바로 받으므로 X-Forwarded-For를 믿지 않는다.
+  TRUST_FORWARDED_FOR: "false"
+  # HTTP로 접속하므로 Secure 쿠키를 쓰면 방문자 쿠키가 저장되지 않는다.
+  VISITOR_COOKIE_SECURE: "false"
+  JAVA_TOOL_OPTIONS: "-Xms256m -Xmx384m"

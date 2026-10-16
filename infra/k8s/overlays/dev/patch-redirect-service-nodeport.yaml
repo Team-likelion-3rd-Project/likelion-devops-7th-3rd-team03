@@ -1,0 +1,10 @@
+# 단축 URL을 http://<워커 IP>:30081/{slug}로 받는다 (configmaps.yaml의 SHORT_URL_BASE_URL과 같은 포트).
+apiVersion: v1
+kind: Service
+metadata:
+  name: redirect-service
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      nodePort: 30081
