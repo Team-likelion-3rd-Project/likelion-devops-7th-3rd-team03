@@ -5,6 +5,9 @@ resources:
   - ../../base
   - external-secrets.yaml
 
+components:
+  - ../../components/aws
+
 patches:
   - path: patch-sa.yaml
   - path: patch-ingress.yaml
