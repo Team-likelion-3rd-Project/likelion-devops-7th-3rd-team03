@@ -19,7 +19,12 @@ EOF
 
 echo ">> 2/6 swap 끄기 (kubelet 요구사항)"
 swapoff -a
-sed -i '/ swap / s/^\(.*\)$/#\1/' /etc/fstab
+# fstab 은 공백이나 탭으로 구분되어 \s 로 찾는다 (우분투 기본 /swap.img 줄은 탭 구분). 이미 주석인 줄은 건드리지 않는다.
+sed -i '/^[^#].*\sswap\s/ s/^/#/' /etc/fstab
+if grep -qE '^[^#].*\sswap\s' /etc/fstab; then
+  echo "!! /etc/fstab 에 swap 줄이 남아 있습니다. 재부팅하면 swap 이 켜져 kubelet 이 죽습니다." >&2
+  exit 1
+fi
 
 echo ">> 3/6 커널 모듈·sysctl"
 cat > /etc/modules-load.d/k8s.conf <<EOF
@@ -56,5 +61,5 @@ apt-mark hold kubelet kubeadm kubectl >/dev/null
 systemctl enable kubelet
 
 echo ">> 6/6 확인"
-echo "containerd: $(containerd --version | awk '{print $3}')  kubeadm: $(kubeadm version -o short)  swap: $(swapon --show | wc -l)줄(0이어야 함)"
+echo "containerd: $(containerd --version | awk '{print $3}')  kubeadm: $(kubeadm version -o short)  swap: 켜짐 $(swapon --show | wc -l)줄, fstab 활성 $(grep -cE '^[^#].*\sswap\s' /etc/fstab || true)줄 (둘 다 0이어야 함)"
 echo "완료. control-plane 이면 cp-init.sh, worker 이면 cp1 에서 출력된 join 명령을 실행하세요."
