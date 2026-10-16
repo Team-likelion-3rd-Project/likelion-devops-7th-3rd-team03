@@ -7,8 +7,6 @@ resources:
 - redirect-service-deployment.yaml
 - redirect-service-service.yaml
 - redirect-service-sa.yaml
-- service-monitor-redirect.yaml
-- service-monitor-management.yaml
 - grafana-dashboards.yaml
 - grafana-dashboard-demo.yaml
 - hpa.yaml
