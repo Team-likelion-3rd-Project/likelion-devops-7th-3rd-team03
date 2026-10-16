@@ -106,7 +106,8 @@ app:
     # 스레드마다 버퍼를 따로 잡으므로 코어 수에 따라 메모리가 달라지지 않게 고정한다
     threads: ${DUCKDB_THREADS:2}
     preserve-insertion-order: ${DUCKDB_PRESERVE_INSERTION_ORDER:false}
-    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:false}
+    # 방문자 수는 정확한 값. 근사치는 방문자가 적은 링크에서 틀린다 (실측: 3명 → 2명)
+    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:true}
     # SeaweedFS 접속·IO 오류 재시도
     # SeaweedFS 재기동 후 요청 수신까지 실측 34초 → 최소 대기 합계가 약 2배(60초)가 되도록 설정
     # 대기: 2 → 4 → 8 → 16 → 30 → 30 → 30초 (각각 jitter로 50~100%), 합계 약 60~120초
