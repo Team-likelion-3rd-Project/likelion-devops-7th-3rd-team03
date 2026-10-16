@@ -244,15 +244,14 @@ services:
       context: ./src/management-service
     # docker compose up 할 때 같이 뜨지 않도록 프로필로 분리. run으로 지정하면 실행된다
     profiles: ["batch"]
-    # 메모리 배분 (OOM 실험 결과): 힙 최대치 + DuckDB 한도 + JVM 기타 < limit
-    # 1Gi 기준 힙 40%(약 410MB) + DuckDB 256MB + 기타 약 150MB ≈ 816MB
+    # 메모리 배분: 힙 30%(약 307MB) + DuckDB 512MB + JVM 기타 약 150MB ≈ 969MB < 1Gi
     mem_limit: ${BATCH_MEM_LIMIT:-1g}
     memswap_limit: ${BATCH_MEM_LIMIT:-1g}
     environment:
       SPRING_PROFILES_ACTIVE: batch
       BATCH_ENGINE: duckdb
-      JAVA_TOOL_OPTIONS: ${BATCH_JAVA_OPTS:--XX:MaxRAMPercentage=40 -XX:+ExitOnOutOfMemoryError}
-      DUCKDB_MEMORY_LIMIT: ${DUCKDB_MEMORY_LIMIT:-256MB}
+      JAVA_TOOL_OPTIONS: ${BATCH_JAVA_OPTS:--XX:MaxRAMPercentage=30 -XX:+ExitOnOutOfMemoryError}
+      DUCKDB_MEMORY_LIMIT: ${DUCKDB_MEMORY_LIMIT:-512MB}
 
       # DB (management-service와 동일)
       DB_HOST: mysql
