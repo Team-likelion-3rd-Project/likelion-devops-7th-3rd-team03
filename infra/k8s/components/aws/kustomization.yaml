@@ -1,0 +1,30 @@
+# AWS(EKS)에서만 동작하는 리소스 모음. base는 환경 공통 리소스만 두고,
+# AWS 클러스터를 쓰는 overlay가 components:로 이 묶음을 포함한다.
+#   - ALB Ingress (AWS Load Balancer Controller)
+#   - External Secrets ClusterSecretStore (Secrets Manager)
+#   - gp3 StorageClass (EBS CSI)
+#   - Athena 일별 집계 배치 (IRSA)
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - ingress-with-origin-verify.yaml
+  - cluster-secret-store.yaml
+  - storageclass-gp3.yaml
+  - athena-batch-sa.yaml
+  - athena-batch-cronjob.yaml
+  - athena-batch-configmap.yaml
+
+# 배치는 management-service와 같은 이미지를 쓴다. CI는 이미지 태그를 base의 images:에만 기록하는데,
+# base의 images:는 base 안의 리소스에만 적용되므로 여기서 Deployment의 최종 이미지를 CronJob에 복사한다.
+replacements:
+  - source:
+      kind: Deployment
+      name: management-service
+      fieldPath: spec.template.spec.containers.[name=management-service].image
+    targets:
+      - select:
+          kind: CronJob
+          name: athena-batch
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=athena-batch].image

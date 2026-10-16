@@ -1,13 +1,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# base가 prod 값을 그대로 담고 있어서 패치 없음 — kubectl apply -k overlays/prod는
-# 지금까지의 kubectl apply -f infra/k8s/ 와 결과가 동일하다.
+# 공통 리소스는 base, AWS 전용 리소스는 components/aws에서 가져오고 prod 값은 아래 patch로 채운다.
 resources:
   - ../../base
   - external-secrets.yaml
 
+components:
+  - ../../components/aws
+
 patches:
+  - path: patch-sa.yaml
   - path: patch-athena-configmap.yaml
   - path: patch-athena-sa.yaml
   - path: patch-ingress.yaml

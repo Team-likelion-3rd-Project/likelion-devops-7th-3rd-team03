@@ -7,16 +7,10 @@ resources:
 - redirect-service-deployment.yaml
 - redirect-service-service.yaml
 - redirect-service-sa.yaml
-- ingress-with-origin-verify.yaml
-- athena-batch-sa.yaml
-- athena-batch-cronjob.yaml
-- athena-batch-configmap.yaml
-- cluster-secret-store.yaml
 - service-monitor-redirect.yaml
 - service-monitor-management.yaml
 - grafana-dashboards.yaml
 - grafana-dashboard-demo.yaml
-- storageclass-gp3.yaml
 - hpa.yaml
 images:
 - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
