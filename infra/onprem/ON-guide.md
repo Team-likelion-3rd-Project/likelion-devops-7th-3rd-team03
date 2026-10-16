@@ -224,7 +224,8 @@ exit
 exit
 ```
 
-- 성공 신호: `node-common.sh` 마지막 줄에 `containerd: ...  kubeadm: v1.31.x  swap: 0줄(0이어야 함)`
+- 성공 신호: `node-common.sh` 마지막 줄에 `containerd: ...  kubeadm: v1.31.x  swap: 켜짐 0줄, fstab 활성 0줄 (둘 다 0이어야 함)`
+- `fstab 활성`이 0이 아니면 재부팅 후 swap 이 다시 켜져 kubelet 이 뜨지 않습니다. 스크립트가 이 경우 오류로 멈춥니다.
 - 확인 명령에서 **호스트명, `conntrack` 경로, `1`, `0`, `v1.31.x`**가 나와야 합니다.
 - 스크립트는 여러 번 실행해도 안전합니다. 수정했다면 `scp`로 다시 복사해서 같은 방식으로 재실행하세요.
 - 설치되는 것: containerd, kubeadm/kubelet/kubectl, 그리고 kubeadm 사전 점검에 필요한 `conntrack`, `socat`, `ebtables`, `ethtool`
@@ -317,6 +318,7 @@ systemctl start kubelet          # 원래대로 되돌리기
 | 증상 | 원인 | 해결 |
 |---|---|---|
 | `kubeadm init` 이 preflight 에서 실패 (swap) | swap 이 켜져 있음 | `node-common.sh` 재실행, `swapon --show` 로 확인 |
+| 재부팅 후 kubelet 이 안 뜸 (`running with swap on is not supported`) | fstab 의 swap 줄이 탭으로 구분되어 있어 예전 스크립트가 주석 처리하지 못함 | `grep -nE '^[^#].*\sswap\s' /etc/fstab` 로 확인 후 `sudo swapoff -a; sudo sed -i '/^[^#].*\sswap\s/ s/^/#/' /etc/fstab`, 이어서 `sudo systemctl restart kubelet` |
 | `E: Could not get lock /var/lib/dpkg/lock-frontend ... held by process ... (unattended-upgr)` | 자동 업데이트가 apt 를 잡고 있음 (VM 을 켠 직후에 흔함) | `node-common.sh` 는 최대 10분 자동 대기합니다. 직접 기다리려면 `while pgrep -x unattended-upgr >/dev/null; do sleep 5; done` 후 재실행 |
 | `kubectl top` 실패 | metrics-server 인증서 검증 | `cp-addons.sh` 가 `--kubelet-insecure-tls` 를 붙입니다 |
 | VM 재부팅 후 IP 변경 | DHCP 로 돌아감 | netplan 의 고정 IP 설정 확인 |
