@@ -1,16 +1,35 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# 온프렘 VM 클러스터(kubeadm) dev 환경.
+# AWS 전용(components/aws)과 Prometheus Operator 전용(components/monitoring) 리소스는 넣지 않는다.
+# snipy 네임스페이스는 infra/onprem/base/namespace.yaml에서 따로 관리한다 (여기서 만들지 않는다).
+# 시크릿은 infra/onprem/secrets의 SealedSecret을 먼저 적용해 둔다 (mysql-secrets, management-service-secrets, redirect-service-secrets).
+namespace: snipy
+
 resources:
   - ../../base
-  - external-secrets.yaml
-
-components:
-  - ../../components/aws
+  - configmaps.yaml
+  - mysql.yaml
+  - redis.yaml
+  - migration-job.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - ingress.yaml
 
 patches:
-  - path: patch-sa.yaml
-  - path: patch-ingress.yaml
-  - path: patch-athena-cronjob.yaml
-  - path: patch-athena-configmap.yaml
-  - path: patch-athena-sa.yaml
+  - path: patch-app-resources.yaml
+  - path: patch-hpa.yaml
+  - path: patch-redirect-service-nodeport.yaml
+
+# GHCR 이미지. 태그는 CI 분리 전까지 수동으로 빌드·push한 값으로 맞춘다.
+images:
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+    newName: ghcr.io/team-likelion-3rd-project/management-service
+    newTag: manual-1
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+    newName: ghcr.io/team-likelion-3rd-project/redirect-service
+    newTag: manual-1
+  - name: db-migration
+    newName: ghcr.io/team-likelion-3rd-project/db-migration
+    newTag: manual-1

@@ -1,0 +1,64 @@
+# dev용 MySQL 1대. 데이터는 local-path PVC(노드 로컬 디스크)에 둔다.
+# 파드가 다른 노드로 옮겨 가면 PVC가 묶인 노드에서만 뜰 수 있다 (local-path 특성).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels: { app: mysql }
+spec:
+  clusterIP: None
+  selector: { app: mysql }
+  ports:
+    - name: mysql
+      port: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  labels: { app: mysql }
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels: { app: mysql }
+  template:
+    metadata:
+      labels: { app: mysql }
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          # 통계 집계가 DATETIME을 UTC로 가정한다. run-migration.sh도 UTC가 아니면 멈춘다.
+          args: ["--default-time-zone=+00:00"]
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: mysql-secrets, key: MYSQL_ROOT_PASSWORD }
+            # DB와 계정·권한은 마이그레이션 Job(00-database-setup.sql)이 만든다.
+          ports:
+            - containerPort: 3306
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 1Gi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: local-path
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 5Gi }

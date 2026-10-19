@@ -61,4 +61,4 @@ for w in $WORKERS; do
   ssh -t "$SSH_USER@$w" "sudo ctr -n k8s.io images import /tmp/snipy-frontend.tar && rm -f /tmp/snipy-frontend.tar"
 done
 
-echo "완료. 다음은 cp1 에서: kubectl apply -k <이 폴더>   (README.md 참고)"
+echo "완료. 배포는 infra/k8s/overlays/dev/README.md 참고 (이미 떠 있으면 cp1 에서 kubectl -n snipy rollout restart deploy/frontend)"
