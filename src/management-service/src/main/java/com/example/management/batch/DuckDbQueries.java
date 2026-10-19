@@ -37,7 +37,7 @@ final class DuckDbQueries implements ClickStatsQueries {
 
     DuckDbQueries(
             @Value("${app.duckdb.click-log-base:s3://snipy-click-logs}") String clickLogBase,
-            @Value("${app.duckdb.exact-visitor-count:false}") boolean exactVisitorCount) {
+            @Value("${app.duckdb.exact-visitor-count:true}") boolean exactVisitorCount) {
         this.clickLogBase = clickLogBase.endsWith("/")
                 ? clickLogBase.substring(0, clickLogBase.length() - 1)
                 : clickLogBase;
