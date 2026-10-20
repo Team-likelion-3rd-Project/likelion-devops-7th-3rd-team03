@@ -41,8 +41,10 @@ data:
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   REDIRECT_CACHE_TTL: "10m"
-  # 온프렘은 Firehose 대신 파일 로그로 클릭 이벤트를 남긴다. 수집(Fluent Bit)은 #69에서 붙인다.
+  # 온프렘은 Firehose 대신 파일 로그로 클릭 이벤트를 남긴다. 수집은 Fluent Bit 사이드카(patch-redirect-fluent-bit.yaml)가 한다.
   CLICK_EVENT_SINK: "log"
+  # Fluent Bit 사이드카와 공유하는 볼륨 경로 (patch-redirect-fluent-bit.yaml)
+  CLICK_EVENT_LOG_PATH: "/var/log/snipy/click-events.log"
   # NodePort로 프록시 없이 바로 받으므로 X-Forwarded-For를 믿지 않는다.
   TRUST_FORWARDED_FOR: "false"
   # HTTP로 접속하므로 Secure 쿠키를 쓰면 방문자 쿠키가 저장되지 않는다.

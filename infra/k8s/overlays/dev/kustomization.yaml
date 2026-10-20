@@ -16,11 +16,20 @@ resources:
   - frontend-deployment.yaml
   - frontend-service.yaml
   - ingress.yaml
+  - seaweedfs.yaml
+  - click-stats-batch-cronjob.yaml
 
 patches:
   - path: patch-app-resources.yaml
   - path: patch-hpa.yaml
   - path: patch-redirect-service-nodeport.yaml
+  - path: patch-redirect-fluent-bit.yaml
+
+# Fluent Bit 설정. 파일을 고치면 이름이 바뀌어 redirect 파드가 새 설정으로 다시 뜬다
+configMapGenerator:
+  - name: fluent-bit-config
+    files:
+      - fluent-bit.conf
 
 # GHCR 이미지. 태그는 CI 분리 전까지 수동으로 빌드·push한 값으로 맞춘다.
 images:
