@@ -1,8 +1,8 @@
 # 온프렘 dev용 프론트 이미지를 GHCR에 올린다.
 #   develop 에 src/frontend 가 머지되면 ghcr.io/<소유자>/<저장소>-frontend:<커밋 SHA> 를 만든다.
-#   AWS(S3) 배포는 frontend-ci.yml 이 main 에서만 한다.
+#   AWS(S3) 배포는 frontend-ci.yml 이 따로 한다.
 # 조직의 GHCR 는 여러 팀이 공유하므로 이름에 저장소 이름을 붙인다.
-# 첫 이미지는 작업 브랜치(feat/#78-frontend-ghcr)에서도 만들어 확인하고, 확인 뒤 그 브랜치 줄은 지운다.
+# 패키지의 "Manage Actions access"에 이 저장소가 Write 로 등록되어 있어야 push 가 된다.
 name: Onprem Frontend Image
 
 on:
@@ -10,7 +10,6 @@ on:
   push:
     branches:
       - develop
-      - 'feat/#78-frontend-ghcr'
     paths:
       - 'src/frontend/**'
       - '.github/workflows/onprem-frontend-ci.yml'
