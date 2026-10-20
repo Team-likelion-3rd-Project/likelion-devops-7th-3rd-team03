@@ -38,7 +38,8 @@ jobs:
       # 구글은 IP·HTTP redirect URI 를 받지 않아 카카오만 켠다. VITE_* 값은 브라우저에 공개되는 번들 값이다.
       - name: Build image
         env:
-          KAKAO_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          # 브라우저 번들에 공개되는 값이라 Secret 이든 Variable 이든 된다. Secret 이 있으면 그것을 쓴다.
+          KAKAO_ID: ${{ secrets.KAKAO_CLIENT_ID || vars.KAKAO_CLIENT_ID }}
         run: |
           [ -n "$KAKAO_ID" ] || { echo "::error::KAKAO_CLIENT_ID 시크릿이 비어 있습니다. 비어 있으면 로그인이 안 되는 이미지가 만들어집니다."; exit 1; }
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}-frontend"
@@ -56,7 +57,7 @@ jobs:
       # push 전에 번들에 로그인 주소와 카카오 ID가 실제로 들어갔는지 확인한다. 하나라도 없으면 여기서 멈춘다.
       - name: Verify bundle
         env:
-          KAKAO_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_ID: ${{ secrets.KAKAO_CLIENT_ID || vars.KAKAO_CLIENT_ID }}
         run: |
           docker run --rm --entrypoint grep "$IMAGE:$GITHUB_SHA" -rqF "$BASE_URL/auth/kakao/callback" /usr/share/nginx/html
           docker run --rm --entrypoint grep "$IMAGE:$GITHUB_SHA" -rqF "$KAKAO_ID" /usr/share/nginx/html
