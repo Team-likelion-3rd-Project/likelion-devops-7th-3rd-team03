@@ -43,6 +43,9 @@ spec:
                   valueFrom: { secretKeyRef: { name: seaweedfs-s3-secrets, key: S3_ACCESS_KEY } }
                 - name: S3_SECRET_KEY
                   valueFrom: { secretKeyRef: { name: seaweedfs-s3-secrets, key: S3_SECRET_KEY } }
+                # 정확한 방문자 수 (#71). 이미지 버전과 상관없이 명시한다
+                - name: DUCKDB_EXACT_VISITOR_COUNT
+                  value: "true"
                 # 정확한 방문자 수 집계 (#71). 300만 건 기준 256·384MB는 OOM
                 - name: DUCKDB_MEMORY_LIMIT
                   value: 512MB
