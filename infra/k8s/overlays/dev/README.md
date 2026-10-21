@@ -1,6 +1,6 @@
 # dev overlay (온프렘 VM 클러스터)
 
-온프렘 VM 클러스터(cp1 + 워커 2대, [ON-guide.md](../../../onprem/ON-guide.md))에 dev 환경 전체를 올린다. 지금은 `kubectl apply -k`로 수동 배포한다. 자동 배포(GHCR CI, ArgoCD)는 후속 이슈에서 붙인다.
+온프렘 VM 클러스터(cp1 + 워커 2대, [ON-guide.md](../../../onprem/ON-guide.md))에 dev 환경 전체를 올린다. 이미지는 GHCR CI가 만들고, 클러스터 반영은 `kubectl apply -k`로 수동으로 한다. 자동 반영(이미지 태그 갱신, ArgoCD)은 후속 이슈에서 붙인다.
 
 ```
 브라우저 -> 워커:30080 (ingress-nginx) -> /api -> management-service ─┐
@@ -35,26 +35,41 @@ AWS 전용(`components/aws`)과 Prometheus Operator 전용(`components/monitorin
 1. 네임스페이스와 시크릿: [infra/onprem/secrets/README.md](../../../onprem/secrets/README.md)의 7번까지 한다. `mysql-secrets`, `management-service-secrets`, `redirect-service-secrets`, `seaweedfs-s3-secrets`가 `snipy`에 있어야 한다.
 2. 카카오 콘솔에 `http://192.168.122.21:30080/auth/kakao/callback`을 등록한다.
 3. 프론트 이미지를 워커에 넣는다: `bash infra/onprem/frontend/build-and-load.sh`
-4. 백엔드·마이그레이션 이미지를 GHCR에 올린다 (아래).
+4. `kustomization.yaml`의 `images:` 태그에 해당하는 이미지가 GHCR에 있는지 확인한다 (아래). 보통은 CI가 올려 둔다.
 
-## GHCR 이미지 올리기 (CI 분리 전까지 수동)
+## GHCR 이미지
 
-`kustomization.yaml`의 `images:` 태그(`manual-1`)와 같은 태그로 올린다. 호스트(저장소 루트)에서:
+백엔드 이미지는 `.github/workflows/onprem-backend-ci.yml`이 develop 머지 때 GHCR에 올린다.
+세 이미지(management-service, redirect-service, db-migration)가 같은 커밋 SHA 태그를 가진다.
 
-```bash
-# GitHub 개인 토큰(classic, write:packages 권한)으로 로그인
-echo <토큰> | docker login ghcr.io -u <GitHub 사용자명> --password-stdin
-
-R=ghcr.io/team-likelion-3rd-project
-docker build -t $R/management-service:manual-1 src/management-service
-docker build -t $R/redirect-service:manual-1   src/redirect-service
-docker build -t $R/db-migration:manual-1       src/db
-docker push $R/management-service:manual-1
-docker push $R/redirect-service:manual-1
-docker push $R/db-migration:manual-1
+```
+ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-<서비스>:<커밋 SHA>
 ```
 
-처음 올린 패키지는 private이다. GitHub 조직의 Packages에서 세 패키지를 **public**으로 바꾼다. public이면 클러스터에 pull 시크릿이 필요 없다. 조직 설정에서 public 패키지를 막아 두었으면 조직 관리자에게 요청한다.
+배포할 이미지는 `kustomization.yaml`의 `images:` 태그로 정한다. 새 이미지로 바꾸려면 Actions 실행 Summary(또는 머지 커밋)의 SHA로 세 `newTag`를 함께 바꾼다.
+조직 GHCR를 여러 팀이 같이 쓰므로 이름에 저장소 이름을 붙인다 (프론트 `onprem-frontend-ci.yml`과 같은 규칙).
+
+패키지는 public이라 클러스터에 pull 시크릿이 필요 없다. 새 패키지를 처음 만들면 private으로 생기니 조직 Packages에서 public으로 바꾼다.
+
+### 수동으로 올릴 때
+
+CI를 쓸 수 없을 때만 한다. 태그는 커밋 SHA 대신 `manual-N`처럼 구분되게 쓴다.
+
+```bash
+echo <토큰> | docker login ghcr.io -u <GitHub 사용자명> --password-stdin   # write:packages 권한
+
+R=ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03
+docker build -t $R-management-service:manual-2 src/management-service
+docker build -t $R-redirect-service:manual-2   src/redirect-service
+docker build -t $R-db-migration:manual-2       src/db
+docker push $R-management-service:manual-2
+docker push $R-redirect-service:manual-2
+docker push $R-db-migration:manual-2
+```
+
+같은 태그로 덮어쓰면 워커에 남은 옛 이미지를 계속 쓴다. 태그는 항상 새로 정한다.
+
+패키지는 public이라 클러스터에 pull 시크릿이 필요 없다. 새 패키지를 처음 만들면 private으로 생기니 조직 Packages에서 public으로 바꾼다. 조직 설정에서 막혀 있으면 조직 관리자에게 요청한다.
 
 ### public으로 바꿀 수 없을 때 (pull 시크릿)
 
@@ -76,7 +91,6 @@ kubectl -n snipy patch serviceaccount redirect-service-sa -p '{"imagePullSecrets
 
 처음 apply할 때 `redirect-service-sa`에 `missing the kubectl.kubernetes.io/last-applied-configuration annotation` 경고가 나오는데 무시해도 된다. 매니페스트에 없는 `imagePullSecrets`는 apply를 다시 해도 남는다.
 
-코드를 바꿔 다시 올릴 때는 태그를 올리고(`manual-2`) `kustomization.yaml`도 같은 값으로 바꾼다. 같은 태그로 덮어쓰면 워커에 남은 옛 이미지를 계속 쓴다.
 
 ## 배포
 
