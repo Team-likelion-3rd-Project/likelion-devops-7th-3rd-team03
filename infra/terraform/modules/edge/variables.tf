@@ -34,6 +34,6 @@ variable "origin_alb_domain_name" {
 }
 
 variable "route53_zone_name" {
-  description = "Route53에 실제 등록된 apex 도메인 (zone 조회 전용, dev/prod가 같은 값을 공유)"
+  description = "Route53에 실제 등록된 apex 도메인 (zone 조회 전용)"
   type        = string
 }
