@@ -133,12 +133,12 @@ resource "kubernetes_config_map" "redirect_service_config" {
   }
 
   data = {
-    DB_HOST     = split(":", module.database.rds_endpoint)[0]
-    DB_PORT     = split(":", module.database.rds_endpoint)[1]
-    DB_NAME     = module.database.rds_db_name
-    DB_APP_USER = "shortlink_app"
-    REDIS_HOST  = module.database.elasticache_primary_endpoint
-    REDIS_PORT  = "6379"
+    DB_HOST              = split(":", module.database.rds_endpoint)[0]
+    DB_PORT              = split(":", module.database.rds_endpoint)[1]
+    DB_NAME              = module.database.rds_db_name
+    DB_APP_USER          = "shortlink_app"
+    REDIS_HOST           = module.database.elasticache_primary_endpoint
+    REDIS_PORT           = "6379"
     FIREHOSE_STREAM_NAME = module.streaming.firehose_delivery_stream_name
     AWS_REGION           = var.aws_region
 

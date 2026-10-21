@@ -61,6 +61,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "athena_results" {
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # ══════════════════════════════════════════════════
 # Firehose — Direct PUT → S3, 날짜별 파티셔닝
@@ -306,7 +307,11 @@ resource "aws_iam_role_policy" "athena_cronjob" {
           "glue:GetDatabase",
           "glue:GetPartitions"
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog",
+          aws_glue_catalog_database.snipy.arn,
+          aws_glue_catalog_table.click_events.arn,
+        ]
       },
       {
         Effect = "Allow"

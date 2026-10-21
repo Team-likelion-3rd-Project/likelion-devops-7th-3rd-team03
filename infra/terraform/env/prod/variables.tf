@@ -86,8 +86,8 @@ variable "elasticache_node_type" {
 
 variable "rds_instance_class" {
   description = "RDS 인스턴스 타입"
-  type = string
-  default = "dbb.t3.micro"
+  type        = string
+  default     = "db.t3.micro"
 }
 
 variable "domain_name" {

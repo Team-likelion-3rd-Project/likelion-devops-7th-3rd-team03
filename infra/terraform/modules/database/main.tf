@@ -31,7 +31,8 @@ resource "random_password" "rds_master" {
 }
 
 resource "aws_secretsmanager_secret" "rds_password" {
-  name = "${var.cluster_name}/rds/app-password"
+  name                    = "${var.cluster_name}/rds/app-password"
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "rds_password" {
@@ -41,17 +42,17 @@ resource "aws_secretsmanager_secret_version" "rds_password" {
 
 #── RDS APP 비밀번호 (Secrets Manager에 자동 저장) ───
 resource "random_password" "rds_app_user" {
-  length = 20
+  length  = 20
   special = false
 }
 
 resource "aws_secretsmanager_secret" "rds_app_password" {
-  name = "${var.cluster_name}/rds/app-user-password"
+  name                    = "${var.cluster_name}/rds/app-user-password"
   recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "rds_app_password" {
-  secret_id = aws_secretsmanager_secret.rds_app_password.id
+  secret_id     = aws_secretsmanager_secret.rds_app_password.id
   secret_string = random_password.rds_app_user.result
 }
 
@@ -66,6 +67,7 @@ resource "aws_db_instance" "main" {
   allocated_storage     = var.rds_allocated_storage
   max_allocated_storage = var.rds_max_allocated_storage # 스토리지 오토스케일링 여유
   storage_type          = "gp3"
+  storage_encrypted     = true # 저장 데이터 암호화(AWS 관리형 KMS 키). 생성 후에는 바꿀 수 없음
 
   db_name  = "snipy"
   username = "app_admin"
@@ -120,10 +122,11 @@ resource "aws_elasticache_replication_group" "redis" {
   replication_group_id = "${var.cluster_name}-redis"
   description          = "Snipy Redis - Short URL Cache & Real-time Stats"
 
-  engine         = "redis"
-  engine_version = "7.1"
-  node_type      = var.elasticache_node_type
-  port           = 6379
+  engine                     = "redis"
+  engine_version             = "7.1"
+  node_type                  = var.elasticache_node_type
+  port                       = 6379
+  at_rest_encryption_enabled = true # 저장 데이터 암호화. 생성 후에는 바꿀 수 없음
 
   num_cache_clusters = var.elasticache_num_cache_clusters # 2 = Primary+Replica, 1 = 단일 노드(테스트용)
 

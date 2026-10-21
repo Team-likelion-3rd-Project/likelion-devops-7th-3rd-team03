@@ -1,3 +1,5 @@
+data "aws_caller_identity" "current" {}
+
 resource "helm_release" "argocd" {
   name             = "argocd"
   repository       = "https://argoproj.github.io/argo-helm"
@@ -40,7 +42,7 @@ resource "aws_iam_role_policy" "external_secrets" {
         "secretsmanager:DescribeSecret"
       ]
       # 이 클러스터 이름으로 시작하는 시크릿만 읽을 수 있게 최소권한 범위 지정
-      Resource = "arn:aws:secretsmanager:${var.aws_region}:*:secret:${var.cluster_name}/*"
+      Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.cluster_name}/*"
     }]
   })
 }
