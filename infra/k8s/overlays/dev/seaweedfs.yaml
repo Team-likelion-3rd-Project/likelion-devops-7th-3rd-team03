@@ -69,7 +69,10 @@ metadata:
   name: seaweedfs-bucket-init
 spec:
   backoffLimit: 6
+  # 어떤 이유로든 10분 안에 안 끝나면 실패로 처리한다 (무한 대기 방지)
+  activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 600
+
   template:
     spec:
       restartPolicy: OnFailure
@@ -79,9 +82,22 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              until aws --endpoint-url http://seaweedfs:8333 s3 ls >/dev/null 2>&1; do
-                echo "waiting for seaweedfs..."; sleep 3
+              # SeaweedFS가 뜰 때까지 최대 3분 기다린다.
+              # 연결이 안 되는 건 기다리고, 인증 실패(키가 틀림)는 기다려도 안 되니 바로 실패한다.
+              for i in $(seq 1 60); do
+                if out=$(aws --endpoint-url http://seaweedfs:8333 s3 ls 2>&1); then
+                  break
+                fi
+                case "$out" in
+                  *InvalidAccessKeyId*|*SignatureDoesNotMatch*|*AccessDenied*)
+                    echo "!! SeaweedFS 인증 실패: seaweedfs-s3-secrets 값을 확인하세요"
+                    echo "$out"
+                    exit 1 ;;
+                esac
+                echo "waiting for seaweedfs... ($i/60) $(echo "$out" | tail -1)"
+                sleep 3
               done
+              aws --endpoint-url http://seaweedfs:8333 s3 ls >/dev/null 2>&1 || { echo "!! 3분 안에 SeaweedFS에 연결하지 못했습니다"; exit 1; }
               aws --endpoint-url http://seaweedfs:8333 s3 mb "s3://snipy-click-logs" || true
               echo "bucket ready: snipy-click-logs"
           env:
