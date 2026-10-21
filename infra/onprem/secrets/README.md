@@ -23,6 +23,7 @@
 | `mysql-secrets` | `MYSQL_ROOT_PASSWORD`, `DB_APP_PASSWORD`, `DB_MIGRATOR_PASSWORD`, `READONLY_PASSWORD` |
 | `management-service-secrets` | `DB_APP_PASSWORD`, `JWT_SECRET`, `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | `redirect-service-secrets` | `DB_APP_PASSWORD`, `JWT_SECRET` |
+| `seaweedfs-s3-secrets` | `S3_ACCESS_KEY`, `S3_SECRET_KEY` |
 
 Secret 이름과 네임스페이스는 봉인할 때 고정된다 (`--scope strict`). 이름을 바꾸면 다시 봉인해야 한다.
 
@@ -155,5 +156,4 @@ kubectl -n snipy get secret
 - `secrets.env`, 키 백업 파일, 값이 들어간 로그를 채팅이나 커밋에 붙이지 않는다. 노출된 값은 다시 발급한다.
 - 이 저장소가 공개되면 `*.sealed.yaml`도 공개된다. 개인 키가 유출되지 않는 한 안전하지만, 키가 유출되면 과거 파일이 모두 풀리니 그때는 값을 바꿔 다시 봉인한다.
 - `SealedSecret`을 지우면 컨트롤러가 만든 `Secret`도 같이 지워진다 (`kubectl delete -f *.sealed.yaml`). 그 Secret을 쓰는 파드가 있으면 먼저 확인한다. 네임스페이스는 `base`에서만 관리하고 이 폴더에는 두지 않는다.
-- SeaweedFS S3 키(`S3_ACCESS_KEY`, `S3_SECRET_KEY`)는 #20에서 정하는 Secret 이름에 맞춰 `seal-secrets.sh`에 추가한다.
 - CI에서 쓸 때는 `seal-secrets.sh`가 환경 변수를 먼저 읽으니 값을 환경 변수로 넘기면 된다. 공개 인증서는 저장소에 있다.

@@ -27,7 +27,8 @@ spec:
       containers:
         - name: redis
           image: redis:7
-          args: ["--save", "", "--appendonly", "no"]
+          # 메모리가 차면 오래된 키부터 지운다. 컨테이너 limit(256Mi)에 걸려 OOMKilled되면 캐시·세션이 한꺼번에 사라진다
+          args: [ "--save", "", "--appendonly", "no", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru" ]
           ports:
             - containerPort: 6379
           readinessProbe:

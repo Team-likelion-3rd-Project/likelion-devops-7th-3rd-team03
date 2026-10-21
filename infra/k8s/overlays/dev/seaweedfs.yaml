@@ -1,0 +1,109 @@
+# 온프렘 클릭 로그 저장소 (S3 호환). AWS의 S3 역할을 대신한다.
+# Fluent Bit(redirect-service 사이드카)이 적재하고 DuckDB 배치가 읽는다. 클러스터 안에서만 쓰므로 Ingress는 없다.
+# 데이터는 local-path PVC에 남는다. PVC를 지우면 클릭 원본 로그도 같이 지워진다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+  labels: { app: seaweedfs }
+spec:
+  selector: { app: seaweedfs }
+  ports:
+    - name: s3
+      port: 8333
+      targetPort: s3
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: seaweedfs
+  labels: { app: seaweedfs }
+spec:
+  serviceName: seaweedfs
+  replicas: 1
+  selector:
+    matchLabels: { app: seaweedfs }
+  template:
+    metadata:
+      labels: { app: seaweedfs }
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:4.48
+          # 비밀값을 파일로 두지 않도록, 기동 시 Secret 값으로 S3 인증 설정을 만든다
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cat > /tmp/s3.json <<EOF
+              {"identities":[{"name":"local","credentials":[{"accessKey":"${S3_ACCESS_KEY}","secretKey":"${S3_SECRET_KEY}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+              EOF
+              exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+          envFrom:
+            - secretRef: { name: seaweedfs-s3-secrets }
+          ports:
+            - name: s3
+              containerPort: 8333
+          readinessProbe:
+            tcpSocket: { port: s3 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: local-path
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 5Gi }
+---
+# 클릭 로그 버킷 생성. 이미 있으면 그냥 성공으로 끝난다
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seaweedfs-bucket-init
+spec:
+  backoffLimit: 6
+  # 어떤 이유로든 10분 안에 안 끝나면 실패로 처리한다 (무한 대기 방지)
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 600
+
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: aws-cli
+          image: amazon/aws-cli:2.17.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # SeaweedFS가 뜰 때까지 최대 3분 기다린다.
+              # 연결이 안 되는 건 기다리고, 인증 실패(키가 틀림)는 기다려도 안 되니 바로 실패한다.
+              for i in $(seq 1 60); do
+                if out=$(aws --endpoint-url http://seaweedfs:8333 s3 ls 2>&1); then
+                  break
+                fi
+                case "$out" in
+                  *InvalidAccessKeyId*|*SignatureDoesNotMatch*|*AccessDenied*)
+                    echo "!! SeaweedFS 인증 실패: seaweedfs-s3-secrets 값을 확인하세요"
+                    echo "$out"
+                    exit 1 ;;
+                esac
+                echo "waiting for seaweedfs... ($i/60) $(echo "$out" | tail -1)"
+                sleep 3
+              done
+              aws --endpoint-url http://seaweedfs:8333 s3 ls >/dev/null 2>&1 || { echo "!! 3분 안에 SeaweedFS에 연결하지 못했습니다"; exit 1; }
+              aws --endpoint-url http://seaweedfs:8333 s3 mb "s3://snipy-click-logs" || true
+              echo "bucket ready: snipy-click-logs"
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: seaweedfs-s3-secrets, key: S3_ACCESS_KEY } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: seaweedfs-s3-secrets, key: S3_SECRET_KEY } }
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1

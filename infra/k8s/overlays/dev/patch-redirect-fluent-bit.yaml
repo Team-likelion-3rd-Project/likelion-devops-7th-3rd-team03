@@ -1,0 +1,54 @@
+# redirect-service에 Fluent Bit 사이드카를 붙인다. 앱이 기록한 click-events.log를 읽어 SeaweedFS에 적재한다 (AWS의 Firehose 역할)
+# 네이티브 사이드카(initContainers + restartPolicy: Always)라 앱보다 먼저 뜨고 나중에 종료된다.
+# 로그·버퍼는 파드 볼륨(emptyDir)이라 파드가 삭제되면 사라진다. 종료 대기(Grace 30초) 안에 남은 데이터를 올린다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redirect-service
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:3.2.10
+          restartPolicy: Always
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: seaweedfs-s3-secrets, key: S3_ACCESS_KEY } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: seaweedfs-s3-secrets, key: S3_SECRET_KEY } }
+            - name: S3_BUCKET
+              value: snipy-click-logs
+            # Firehose와 같은 5분. 검증할 때만 1m로 줄여서 확인한다
+            - name: S3_UPLOAD_TIMEOUT
+              value: 5m
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+          volumeMounts:
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+            - name: click-logs
+              mountPath: /var/log/snipy
+              readOnly: true
+            - name: fluent-bit-state
+              mountPath: /fluent-bit/state
+            - name: fluent-bit-s3-buffer
+              mountPath: /fluent-bit/s3-buffer
+      containers:
+        - name: redirect-service
+          volumeMounts:
+            - name: click-logs
+              mountPath: /var/log/snipy
+      volumes:
+        - name: click-logs
+          emptyDir: {}
+        - name: fluent-bit-state
+          emptyDir: {}
+        - name: fluent-bit-s3-buffer
+          emptyDir: {}
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
