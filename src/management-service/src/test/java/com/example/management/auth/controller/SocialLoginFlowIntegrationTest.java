@@ -2,6 +2,7 @@ package com.example.management.auth.controller;
 
 import com.example.management.auth.client.GoogleOAuthClient;
 import com.example.management.auth.client.KakaoOAuthClient;
+import com.example.management.auth.client.NaverOAuthClient;
 import com.example.management.auth.client.SocialProfile;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
@@ -32,9 +33,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 로그인 → 가입 → 재로그인 전체 흐름을 실제 MySQL·Redis와 Security 필터 체인까지 붙여 검증한다.
  * provider 호출(authenticate)만 스파이로 대체하고, 레지스트리·세션 저장소·DB는 실제 빈을 쓴다.
- * 구글 클라이언트는 client-id가 있어야 등록되므로 테스트 속성으로 켜고, 네이버는 꺼진 상태로 둔다.
+ * 구글·네이버 모두 켠다. 비활성 400은 Wiring·Registry 테스트에서 검증한다.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = "google.client-id=it-google")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {"google.client-id=it-google", "naver.client-id=it-naver"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class SocialLoginFlowIntegrationTest {
@@ -51,6 +52,8 @@ class SocialLoginFlowIntegrationTest {
     private KakaoOAuthClient kakaoOAuthClient;
     @MockitoSpyBean
     private GoogleOAuthClient googleOAuthClient;
+    @MockitoSpyBean
+    private NaverOAuthClient naverOAuthClient;
 
     @AfterEach
     void tearDown() {
@@ -166,10 +169,40 @@ class SocialLoginFlowIntegrationTest {
     }
 
     @Test
-    @DisplayName("비활성 provider(naver)와 모르는 provider로 로그인하면 400이다")
-    void disabledOrUnknownProvider_isBadRequest() throws Exception {
-        login("naver").andExpect(status().isBadRequest());
+    @DisplayName("모르는 provider로 로그인하면 400이다")
+    void unknownProvider_isBadRequest() throws Exception {
         login("unknown").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("네이버는 이메일 없이 받은 프로필로 가입 폼을 채우고, 이메일을 입력해 가입하면 재로그인된다")
+    void naver_loginSignupRelogin_withTypedEmail() throws Exception {
+        String socialId = newSocialId();
+        doReturn(new SocialProfile(socialId, "홍길동", IMAGE_URL, null))
+                .when(naverOAuthClient).authenticate(anyString(), any());
+
+        String signupToken = readString(login("naver")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.signupRequired").value(true))
+                .andExpect(jsonPath("$.prefill.nickname").value("홍길동"))
+                .andExpect(jsonPath("$.prefill.email").doesNotExist())
+                .andExpect(jsonPath("$.prefill.profileImageUrl").value(IMAGE_URL)), "$.signupToken");
+
+        signup(signupToken, "홍길동", "typed@test.com", IMAGE_URL).andExpect(status().isOk());
+        login("naver").andExpect(jsonPath("$.signupRequired").value(false));
+
+        assertThat(countUsers("NAVER", socialId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("네이버 로그인 요청에 state가 없으면 네이버를 호출하지 않고 400이다")
+    void naver_withoutState_isBadRequest() throws Exception {
+        mockMvc.perform(post("/api/auth/naver/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"code":"auth-code"}
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
