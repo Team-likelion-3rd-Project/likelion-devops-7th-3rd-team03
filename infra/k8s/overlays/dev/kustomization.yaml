@@ -4,7 +4,7 @@ kind: Kustomization
 # 온프렘 VM 클러스터(kubeadm) dev 환경.
 # AWS 전용(components/aws)과 Prometheus Operator 전용(components/monitoring) 리소스는 넣지 않는다.
 # snipy 네임스페이스는 infra/onprem/base/namespace.yaml에서 따로 관리한다 (여기서 만들지 않는다).
-# 시크릿은 infra/onprem/secrets의 SealedSecret을 먼저 적용해 둔다 (mysql-secrets, management-service-secrets, redirect-service-secrets).
+# 시크릿은 infra/onprem/secrets의 SealedSecret을 먼저 적용해 둔다 (mysql-secrets, management-service-secrets, redirect-service-secrets, seaweedfs-s3-secrets).
 namespace: snipy
 
 resources:
@@ -31,14 +31,15 @@ configMapGenerator:
     files:
       - fluent-bit.conf
 
-# GHCR 이미지. 태그는 CI 분리 전까지 수동으로 빌드·push한 값으로 맞춘다.
+# 이미지는 onprem-backend-ci.yml이 develop 머지 때 GHCR에 올린다 (세 이미지 같은 커밋 SHA 태그).
+# 조직 GHCR를 여러 팀이 공유해서 이름에 저장소 이름을 붙인다 (프론트와 같은 규칙).
 images:
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
-    newName: ghcr.io/team-likelion-3rd-project/management-service
-    newTag: manual-1
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
+    newTag: e04dfaa132cf6c5ff8a813bc3e7e98a6afcf59ef
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
-    newName: ghcr.io/team-likelion-3rd-project/redirect-service
-    newTag: manual-1
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
+    newTag: e04dfaa132cf6c5ff8a813bc3e7e98a6afcf59ef
   - name: db-migration
-    newName: ghcr.io/team-likelion-3rd-project/db-migration
-    newTag: manual-1
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
+    newTag: e04dfaa132cf6c5ff8a813bc3e7e98a6afcf59ef
