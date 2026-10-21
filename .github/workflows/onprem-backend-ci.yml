@@ -1,0 +1,76 @@
+# 온프렘 dev용 백엔드 이미지를 GHCR에 올린다.
+#   develop 에 백엔드 코드가 머지되면 3개 이미지를 같은 커밋 SHA 태그로 만든다.
+#   ghcr.io/<소유자>/<저장소>-management-service:<SHA>
+#   ghcr.io/<소유자>/<저장소>-redirect-service:<SHA>
+#   ghcr.io/<소유자>/<저장소>-db-migration:<SHA>
+# 세 이미지 태그를 같게 맞춰서, overlays/dev 의 images 를 태그 하나로 한 번에 바꿀 수 있게 한다.
+# 테스트는 PR 단계의 management-ci.yml, redirect-ci.yml 이 한다. AWS(ECR) 이미지도 그쪽에서 따로 만든다.
+# 조직의 GHCR 는 여러 팀이 공유하므로 이름에 저장소 이름을 붙인다 (onprem-frontend-ci.yml 과 같은 규칙).
+name: Onprem Backend Images
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+      - 'ci/#82-onprem-backend-images'   # 임시: 동작 확인 후 삭제
+    paths:
+      - 'src/management-service/**'
+      - 'src/redirect-service/**'
+      - 'src/db/**'
+      - '.github/workflows/onprem-backend-ci.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+# 같은 브랜치에 연속으로 머지되면 앞의 빌드는 취소하고 마지막 것만 올린다
+concurrency:
+  group: onprem-backend-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build and push ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: management-service
+            context: src/management-service
+          - service: redirect-service
+            context: src/redirect-service
+          - service: db-migration
+            context: src/db
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.service }}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: GHCR login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # 패키지를 이 저장소에 연결한다. 연결돼야 GITHUB_TOKEN 으로 다음 push 가 된다
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # 서비스별로 빌드 캐시를 나눠 Gradle 의존성을 매번 새로 받지 않게 한다
+          cache-from: type=gha,scope=onprem-${{ matrix.service }}
+          cache-to: type=gha,scope=onprem-${{ matrix.service }},mode=max
+
+      - name: Summary
+        run: echo "pushed ${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
