@@ -30,12 +30,12 @@ output "database_subnet_group_name" {
 }
 
 output "management_service_ecr_url" {
-  description = "bootstrap이 소유한 ECR (dev와 공유)"
+  description = "bootstrap이 소유한 ECR"
   value       = data.aws_ecr_repository.management_service.repository_url
 }
 
 output "redirect_service_ecr_url" {
-  description = "bootstrap이 소유한 ECR (dev와 공유)"
+  description = "bootstrap이 소유한 ECR"
   value       = data.aws_ecr_repository.redirect_service.repository_url
 }
 

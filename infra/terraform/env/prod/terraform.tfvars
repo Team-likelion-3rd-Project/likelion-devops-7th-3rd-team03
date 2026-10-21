@@ -1,7 +1,7 @@
 environment  = "prod"
 cluster_name = "snipy-cluster"
 
-# 가용성 우선 사이징 (dev는 비용 절감 위해 env/dev/terraform.tfvars에서 축소)
+# 가용성 우선 사이징 (운영 기준)
 single_nat_gateway                     = false
 node_instance_type                     = "m5.large"
 rds_instance_class                     = "db.m6g.large"

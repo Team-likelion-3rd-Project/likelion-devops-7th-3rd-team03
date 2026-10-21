@@ -29,7 +29,7 @@ variable "database_subnets" {
 }
 
 variable "single_nat_gateway" {
-  description = "true면 NAT Gateway 1개를 모든 AZ가 공유 (dev용 비용 절감). false면 AZ당 1개(가용성 우선, prod 기본값)"
+  description = "true면 NAT Gateway 1개를 모든 AZ가 공유 (테스트용 비용 절감). false면 AZ당 1개(가용성 우선, prod 기본값)"
   type        = bool
   default     = false
 }

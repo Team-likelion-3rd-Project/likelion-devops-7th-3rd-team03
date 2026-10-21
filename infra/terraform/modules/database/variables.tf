@@ -60,7 +60,7 @@ variable "rds_deletion_protection" {
 }
 
 variable "elasticache_num_cache_clusters" {
-  description = "1이면 단일 노드(dev용 비용 절감), 2 이상이면 Primary+Replica"
+  description = "1이면 단일 노드(테스트용 비용 절감), 2 이상이면 Primary+Replica"
   type        = number
   default     = 2
 }

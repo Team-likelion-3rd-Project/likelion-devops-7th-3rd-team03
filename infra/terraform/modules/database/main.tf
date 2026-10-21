@@ -125,7 +125,7 @@ resource "aws_elasticache_replication_group" "redis" {
   node_type      = var.elasticache_node_type
   port           = 6379
 
-  num_cache_clusters = var.elasticache_num_cache_clusters # prod: 2 (Primary+Replica) / dev: 1
+  num_cache_clusters = var.elasticache_num_cache_clusters # 2 = Primary+Replica, 1 = 단일 노드(테스트용)
 
   automatic_failover_enabled = var.elasticache_automatic_failover_enabled
   multi_az_enabled           = var.elasticache_multi_az_enabled

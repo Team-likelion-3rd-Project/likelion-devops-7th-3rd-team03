@@ -10,7 +10,7 @@ module "network" {
   single_nat_gateway = var.single_nat_gateway
 }
 
-# ECR은 bootstrap이 소유 (dev와 공유, prod를 destroy해도 이미지가 사라지지 않도록)
+# ECR은 bootstrap이 소유 (prod를 destroy해도 이미지가 사라지지 않도록)
 data "aws_ecr_repository" "management_service" {
   name = "management-service"
 }
@@ -64,7 +64,7 @@ module "edge" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  route53_zone_name      = "snipy.life" # dev/prod 공통 — 실제 등록된 apex 도메인
+  route53_zone_name      = "snipy.life" # 실제 등록된 apex 도메인
   cluster_name           = var.cluster_name
   domain_name            = var.domain_name
   vpc_id                 = module.network.vpc_id
@@ -82,7 +82,7 @@ module "frontend" {
 
   cluster_name      = var.cluster_name
   domain_name       = "app.${var.domain_name}"
-  route53_zone_name = "snipy.life" # dev/prod 공통 — 실제 등록된 apex 도메인 (modules/edge와 동일)
+  route53_zone_name = "snipy.life" # 실제 등록된 apex 도메인 (modules/edge와 동일)
 }
 
 module "gitops" {
@@ -141,6 +141,11 @@ resource "kubernetes_config_map" "redirect_service_config" {
     REDIS_PORT  = "6379"
     FIREHOSE_STREAM_NAME = module.streaming.firehose_delivery_stream_name
     AWS_REGION           = var.aws_region
+
+    # 컨테이너 메모리 limit 대비 %가 아니라 절대값 고정 — 리소스 사이징 계산이
+    # 절대 힙 크기(MB) 기준이라 컨테이너 limit을 바꿔도 힙이 같이 흔들리면 안 됨.
+    # (부하테스트로 맞춘 값. 없으면 JVM 기본값인 limit 1Gi의 25%만 힙으로 잡힌다)
+    JAVA_TOOL_OPTIONS = "-Xms512m -Xmx512m"
   }
 
   depends_on = [module.database]
