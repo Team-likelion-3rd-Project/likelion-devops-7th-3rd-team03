@@ -16,25 +16,59 @@ IMAGE="${1:?스캔할 이미지가 필요합니다}"
 TRIVY_VERSION="${TRIVY_VERSION:-0.56.2}"
 ROOT="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
 
-ignore_args=()
-if [ -f "$ROOT/.trivyignore" ]; then
-  ignore_args=(-v "$ROOT/.trivyignore:/trivyignore:ro" --ignorefile /trivyignore)
-  # --ignorefile 은 trivy 옵션이라 이미지 이름 뒤가 아니라 앞에 둬야 한다
-fi
+# 취약점 DB 저장소. 공개 저장소는 GitHub Actions 러너처럼 IP를 공유하는 환경에서
+# 요청 제한(TOOMANYREQUESTS)에 자주 걸려, 막히면 다음 저장소로 넘어간다.
+DB_REPOS=(mirror.gcr.io/aquasec/trivy-db ghcr.io/aquasecurity/trivy-db public.ecr.aws/aquasecurity/trivy-db)
+JAVA_DB_REPOS=(mirror.gcr.io/aquasec/trivy-java-db ghcr.io/aquasecurity/trivy-java-db public.ecr.aws/aquasecurity/trivy-java-db)
 
 mkdir -p "$HOME/.cache/trivy"
 
-docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-  ${ignore_args[@]:0:2} \
-  "aquasec/trivy:${TRIVY_VERSION}" image \
-  --scanners vuln \
-  --severity CRITICAL \
-  --ignore-unfixed \
-  --exit-code "${TRIVY_EXIT_CODE:-1}" \
-  --no-progress \
-  --db-repository public.ecr.aws/aquasecurity/trivy-db \
-  --java-db-repository public.ecr.aws/aquasecurity/trivy-java-db \
-  ${ignore_args[@]:2} \
-  "$IMAGE"
+docker_args=(
+  --rm
+  -v /var/run/docker.sock:/var/run/docker.sock
+  -v "$HOME/.cache/trivy:/root/.cache/trivy"
+)
+if [ -f "$ROOT/.trivyignore" ]; then
+  docker_args+=(-v "$ROOT/.trivyignore:/trivyignore:ro")
+fi
+
+trivy() {
+  docker run "${docker_args[@]}" "aquasec/trivy:${TRIVY_VERSION}" "$@"
+}
+
+# 저장소를 순서대로, 저장소마다 최대 3번 시도한다.
+# 캐시에 최신 DB가 있으면 실제로 받지 않고 바로 성공한다.
+download() {
+  local what="$1" flag="$2"; shift 2
+  for repo in "$@"; do
+    for attempt in 1 2 3; do
+      if trivy image "--download-${what}-only" "$flag" "$repo" --no-progress; then
+        return 0
+      fi
+      echo "!! $what 다운로드 실패: $repo (시도 $attempt/3)" >&2
+      sleep $(( attempt * 10 ))
+    done
+  done
+  echo "!! 모든 저장소에서 $what 다운로드에 실패했습니다" >&2
+  return 1
+}
+
+download db      --db-repository      "${DB_REPOS[@]}"
+download java-db --java-db-repository "${JAVA_DB_REPOS[@]}"
+
+scan_args=(
+  image
+  --scanners vuln
+  --severity CRITICAL
+  --ignore-unfixed
+  --exit-code "${TRIVY_EXIT_CODE:-1}"
+  --no-progress
+  # 위에서 받은 DB만 쓴다 (스캔 중에 다시 받으러 가지 않는다)
+  --skip-db-update
+  --skip-java-db-update
+)
+if [ -f "$ROOT/.trivyignore" ]; then
+  scan_args+=(--ignorefile /trivyignore)
+fi
+
+trivy "${scan_args[@]}" "$IMAGE"

@@ -76,6 +76,10 @@ jobs:
           cache-from: type=gha,scope=onprem-${{ matrix.service }}
           cache-to: type=gha,scope=onprem-${{ matrix.service }},mode=max
 
+      - name: 날짜 (Trivy DB 캐시 키)
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       # 취약점 DB(약 1GB)를 매번 새로 받지 않게 캐시한다
       - name: Trivy DB cache
         uses: actions/cache@v4

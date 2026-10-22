@@ -166,12 +166,16 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG src/redirect-service
 
-      # 취약점 DB(약 1GB)를 매번 새로 받지 않게 캐시한다
+      - name: 날짜 (Trivy DB 캐시 키)
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # 취약점 DB(약 1GB)를 하루 단위로 캐시해 다운로드 횟수를 줄인다
       - name: Trivy DB 캐시
         uses: actions/cache@v4
         with:
           path: ~/.cache/trivy
-          key: trivy-db-${{ github.run_id }}
+          key: trivy-db-${{ steps.date.outputs.today }}
           restore-keys: trivy-db-
 
       # CRITICAL 취약점(패치 있는 것)이 있으면 여기서 멈춘다. 아래 push·태그 갱신이 실행되지 않는다.
