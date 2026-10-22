@@ -29,8 +29,6 @@ resource "aws_iam_role" "github_actions_ci" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           "token.actions.githubusercontent.com:sub" = [
-            "repo:Team-likelion-2nd-Project@312237597/likelion-devops-7th-team03@1320904339:ref:refs/heads/develop",
-            "repo:Team-likelion-2nd-Project@312237597/likelion-devops-7th-team03@1320904339:ref:refs/heads/main",
             "repo:Team-likelion-3rd-Project@336729042/likelion-devops-7th-3rd-team03@1400844527:ref:refs/heads/develop",
             "repo:Team-likelion-3rd-Project@336729042/likelion-devops-7th-3rd-team03@1400844527:ref:refs/heads/main",
           ]
@@ -100,7 +98,7 @@ resource "aws_iam_role_policy" "github_actions_frontend_deploy" {
         Sid      = "CloudFrontInvalidate"
         Effect   = "Allow"
         Action   = "cloudfront:CreateInvalidation"
-        Resource = "*"
+        Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
       }
     ]
   })

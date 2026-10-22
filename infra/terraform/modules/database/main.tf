@@ -31,7 +31,8 @@ resource "random_password" "rds_master" {
 }
 
 resource "aws_secretsmanager_secret" "rds_password" {
-  name = "${var.cluster_name}/rds/app-password"
+  name                    = "${var.cluster_name}/rds/app-password"
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "rds_password" {
@@ -41,17 +42,17 @@ resource "aws_secretsmanager_secret_version" "rds_password" {
 
 #── RDS APP 비밀번호 (Secrets Manager에 자동 저장) ───
 resource "random_password" "rds_app_user" {
-  length = 20
+  length  = 20
   special = false
 }
 
 resource "aws_secretsmanager_secret" "rds_app_password" {
-  name = "${var.cluster_name}/rds/app-user-password"
+  name                    = "${var.cluster_name}/rds/app-user-password"
   recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "rds_app_password" {
-  secret_id = aws_secretsmanager_secret.rds_app_password.id
+  secret_id     = aws_secretsmanager_secret.rds_app_password.id
   secret_string = random_password.rds_app_user.result
 }
 
@@ -66,6 +67,7 @@ resource "aws_db_instance" "main" {
   allocated_storage     = var.rds_allocated_storage
   max_allocated_storage = var.rds_max_allocated_storage # 스토리지 오토스케일링 여유
   storage_type          = "gp3"
+  storage_encrypted     = true # 저장 데이터 암호화(AWS 관리형 KMS 키). 생성 후에는 바꿀 수 없음
 
   db_name  = "snipy"
   username = "app_admin"
@@ -78,8 +80,12 @@ resource "aws_db_instance" "main" {
   multi_az = var.rds_multi_az # Primary(AZ-A) + Standby(AZ-B), 동기 복제, 자동 페일오버
 
   backup_retention_period = var.rds_backup_retention_period # 최소한만 (짧은 프로젝트 기간)
-  skip_final_snapshot     = true
-  deletion_protection     = var.rds_deletion_protection # terraform destroy로 깔끔히 정리하기 위함
+  # 운영: 삭제 보호를 켜고, 삭제·교체될 때 최종 스냅샷을 남긴다.
+  # 테스트(test-lite.tfvars): 둘 다 끄고 destroy로 바로 정리한다.
+  # 운영을 destroy하려면 deletion_protection=false로 먼저 apply해야 한다.
+  deletion_protection       = var.rds_deletion_protection
+  skip_final_snapshot       = var.rds_skip_final_snapshot
+  final_snapshot_identifier = var.rds_skip_final_snapshot ? null : "${var.cluster_name}-db-final"
 
   publicly_accessible = false
 
@@ -114,16 +120,36 @@ resource "aws_security_group" "elasticache" {
   }
 }
 
+# ── Redis AUTH 토큰 (Secrets Manager에 자동 저장) ───
+# transit_encryption_enabled일 때만 쓸 수 있다. 앱은 ExternalSecret으로 REDIS_PASSWORD를 받는다.
+resource "random_password" "redis_auth" {
+  length  = 32
+  special = false # AUTH 토큰에 쓸 수 없는 문자(@, ", /)를 피하기 위해 단순화
+}
+
+resource "aws_secretsmanager_secret" "redis_auth" {
+  name                    = "${var.cluster_name}/redis/auth-token"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "redis_auth" {
+  secret_id     = aws_secretsmanager_secret.redis_auth.id
+  secret_string = random_password.redis_auth.result
+}
+
 # ── ElastiCache Replication Group ─────────────
 # Cluster Mode: Disabled (단일 샤드), Primary 1 + Replica 1, Multi-AZ 자동 페일오버
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id = "${var.cluster_name}-redis"
   description          = "Snipy Redis - Short URL Cache & Real-time Stats"
 
-  engine         = "redis"
-  engine_version = "7.1"
-  node_type      = var.elasticache_node_type
-  port           = 6379
+  engine                     = "redis"
+  engine_version             = "7.1"
+  node_type                  = var.elasticache_node_type
+  port                       = 6379
+  at_rest_encryption_enabled = true # 저장 데이터 암호화. 생성 후에는 바꿀 수 없음
+  transit_encryption_enabled = true # 앱↔Redis 구간 TLS. 앱은 REDIS_SSL_ENABLED=true로 접속
+  auth_token                 = random_password.redis_auth.result
 
   num_cache_clusters = var.elasticache_num_cache_clusters # 2 = Primary+Replica, 1 = 단일 노드(테스트용)
 

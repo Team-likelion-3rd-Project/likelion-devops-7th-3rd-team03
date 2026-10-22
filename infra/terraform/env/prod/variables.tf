@@ -19,7 +19,7 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.31"
+  default     = "1.35" # 1.31은 표준 지원 종료(연장 지원 요금 6배). 1.35 표준 지원은 2027-03까지
 }
 
 variable "cluster_admin_arns" {
@@ -86,8 +86,8 @@ variable "elasticache_node_type" {
 
 variable "rds_instance_class" {
   description = "RDS 인스턴스 타입"
-  type = string
-  default = "dbb.t3.micro"
+  type        = string
+  default     = "db.t3.micro"
 }
 
 variable "domain_name" {
@@ -123,6 +123,18 @@ variable "single_nat_gateway" {
 variable "rds_multi_az" {
   type    = bool
   default = true
+}
+
+variable "rds_deletion_protection" {
+  description = "true면 RDS를 삭제할 수 없다 (destroy도 실패). 운영은 true"
+  type        = bool
+  default     = true
+}
+
+variable "rds_skip_final_snapshot" {
+  description = "false면 RDS가 삭제·교체될 때 최종 스냅샷을 남긴다. 운영은 false"
+  type        = bool
+  default     = false
 }
 
 variable "elasticache_num_cache_clusters" {

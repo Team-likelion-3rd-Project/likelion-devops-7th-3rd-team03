@@ -59,6 +59,12 @@ variable "rds_deletion_protection" {
   default = false
 }
 
+variable "rds_skip_final_snapshot" {
+  description = "false면 RDS가 삭제·교체될 때 최종 스냅샷을 남긴다"
+  type        = bool
+  default     = true
+}
+
 variable "elasticache_num_cache_clusters" {
   description = "1이면 단일 노드(테스트용 비용 절감), 2 이상이면 Primary+Replica"
   type        = number

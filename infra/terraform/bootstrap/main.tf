@@ -6,11 +6,21 @@
 # 관리한다 (backend 블록 없음 — providers.tf 참고).
 #
 # 적용 순서: bootstrap을 가장 먼저 apply해야 env/prod의 `terraform init`이 성공한다.
+#
+# 버킷 이름은 계정 ID로 정해진다 (S3 버킷 이름은 전 세계에서 유일해야 함).
+# env/prod는 backend 블록에 버킷 이름을 두지 않으므로 init 때 넘긴다:
+#   terraform init -backend-config="bucket=<output state_bucket_name>"
+data "aws_caller_identity" "current" {}
+
+locals {
+  state_bucket_name = "snipy-terraform-state-${data.aws_caller_identity.current.account_id}"
+}
+
 resource "aws_s3_bucket" "tfstate" {
-  bucket = var.state_bucket_name
+  bucket = local.state_bucket_name
 
   tags = {
-    Name = var.state_bucket_name
+    Name = local.state_bucket_name
   }
 }
 
@@ -42,6 +52,30 @@ resource "aws_s3_bucket_public_access_block" "tfstate" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# 암호화되지 않은 연결(HTTP)로 state를 읽고 쓰지 못하게 막는다
+resource "aws_s3_bucket_policy" "tfstate_tls_only" {
+  bucket = aws_s3_bucket.tfstate.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.tfstate.arn,
+        "${aws_s3_bucket.tfstate.arn}/*",
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.tfstate]
 }
 
 # ══════════════════════════════════════════════════

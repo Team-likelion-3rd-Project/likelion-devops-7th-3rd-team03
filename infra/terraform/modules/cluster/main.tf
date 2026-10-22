@@ -8,8 +8,11 @@ module "eks" {
   vpc_id     = var.vpc_id
   subnet_ids = var.subnet_ids # 노드는 프라이빗 서브넷에 배치
 
-  cluster_endpoint_public_access           = true # access_entries 로 권한 관리
-  enable_cluster_creator_admin_permissions = false
+  cluster_endpoint_public_access = true # access_entries 로 권한 관리
+  # apply를 실행한 주체(사람 또는 CI 역할)에게 관리자 권한을 준다. 같은 apply 안에서
+  # helm/kubernetes provider가 클러스터에 접근해야 하므로 꼭 필요하다.
+  # 실행 주체를 cluster_admin_arns에 또 넣으면 access entry가 중복돼 실패한다.
+  enable_cluster_creator_admin_permissions = true
 
   access_entries = {
     for arn in var.cluster_admin_arns :
@@ -72,6 +75,7 @@ resource "helm_release" "metrics_server" {
   name       = "metrics-server"
   repository = "https://kubernetes-sigs.github.io/metrics-server/"
   chart      = "metrics-server"
+  version    = "3.14.0"
   namespace  = "kube-system"
 
   depends_on = [module.eks]
@@ -97,14 +101,15 @@ module "irsa_cluster_autoscaler" {
 }
 
 # ── Cluster Autoscaler (Helm) ─────────────────
-# 이미지 태그를 cluster_version(1.31)에 맞춰 고정한다. 버전을 안 박으면 차트가
-# 항상 최신 CA를 끌어오는데, 최신 CA(1.35+)는 EKS 1.31에 없는 DRA 리소스
+# 이미지 태그를 cluster_version에 맞춰 고정한다. 버전을 안 박으면 차트가
+# 항상 최신 CA를 끌어오는데, 2차 때 최신 CA(1.35+)가 EKS 1.31에 없는 DRA 리소스
 # (ResourceClaim/ResourceSlice/DeviceClass)를 watch하려다 계속 실패해서
 # informer sync가 안 끝나고 스케일업 로직 자체가 안 도는 문제가 있었다.
 resource "helm_release" "cluster_autoscaler" {
   name       = "cluster-autoscaler"
   repository = "https://kubernetes.github.io/autoscaler"
   chart      = "cluster-autoscaler"
+  version    = "9.59.0"
   namespace  = "kube-system"
 
   set {
@@ -161,6 +166,7 @@ resource "helm_release" "aws_load_balancer_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
+  version    = "3.6.1"
   namespace  = "kube-system"
 
   set {

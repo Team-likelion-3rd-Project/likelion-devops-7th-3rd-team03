@@ -55,7 +55,8 @@ resource "random_password" "origin_verify" {
 }
 
 resource "aws_secretsmanager_secret" "origin_verify" {
-  name = "${var.cluster_name}/cloudfront/origin-verify-secret"
+  name                    = "${var.cluster_name}/cloudfront/origin-verify-secret"
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "origin_verify" {
