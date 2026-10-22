@@ -55,7 +55,7 @@ seal() {
 
 echo ">> SealedSecret 만들기 (네임스페이스 $NS)"
 seal mysql-secrets MYSQL_ROOT_PASSWORD DB_APP_PASSWORD DB_MIGRATOR_PASSWORD READONLY_PASSWORD
-seal management-service-secrets DB_APP_PASSWORD JWT_SECRET KAKAO_CLIENT_ID -- KAKAO_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
+seal management-service-secrets DB_APP_PASSWORD JWT_SECRET KAKAO_CLIENT_ID -- KAKAO_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET NAVER_CLIENT_ID NAVER_CLIENT_SECRET
 seal redirect-service-secrets DB_APP_PASSWORD JWT_SECRET
 # SeaweedFS(S3 호환 저장소) 인증 키. Fluent Bit(redirect 사이드카)과 DuckDB 배치가 같이 쓴다
 seal seaweedfs-s3-secrets S3_ACCESS_KEY S3_SECRET_KEY

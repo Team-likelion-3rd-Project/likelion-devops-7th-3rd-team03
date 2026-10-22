@@ -21,7 +21,7 @@
 | Secret (`snipy` 네임스페이스) | 키 |
 |---|---|
 | `mysql-secrets` | `MYSQL_ROOT_PASSWORD`, `DB_APP_PASSWORD`, `DB_MIGRATOR_PASSWORD`, `READONLY_PASSWORD` |
-| `management-service-secrets` | `DB_APP_PASSWORD`, `JWT_SECRET`, `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| `management-service-secrets` | `DB_APP_PASSWORD`, `JWT_SECRET`, `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` |
 | `redirect-service-secrets` | `DB_APP_PASSWORD`, `JWT_SECRET` |
 | `seaweedfs-s3-secrets` | `S3_ACCESS_KEY`, `S3_SECRET_KEY` |
 
@@ -92,7 +92,7 @@ cp secrets.example.env secrets.env
 bash infra/onprem/secrets/seal-secrets.sh
 ```
 
-`mysql-secrets.sealed.yaml`, `management-service-secrets.sealed.yaml`, `redirect-service-secrets.sealed.yaml`이 만들어진다. 열어서 `encryptedData`의 값이 긴 암호문인지 확인하고 커밋한다.
+`mysql-secrets.sealed.yaml`, `management-service-secrets.sealed.yaml`, `redirect-service-secrets.sealed.yaml`, `seaweedfs-s3-secrets.sealed.yaml`이 만들어진다. 열어서 `encryptedData`의 값이 긴 암호문인지 확인하고 커밋한다.
 
 ## 7. 클러스터에 적용
 
@@ -109,7 +109,7 @@ cp1(root)에서 적용한다. 네임스페이스가 먼저다.
 
 ```bash
 kubectl apply -f /home/k8s/base/namespace.yaml
-kubectl apply -f /home/k8s/mysql-secrets.sealed.yaml -f /home/k8s/management-service-secrets.sealed.yaml -f /home/k8s/redirect-service-secrets.sealed.yaml
+kubectl apply -f /home/k8s/mysql-secrets.sealed.yaml -f /home/k8s/management-service-secrets.sealed.yaml -f /home/k8s/redirect-service-secrets.sealed.yaml -f /home/k8s/seaweedfs-s3-secrets.sealed.yaml
 ```
 
 확인한다.
