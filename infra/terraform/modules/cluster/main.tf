@@ -200,7 +200,8 @@ resource "helm_release" "aws_load_balancer_controller" {
 # ══════════════════════════════════════════════════
 # external-dns
 # ══════════════════════════════════════════════════
-# Ingress의 external-dns.alpha.kubernetes.io/hostname 어노테이션(alb.<도메인>)을 보고
+# (external-dns v0.22부터 접두사가 external-dns.alpha.kubernetes.io/에서 바뀜. 옛 접두사는 읽지 않는다)
+# Ingress의 external-dns.kubernetes.io/hostname 어노테이션(alb.<도메인>)을 보고
 # Route53에 ALB를 가리키는 레코드를 만든다. CloudFront 오리진이 이 이름을 쓴다(modules/edge).
 module "irsa_external_dns" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"

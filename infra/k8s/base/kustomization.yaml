@@ -11,9 +11,9 @@ resources:
 - grafana-dashboard-demo.yaml
 - hpa.yaml
 images:
-- name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
-  newName: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
-  newTag: b4aa457889c2b593f57630c57f7bc38d4feb258c
-- name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
-  newName: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
-  newTag: 018497235fbd55cff35021568075e4c31384d61a
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
+    newTag: ef1e76fb76a887ed97b0ed0f7fb79c7e7be2d220
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
+    newTag: ef1e76fb76a887ed97b0ed0f7fb79c7e7be2d220
