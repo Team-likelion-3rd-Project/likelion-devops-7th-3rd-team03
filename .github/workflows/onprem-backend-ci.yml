@@ -14,6 +14,7 @@ on:
   push:
     branches:
       - develop
+      - 'ci/#95-trivy'   # 임시: 동작 확인 후 삭제
     paths:
       - 'src/management-service/**'
       - 'src/redirect-service/**'
