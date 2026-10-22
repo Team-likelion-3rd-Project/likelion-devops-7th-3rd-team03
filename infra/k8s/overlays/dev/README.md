@@ -33,20 +33,20 @@ AWS 전용(`components/aws`)과 Prometheus Operator 전용(`components/monitorin
 ## 사전 준비
 
 1. 네임스페이스와 시크릿: [infra/onprem/secrets/README.md](../../../onprem/secrets/README.md)의 7번까지 한다. `mysql-secrets`, `management-service-secrets`, `redirect-service-secrets`, `seaweedfs-s3-secrets`가 `snipy`에 있어야 한다.
-2. 카카오 콘솔에 `http://192.168.122.21:30080/auth/kakao/callback`을 등록한다.
-3. 프론트 이미지를 워커에 넣는다: `bash infra/onprem/frontend/build-and-load.sh`
-4. `kustomization.yaml`의 `images:` 태그에 해당하는 이미지가 GHCR에 있는지 확인한다 (아래). 보통은 CI가 올려 둔다.
+2. 카카오·구글·네이버 콘솔에 `http://localhost:3000/auth/<provider>/callback`을 등록한다. 로그인할 때는 터널을 연다 ([프론트 README](../../../onprem/frontend/README.md)).
+3. `kustomization.yaml`의 `images:` 태그에 해당하는 이미지가 GHCR에 있는지 확인한다 (아래). 프론트와 백엔드 모두 보통은 CI가 올려 둔다.
 
 ## GHCR 이미지
 
 백엔드 이미지는 `.github/workflows/onprem-backend-ci.yml`이 develop 머지 때 GHCR에 올린다.
 세 이미지(management-service, redirect-service, db-migration)가 같은 커밋 SHA 태그를 가진다.
+프론트 이미지는 `.github/workflows/onprem-frontend-ci.yml`이 올리고, 올린 뒤 `infra/onprem/bump-image-tag.sh`로 프론트 `newTag`를 그 SHA로 바꿔 develop에 커밋한다.
 
 ```
 ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-<서비스>:<커밋 SHA>
 ```
 
-배포할 이미지는 `kustomization.yaml`의 `images:` 태그로 정한다. 새 이미지로 바꾸려면 Actions 실행 Summary(또는 머지 커밋)의 SHA로 세 `newTag`를 함께 바꾼다.
+배포할 이미지는 `kustomization.yaml`의 `images:` 태그로 정한다. 프론트 태그는 CI가 바꾼다. 백엔드를 새 이미지로 바꾸려면 Actions 실행 Summary(또는 머지 커밋)의 SHA로 세 `newTag`를 함께 바꾼다 (`bash infra/onprem/bump-image-tag.sh management-service redirect-service db-migration <SHA>`).
 조직 GHCR를 여러 팀이 같이 쓰므로 이름에 저장소 이름을 붙인다 (프론트 `onprem-frontend-ci.yml`과 같은 규칙).
 
 패키지는 public이라 클러스터에 pull 시크릿이 필요 없다. 새 패키지를 처음 만들면 private으로 생기니 조직 Packages에서 public으로 바꾼다.

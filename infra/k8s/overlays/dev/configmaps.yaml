@@ -17,11 +17,12 @@ data:
   SIGNUP_SESSION_TTL: "15m"
   JWT_ACCESS_TOKEN_VALIDITY_SECONDS: "1800"
   JWT_REFRESH_TOKEN_VALIDITY_SECONDS: "1209600"
-  # 프론트(ingress-nginx NodePort 30080) 주소로 돌아온다. 카카오 콘솔에도 같은 값을 등록한다.
-  KAKAO_REDIRECT_URI: "http://192.168.122.21:30080/auth/kakao/callback"
-  # 구글은 IP·HTTP redirect URI를 받지 않아 localhost 터널(infra/onprem/frontend/README.md)로만 쓸 수 있다.
-  # 구글 클라이언트 값이 비어 있으면 구글 로그인은 꺼진 상태로 뜬다.
+  # 소셜 로그인 3종은 모두 localhost 터널 주소로 돌아온다. 구글이 IP·HTTP redirect URI를 받지 않아서 통일했다
+  # (접속 방법은 infra/onprem/frontend/README.md). 각 provider 콘솔에도 같은 값을 등록한다.
+  # 클라이언트 값이 비어 있는 provider는 꺼진 상태로 뜬다.
+  KAKAO_REDIRECT_URI: "http://localhost:3000/auth/kakao/callback"
   GOOGLE_REDIRECT_URI: "http://localhost:3000/auth/google/callback"
+  NAVER_REDIRECT_URI: "http://localhost:3000/auth/naver/callback"
   # 브라우저는 프론트의 nginx를 거쳐 같은 출처로 /api를 부른다. 터널로 접속하는 경우를 위해 localhost도 둔다.
   CORS_ALLOWED_ORIGINS: "http://192.168.122.21:30080,http://localhost:3000"
   # 단축 URL은 redirect-service NodePort(30081)로 나간다. 프론트(30080)와 경로가 겹치지 않게 포트를 나눴다.
