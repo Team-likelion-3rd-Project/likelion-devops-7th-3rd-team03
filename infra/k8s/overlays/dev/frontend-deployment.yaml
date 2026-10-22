@@ -30,7 +30,7 @@ spec:
               app: frontend
       containers:
         - name: nginx
-          # 아직 GHCR로 옮기지 않아 infra/onprem/frontend/build-and-load.sh로 워커에 미리 넣어 둔 이미지를 쓴다.
+          # 이름은 kustomization.yaml의 images가 GHCR 이미지(onprem-frontend-ci.yml이 만든 것)와 태그로 바꾼다.
           image: snipy-frontend:onprem
           imagePullPolicy: IfNotPresent
           ports:

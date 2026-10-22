@@ -3,10 +3,10 @@
 #   bash infra/onprem/frontend/build-and-load.sh   (호스트 PC의 Git Bash)
 # 환경 변수: IMAGE, BASE_URL, WORKERS, SSH_USER, SOCIAL_PROVIDERS, VITE_KAKAO_CLIENT_ID, VITE_GOOGLE_CLIENT_ID
 #
-# BASE_URL과 SOCIAL_PROVIDERS는 접속 방식에 맞춘다. 값이 번들에 들어가니 방식이 바뀌면 다시 빌드한다.
-#   IP로 접속(기본): BASE_URL=http://192.168.122.21:30080, 카카오만. 구글은 IP·HTTP redirect URI를 받지 않는다.
-#   localhost 터널: BASE_URL=http://localhost:3000 SOCIAL_PROVIDERS=kakao,google bash infra/onprem/frontend/build-and-load.sh
-#     접속은 ssh -N -L 3000:192.168.122.21:30080 k8s@192.168.122.21 을 연 뒤 http://localhost:3000
+# 기본값은 팀 표준인 localhost 터널(BASE_URL=http://localhost:3000)이다. 구글이 IP·HTTP redirect URI를 받지 않고,
+# dev ConfigMap 의 redirect URI 도 이 주소라서 같은 값으로 빌드해야 로그인이 된다. 값이 번들에 들어가니 주소를 바꾸면 다시 빌드한다.
+# 이 스크립트는 카카오·구글만 지원한다 (네이버 클라이언트 ID 는 아직 읽지 않는다. CI 이미지는 3종).
+#   접속은 ssh -N -L 3000:192.168.122.21:30080 k8s@192.168.122.21 을 연 뒤 http://localhost:3000
 # 워커마다 VM 사용자 비밀번호를 묻는다 (scp, ssh, sudo).
 #
 # GHCR 로 올리기 (tar 로 워커에 넣는 대신): 먼저 docker login ghcr.io 를 한 뒤 PUSH=1 로 실행한다.
@@ -18,11 +18,11 @@ cd "$(dirname "$0")/../../.."
 IMAGE="${IMAGE:-snipy-frontend:onprem}"
 # 브라우저로 접속할 주소. redirect URI(<주소>/auth/<provider>/callback)가 이 주소로 만들어지니
 # 각 provider 콘솔과 백엔드의 *_REDIRECT_URI도 같은 값으로 맞춘다.
-BASE_URL="${BASE_URL:-http://192.168.122.21:30080}"
+BASE_URL="${BASE_URL:-http://localhost:3000}"
 WORKERS="${WORKERS:-192.168.122.21 192.168.122.22}"
 SSH_USER="${SSH_USER:-k8s}"
-# IP·HTTP로 접속하면 구글을 못 쓰니 기본은 카카오만 켠다.
-SOCIAL_PROVIDERS="${SOCIAL_PROVIDERS:-kakao}"
+# 터널(localhost)이면 구글도 쓸 수 있어 카카오·구글을 켠다. 구글 ID 가 .env 에 없으면 SOCIAL_PROVIDERS=kakao 로 줄인다.
+SOCIAL_PROVIDERS="${SOCIAL_PROVIDERS:-kakao,google}"
 
 KAKAO_ID="${VITE_KAKAO_CLIENT_ID:-}"
 if [ -z "$KAKAO_ID" ] && [ -f .env ]; then

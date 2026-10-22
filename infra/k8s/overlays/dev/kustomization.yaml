@@ -31,9 +31,13 @@ configMapGenerator:
     files:
       - fluent-bit.conf
 
-# 이미지는 onprem-backend-ci.yml이 develop 머지 때 GHCR에 올린다 (세 이미지 같은 커밋 SHA 태그).
-# 조직 GHCR를 여러 팀이 공유해서 이름에 저장소 이름을 붙인다 (프론트와 같은 규칙).
+# 이미지는 CI가 develop 머지 때 GHCR에 올린다. 백엔드 세 이미지는 onprem-backend-ci.yml, 프론트는 onprem-frontend-ci.yml이 만든다 (같은 커밋 SHA 태그).
+# 프론트 태그는 onprem-frontend-ci.yml이 infra/onprem/bump-image-tag.sh로 바꿔 커밋한다. 손으로 고치지 않는다.
+# 조직 GHCR를 여러 팀이 공유해서 이름에 저장소 이름을 붙인다.
 images:
+  - name: snipy-frontend
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-frontend
+    newTag: edb1805a26fe268b973f276901364424db00b717
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
     newTag: e04dfaa132cf6c5ff8a813bc3e7e98a6afcf59ef
