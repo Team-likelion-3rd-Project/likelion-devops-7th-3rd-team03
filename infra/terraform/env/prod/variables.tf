@@ -152,3 +152,47 @@ variable "elasticache_multi_az_enabled" {
   type    = bool
   default = true
 }
+
+# ── 소셜 로그인 OAuth 값 (파일에 저장하지 않는다) ──
+# 로컬: $env:TF_VAR_kakao_client_id = "..." 처럼 환경변수로 넘긴다.
+# 구글·네이버는 비워 두면 해당 로그인이 비활성(요청 시 400)이 된다.
+variable "kakao_client_id" {
+  description = "카카오 REST API 키. 앱이 이 값 없이는 기동하지 않으므로 필수"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = var.kakao_client_id != ""
+    error_message = "kakao_client_id가 비어 있다. TF_VAR_kakao_client_id 환경변수로 넘긴다."
+  }
+}
+
+variable "kakao_client_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "google_client_id" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "google_client_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "naver_client_id" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "naver_client_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
