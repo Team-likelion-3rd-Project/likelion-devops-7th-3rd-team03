@@ -3,8 +3,8 @@ kind: Ingress
 metadata:
   name: snipy-ingress
   annotations:
-    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-southeast-1:834922934330:certificate/ef026f40-15ef-4b64-8c32-fd75eec6ced5"
-    alb.ingress.kubernetes.io/security-groups: "sg-01aa43e729b72a1f0"
+    # external-dns가 이 이름으로 ALB 레코드를 만든다 (CloudFront 오리진)
+    external-dns.alpha.kubernetes.io/hostname: "alb.snipy.life"
 spec:
   rules:
     - host: "snipy.life"

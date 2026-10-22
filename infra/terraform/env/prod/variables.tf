@@ -108,12 +108,6 @@ variable "waf_allowed_countries" {
   default     = ["KR"]
 }
 
-variable "origin_alb_domain_name" {
-  description = "AWS Load Balancer Controller가 생성한 ALB의 DNS 이름 (Ingress 배포 후 확인하여 입력)"
-  type        = string
-  default     = "" # Ingress 배포 후 채워서 재적용
-}
-
 variable "single_nat_gateway" {
   description = "true면 NAT Gateway 1개를 모든 AZ가 공유 (테스트용 비용 절감). prod 기본값은 false(AZ당 1개)"
   type        = bool
