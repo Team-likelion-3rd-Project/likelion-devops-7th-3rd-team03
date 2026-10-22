@@ -19,6 +19,10 @@ node_desired_size  = 3
 rds_instance_class = "db.t4g.micro"
 rds_multi_az       = false
 
+# 테스트 후 destroy로 바로 정리할 수 있게 삭제 보호와 최종 스냅샷을 끈다
+rds_deletion_protection = false
+rds_skip_final_snapshot = true
+
 elasticache_num_cache_clusters         = 1 # Primary만
 elasticache_automatic_failover_enabled = false
 elasticache_multi_az_enabled           = false

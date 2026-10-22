@@ -4,6 +4,7 @@ resource "helm_release" "argocd" {
   name             = "argocd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
+  version          = "10.10.5"
   namespace        = "argocd"
   create_namespace = true
 }
@@ -51,6 +52,7 @@ resource "helm_release" "external_secrets" {
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"
+  version          = "2.13.0"
   namespace        = "external-secrets"
   create_namespace = true
 

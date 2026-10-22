@@ -45,6 +45,8 @@ module "database" {
   elasticache_node_type                  = var.elasticache_node_type
   rds_instance_class                     = var.rds_instance_class
   rds_multi_az                           = var.rds_multi_az
+  rds_deletion_protection                = var.rds_deletion_protection
+  rds_skip_final_snapshot                = var.rds_skip_final_snapshot
   elasticache_num_cache_clusters         = var.elasticache_num_cache_clusters
   elasticache_automatic_failover_enabled = var.elasticache_automatic_failover_enabled
   elasticache_multi_az_enabled           = var.elasticache_multi_az_enabled
@@ -115,6 +117,7 @@ resource "kubernetes_config_map" "management_service_config" {
     DB_APP_USER                        = "shortlink_app"
     REDIS_HOST                         = module.database.elasticache_primary_endpoint
     REDIS_PORT                         = "6379"
+    REDIS_SSL_ENABLED                  = "true"
     REDIRECT_CACHE_TTL                 = "10m"
     KAKAO_REDIRECT_URI                 = "https://app.${var.domain_name}/auth/kakao/callback"
     JWT_ACCESS_TOKEN_VALIDITY_SECONDS  = "1800"
@@ -139,6 +142,7 @@ resource "kubernetes_config_map" "redirect_service_config" {
     DB_APP_USER          = "shortlink_app"
     REDIS_HOST           = module.database.elasticache_primary_endpoint
     REDIS_PORT           = "6379"
+    REDIS_SSL_ENABLED    = "true"
     FIREHOSE_STREAM_NAME = module.streaming.firehose_delivery_stream_name
     AWS_REGION           = var.aws_region
 

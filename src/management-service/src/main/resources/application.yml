@@ -41,6 +41,10 @@ spring:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
+      # AWS ElastiCache는 TLS + AUTH 토큰으로 접속한다. 로컬·CI·온프렘은 기본값(비밀번호 없음, TLS 끔)
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
 
 app:
   redirect-cache:

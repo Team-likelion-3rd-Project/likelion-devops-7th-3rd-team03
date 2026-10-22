@@ -75,6 +75,7 @@ resource "helm_release" "metrics_server" {
   name       = "metrics-server"
   repository = "https://kubernetes-sigs.github.io/metrics-server/"
   chart      = "metrics-server"
+  version    = "3.14.0"
   namespace  = "kube-system"
 
   depends_on = [module.eks]
@@ -100,14 +101,15 @@ module "irsa_cluster_autoscaler" {
 }
 
 # ── Cluster Autoscaler (Helm) ─────────────────
-# 이미지 태그를 cluster_version(1.31)에 맞춰 고정한다. 버전을 안 박으면 차트가
-# 항상 최신 CA를 끌어오는데, 최신 CA(1.35+)는 EKS 1.31에 없는 DRA 리소스
+# 이미지 태그를 cluster_version에 맞춰 고정한다. 버전을 안 박으면 차트가
+# 항상 최신 CA를 끌어오는데, 2차 때 최신 CA(1.35+)가 EKS 1.31에 없는 DRA 리소스
 # (ResourceClaim/ResourceSlice/DeviceClass)를 watch하려다 계속 실패해서
 # informer sync가 안 끝나고 스케일업 로직 자체가 안 도는 문제가 있었다.
 resource "helm_release" "cluster_autoscaler" {
   name       = "cluster-autoscaler"
   repository = "https://kubernetes.github.io/autoscaler"
   chart      = "cluster-autoscaler"
+  version    = "9.59.0"
   namespace  = "kube-system"
 
   set {
@@ -164,6 +166,7 @@ resource "helm_release" "aws_load_balancer_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
+  version    = "3.6.1"
   namespace  = "kube-system"
 
   set {
