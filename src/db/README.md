@@ -12,7 +12,7 @@
 
 ```sql
 CREATE TABLE link_daily_dimension_stats (
-    id, link_id, stat_date, dimension_type, dimension_value, click_count
+                                            id, link_id, stat_date, dimension_type, dimension_value, click_count
     -- UNIQUE(link_id, stat_date, dimension_type, dimension_value)
 );
 ```
@@ -94,7 +94,7 @@ users (1) ──< links (1) ──< click_events
 
 논의 결과:
 
-* `links`↔`users`, `link_daily_stats`↔`links`, `link_daily_dimension_stats`↔`links`는 **유지** —  
+* `links`↔`users`, `link_daily_stats`↔`links`, `link_daily_dimension_stats`↔`links`는 **유지** —
 * `click_events`↔`links`만 **제거**했습니다(`V2__drop_click_events_fk.sql`) — 이 FK는 배포 방식과 무관하게, MySQL이 파티션된 InnoDB 테이블에 FK를 허용하지 않는다는 기술적 제약과 직결됩니다. 초당 800클릭 요구사항을 감당하려면 `click_events` 월별 파티셔닝이 필요해서, 이 FK만은 반드시 제거해야 했습니다.
 
 제거 후 FK는 3개(`links`↔`users`, `link_daily_stats`↔`links`, `link_daily_dimension_stats`↔`links`)가 남습니다.
@@ -103,7 +103,7 @@ users (1) ──< links (1) ──< click_events
 
 ```sql
 SELECT COUNT(*) FROM click_events e
-  LEFT JOIN links l ON l.id = e.link_id WHERE l.id IS NULL;
+                         LEFT JOIN links l ON l.id = e.link_id WHERE l.id IS NULL;
 ```
 
 ---
@@ -230,11 +230,9 @@ mysql --defaults-extra-file=~/.my.cnf shortlink < verify.sql
 
 확인 항목: 테이블 5개 / `click_events` PK가 `(id, clicked_at)`인지 / 파티션 목록과 프루닝 동작 / FK 잔여 여부 / `visitor_id` CHAR(36) / `slug` 콜레이션이 `ascii_bin`인지 / 서버 타임존이 UTC인지
 
-
-
 ## 마이그레이션 작성 규칙
 
-이미지 롤백은 DB 스키마를 되돌리지 않는다 ([rollback.md](../../docs/rollback.md)).
+이미지 롤백은 DB 스키마를 되돌리지 않는다 ([rollback.md](../../infra/onprem/argocd/rollback.md)).
 앱이 `ddl-auto: validate`로 기동 시 스키마를 검사하므로, **새 마이그레이션은 바로 이전 버전 앱에서도 동작해야 한다.**
 
 ### 1. 이전 버전과 호환되게 작성한다
@@ -244,13 +242,17 @@ mysql --defaults-extra-file=~/.my.cnf shortlink < verify.sql
 | 컬럼·테이블 추가 | 바로 해도 된다. 단 `NOT NULL`이면 **기본값을 준다** (이전 앱의 INSERT가 그 컬럼을 모른다) |
 | 컬럼·테이블 삭제 | **두 번에 나눈다.** ① 앱에서 사용을 먼저 없애고 배포 ② 다음 배포에서 삭제 |
 | 컬럼 이름 변경 | 바로 바꾸지 않는다. ① 새 컬럼 추가 + 앱이 양쪽에 쓰기 ② 데이터 이관 ③ 다음 배포에서 옛 컬럼 삭제 |
-| 타입 변경 (좁히기) | 이름 변경과 같은 방식으로 새 컬럼을 거친다 |
+| 길이만 늘리기 (`VARCHAR(100)` → `VARCHAR(255)`) | 바로 해도 된다 (validate는 길이를 검사하지 않는다) |
+| 타입 변경 (종류가 바뀜, 좁히기 등. 예: `INT` → `BIGINT`) | 이름 변경과 같은 방식으로 새 컬럼을 거친다. validate가 타입 종류를 검사해서 이전 앱이 기동하지 못한다 |
 
 ### 2. V 파일 하나에 DDL 하나
 
 MySQL은 DDL(`CREATE`, `ALTER`, `DROP`)마다 바로 커밋되고 되돌릴 수 없다.
 한 파일에 DDL이 여러 개면 중간에 실패했을 때 앞의 것만 적용된 채로 남고,
 다시 실행하면 이미 적용된 첫 DDL에서 실패한다. 파일을 나누면 실패한 지점부터 다시 시작할 수 있다.
+
+온프렘 dev에서는 마이그레이션이 Argo CD Sync 훅이라, 마이그레이션이 실패하면 앱(wave 2)도 새 버전으로 바뀌지 않는다.
+한 번 꼬인 마이그레이션은 손으로 DB를 고치기 전까지 배포 전체를 막는다.
 
 ### 3. 적용된 V 파일은 고치지 않는다
 
@@ -264,12 +266,12 @@ MySQL은 DDL(`CREATE`, `ALTER`, `DROP`)마다 바로 커밋되고 되돌릴 수 
 
 ### 롤백 전 확인
 
+이미지 태그는 이미지를 만든 소스 커밋 SHA다. 되돌아갈 태그와 지금 태그 사이에 마이그레이션 변경이 있는지 본다.
+
 ```bash
-# 되돌리려는 커밋 이후 마이그레이션 변경이 있는지
-git log --oneline <롤백할_커밋>..HEAD -- src/db/V*.sql
+git fetch origin
+# 이전 이미지 태그(되돌아갈 SHA)와 현재 이미지 태그 사이에 마이그레이션 변경이 있는지
+git log --oneline <이전 태그 SHA>..<현재 태그 SHA> -- 'src/db/V*.sql'
 ```
 
-변경이 있으면 위 1번 규칙을 지켰는지 확인한다. 삭제·이름 변경이 바로 들어갔으면 이미지만 롤백해선 안 된다.
-
-
-
+변경이 있으면 위 1번 규칙을 지켰는지 확인한다. 삭제·이름 변경·타입 변경이 바로 들어갔으면 이미지만 롤백해선 안 된다.
