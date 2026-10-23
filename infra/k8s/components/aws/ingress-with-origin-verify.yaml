@@ -1,8 +1,6 @@
 # AWS Load Balancer Controller가 이 Ingress를 보고 ALB를 자동 생성합니다.
-# ALB 생성 후 DNS 이름을 확인해서 terraform.tfvars의 origin_alb_domain_name에 채우고
-# 다시 terraform apply 하면 CloudFront가 이 ALB를 오리진으로 연결합니다.
-#
-#   kubectl get ingress snipy-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+# ALB가 생기면 external-dns가 아래 hostname 어노테이션(alb.<도메인>)으로 Route53 레코드를 만들고,
+# CloudFront가 그 이름을 오리진으로 쓴다. terraform을 다시 apply할 필요가 없다.
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -14,12 +12,11 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     alb.ingress.kubernetes.io/ssl-redirect: '443'
-    # ap-southeast-1 리전의 ALB용 ACM 인증서 (CloudFront용과는 별도 — providers.tf의 기본 리전)
-    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-southeast-1:834922934330:certificate/ef026f40-15ef-4b64-8c32-fd75eec6ced5"
+    # 인증서 ARN은 적지 않는다. 컨트롤러가 rules의 host와 맞는 ACM 인증서(terraform modules/edge)를 찾아 붙인다.
     # CloudFront 프리픽스 리스트만 인바운드 허용 (직접 인터넷 접근 차단)
-    # terraform output alb_security_group_id 값으로 교체 — 이 SG를 지정하면
-    # 컨트롤러가 별도 프론트엔드 SG를 자동 생성하지 않고 이 SG만 사용함
-    alb.ingress.kubernetes.io/security-groups: "1차 apply 후 채우기"
+    # terraform modules/edge의 SG를 이름(Name 태그)으로 지정 — 계정이 바뀌어도 그대로 쓴다.
+    # 이 SG를 지정하면 컨트롤러가 별도 프론트엔드 SG를 자동 생성하지 않고 이 SG만 사용함
+    alb.ingress.kubernetes.io/security-groups: "snipy-cluster-alb-sg"
     # 헬스체크 경로 설정
     alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/liveness
 spec:

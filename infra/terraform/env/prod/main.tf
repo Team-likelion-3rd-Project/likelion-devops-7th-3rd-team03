@@ -32,6 +32,10 @@ module "cluster" {
   node_max_size      = var.node_max_size
   node_desired_size  = var.node_desired_size
   cluster_admin_arns = var.cluster_admin_arns
+
+  # external-dns가 Ingress의 alb.<도메인> 레코드를 만들 호스팅 존
+  domain_name     = var.domain_name
+  route53_zone_id = module.edge.route53_zone_id
 }
 
 module "database" {
@@ -73,7 +77,6 @@ module "edge" {
   node_security_group_id = module.cluster.node_security_group_id
   waf_geo_match_enabled  = var.waf_geo_match_enabled
   waf_allowed_countries  = var.waf_allowed_countries
-  origin_alb_domain_name = var.origin_alb_domain_name
 }
 
 module "frontend" {

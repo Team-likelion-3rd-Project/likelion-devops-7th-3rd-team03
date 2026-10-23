@@ -27,12 +27,6 @@ variable "waf_allowed_countries" {
   default     = ["KR"]
 }
 
-variable "origin_alb_domain_name" {
-  description = "AWS Load Balancer Controller가 생성한 ALB의 DNS 이름 (Ingress 배포 후 확인하여 입력)"
-  type        = string
-  default     = "" # Ingress 배포 후 채워서 재적용
-}
-
 variable "route53_zone_name" {
   description = "Route53에 실제 등록된 apex 도메인 (zone 조회 전용)"
   type        = string
