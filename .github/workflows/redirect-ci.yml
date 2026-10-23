@@ -2,7 +2,7 @@
 # Redirect-ci Service CI
 #
 # 목적: redirect-service 코드가 push/PR 될 때마다
-#       테스트 → (push일 때만) 도커 이미지 빌드 + ECR push 까지 자동화한다.
+#       테스트 → (push일 때만) 도커 이미지 빌드 → 취약점 스캔 → ECR push 까지 자동화한다.
 #
 # 참고: Dockerfile이 멀티스테이지 빌드로 바뀌면서(Stage 1에서 gradlew bootJar까지
 #       직접 실행), CI에서 별도로 jar를 미리 만들 필요가 없어졌다.
@@ -26,11 +26,13 @@ on:
     paths:
       - 'src/redirect-service/**'
       - '.github/workflows/redirect-ci.yml'
+      - '.github/scripts/trivy-scan.sh'
   pull_request:
     branches: [develop, main]
     paths:
       - 'src/redirect-service/**'
       - '.github/workflows/redirect-ci.yml'
+      - '.github/scripts/trivy-scan.sh'
 
 jobs:
   test:
@@ -166,14 +168,44 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      # Dockerfile이 멀티스테이지라 이 스텝에서 컴파일(gradlew bootJar)과 실행 이미지 포장을 같이 한다.
+      # 별도로 jar를 미리 만들어둘 필요가 없다.
+      - name: 도커 이미지 빌드
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: redirect-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG src/redirect-service
 
-      - name: 도커 이미지 빌드 및 ECR push
+      - name: 날짜 (Trivy DB 캐시 키)
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # 취약점 DB만 하루 단위로 캐시한다. 실행마다 새 캐시를 만들면 저장소 한도(10GB)가 차서
+      # Gradle·Docker 빌드 캐시가 먼저 지워진다. 분석 캐시(fanal)는 넣지 않는다
+      - name: Trivy DB 캐시
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/trivy/db
+            ~/.cache/trivy/java-db
+          key: trivy-db-${{ steps.date.outputs.today }}
+          restore-keys: trivy-db-
+
+      # CRITICAL 취약점(패치 있는 것)이 있으면 여기서 멈춘다. 아래 push·태그 갱신이 실행되지 않는다.
+      - name: 이미지 취약점 스캔 (CRITICAL이면 push 중단)
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: redirect-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: bash .github/scripts/trivy-scan.sh $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: ECR push
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           ECR_REPOSITORY: redirect-service
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG src/redirect-service
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
@@ -211,4 +243,3 @@ jobs:
           done
           echo "최대 재시도 횟수 초과"
           exit 1
-
