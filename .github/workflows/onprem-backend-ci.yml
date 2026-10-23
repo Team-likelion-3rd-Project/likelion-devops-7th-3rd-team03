@@ -32,6 +32,8 @@ jobs:
   build-and-push:
     name: Build and push ${{ matrix.service }}
     runs-on: ubuntu-latest
+    # 평소 2~3분이다. 멈추면 기본 6시간을 기다리지 않고 실패(timed_out)로 알린다.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
