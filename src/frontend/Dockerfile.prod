@@ -2,7 +2,9 @@
 # VITE_* 는 빌드할 때 번들에 들어가니 값을 바꾸면 다시 빌드한다. 공개 값만 쓴다.
 # /api를 넘길 곳(API_UPSTREAM)은 실행할 때 환경 변수로 정한다.
 
-FROM node:20-alpine AS build
+# 빌드 단계는 빌드하는 머신의 CPU로 한 번만 돈다. 결과물(HTML/JS)은 CPU와 무관해서 amd64·arm64 이미지가 같이 쓴다.
+# 아래 nginx 단계에는 RUN이 없어서 에뮬레이션 없이 두 플랫폼 이미지를 만들 수 있다.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
