@@ -6,6 +6,7 @@
 #   - destination 네임스페이스가 snipy 다 (클라우드는 default).
 #   - 자동 동기화는 켜지만 prune(Git에서 사라진 리소스 삭제)과 selfHeal(손으로 바꾼 것 자동 복구)은 끈다.
 #   - RespectIgnoreDifferences 로 replicas 를 Sync 때 덮어쓰지 않는다.
+#   - 동기화가 실패하면 retry 로 최대 2번 더 시도한다.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -27,6 +28,13 @@ spec:
       selfHeal: false
     syncOptions:
       - RespectIgnoreDifferences=true
+    # 훅 Job 실패 등으로 동기화가 실패하면 30초, 60초 간격으로 2번 더 시도하고 멈춘다.
+    retry:
+      limit: 2
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
   # HPA 가 replicas 를 조절하므로 Git 값과 달라도 OutOfSync 로 보지 않는다.
   ignoreDifferences:
     - group: apps
