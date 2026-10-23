@@ -5,6 +5,11 @@ kind: Kustomization
 # AWS 전용(components/aws)과 Prometheus Operator 전용(components/monitoring) 리소스는 넣지 않는다.
 # snipy 네임스페이스는 infra/onprem/base/namespace.yaml에서 따로 관리한다 (여기서 만들지 않는다).
 # 시크릿은 infra/onprem/secrets의 SealedSecret을 먼저 적용해 둔다 (mysql-secrets, management-service-secrets, redirect-service-secrets, seaweedfs-s3-secrets).
+#
+# Argo CD 동기화 순서 (sync-wave)
+#   0: MySQL, SeaweedFS (+ 어노테이션 없는 ConfigMap·Service 등)
+#   1: 마이그레이션 Job, 버킷 Job (Sync 훅)
+#   2: 앱 (management, redirect, frontend)
 namespace: snipy
 
 resources:
@@ -24,6 +29,7 @@ patches:
   - path: patch-hpa.yaml
   - path: patch-redirect-service-nodeport.yaml
   - path: patch-redirect-fluent-bit.yaml
+  - path: patch-sync-wave.yaml
 
 # Fluent Bit 설정. 파일을 고치면 이름이 바뀌어 redirect 파드가 새 설정으로 다시 뜬다
 configMapGenerator:

@@ -11,7 +11,7 @@ develop 에 태그 커밋 (CI)  ->  이상 발견  ->  git revert  ->  develop �
 - 클러스터에 Argo CD가 있고(`argocd/README.md`), `snipy-dev` Application이 `infra/k8s/overlays/dev`를 가리키며 `Synced`, `Healthy` 상태다.
 - `snipy` 네임스페이스에 Secret 4개가 있다 (`secrets/README.md`).
 - 이미지는 GHCR에 올라가 있고 public이라 노드가 인증 없이 받는다. 롤백 대상(이전 태그)의 이미지가 지워지지 않았다.
-- Argo CD 동기화 방식을 정해 두었다 (아래 "동기화 방식").
+- `snipy-dev`는 `snipy-dev-app.yaml`로 적용했다 (자동 동기화, `prune`·`selfHeal` 꺼짐).
 
 ## 롤백 단위
 
@@ -22,12 +22,12 @@ develop 에 태그 커밋 (CI)  ->  이상 발견  ->  git revert  ->  develop �
 
 ## 동기화 방식
 
-Argo CD가 Git 변경을 언제 클러스터에 반영할지 정해야 한다.
+Argo CD가 Git 변경을 언제 클러스터에 반영할지는 아래 두 방식 중 하나다. 지금은 자동 동기화를 쓴다.
 
 | 방식 | 롤백 때 | 비고 |
 |---|---|---|
-| 수동 동기화 (기본) | 반영 후 UI에서 `Refresh`, `Sync`를 누른다 | 한 번 더 확인하고 적용한다. 리허설에서는 이쪽이 단계가 잘 보인다 |
-| 자동 동기화 | Argo CD가 약 3분 안에 알아서 반영한다 | develop 자동 배포의 완료 기준과 맞는다. `prune`, `selfHeal`은 별도로 정한다 |
+| 자동 동기화 (기본) | Argo CD가 약 3분 안에 알아서 반영한다 | `snipy-dev-app.yaml`의 설정. `prune`, `selfHeal`은 꺼져 있다 |
+| 수동 동기화 | 반영 후 UI에서 `Refresh`, `Sync`를 누른다 | 자동 동기화를 끈 경우. 끄는 방법은 `README.md` 4번 |
 
 기다리기 싫으면 강제로 새로 고친다.
 
@@ -136,10 +136,10 @@ kubectl -n snipy get pods -l app=frontend
 ### 리허설에서 확인된 점
 
 - **롤백 때 새 파드 템플릿이 만들어지지 않는다.** 같은 이미지의 이전 ReplicaSet을 다시 쓰고 새 리비전 번호를 붙인다. 그래서 `rollout history`에서 이전 번호(2)가 사라진다.
-- **한 번 실패한 Job은 Argo CD가 다시 만들지 않는다.** 지우고 `Sync`로 다시 만든다.
-- **끝난 Job은 `ttlSecondsAfterFinished` 때문에 10분 뒤 사라지고, Argo CD에는 `OutOfSync`로 남는다.** `db-migration`과 `seaweedfs-bucket-init`이 해당한다. `Sync`를 누르면 마이그레이션이 다시 실행되니, 프론트만 바꿀 때는 `Sync`에서 `frontend`만 선택한다. 자동 동기화를 켜기 전에 Job을 Argo CD 훅으로 바꾸거나 TTL을 없애야 한다.
-- **`ignoreDifferences`의 `replicas`는 `Sync`에서 값을 보존하지 않는다.** 보존하려면 Application에 `RespectIgnoreDifferences=true`가 필요하다.
-- **MySQL 첫 기동 때 `startupProbe`가 없으면 초기화가 liveness에 끊겨 root 비밀번호가 설정되지 않는다.** `overlays/dev/mysql.yaml`에 `startupProbe`를 넣었다 (리허설 브랜치에서만 적용된 상태).
+- **한 번 실패한 Job은 Argo CD가 다시 만들지 않는다.** 지우고 `Sync`로 다시 만든다. 지금은 Job이 Sync 훅이라 동기화할 때마다 새로 만들어지고, 실패하면 retry로 다시 시도한다.
+- **끝난 Job은 `ttlSecondsAfterFinished` 때문에 10분 뒤 사라지고, Argo CD에는 `OutOfSync`로 남는다.** `db-migration`과 `seaweedfs-bucket-init`이 해당한다. `Sync`를 누르면 마이그레이션이 다시 실행되니, 프론트만 바꿀 때는 `Sync`에서 `frontend`만 선택한다. 자동 동기화를 켜기 전에 Job을 Argo CD 훅으로 바꾸거나 TTL을 없애야 한다. 지금은 Job을 Sync 훅으로 바꾸고 TTL을 없애 해결했다. 프론트만 바꾸는 커밋에도 마이그레이션이 한 번 실행되지만, 여러 번 실행해도 안전하다.
+- **`ignoreDifferences`의 `replicas`는 `Sync`에서 값을 보존하지 않는다.** 보존하려면 Application에 `RespectIgnoreDifferences=true`가 필요하다. 지금은 `snipy-dev-app.yaml`에 넣었다.
+- **MySQL 첫 기동 때 `startupProbe`가 없으면 초기화가 liveness에 끊겨 root 비밀번호가 설정되지 않는다.** `overlays/dev/mysql.yaml`에 `startupProbe`를 넣었다.
 - **시각은 `kubectl`의 `AGE`와 `creationTimestamp`가 아니라 Argo CD `deployedAt`과 파드 `Ready` 조건으로 잰다.** 이 리허설에서는 cp1(API 서버)의 시계가 약 43시간 느려서, 파드의 `creationTimestamp`가 이틀 전으로 찍히고 `kubectl get pods`에 `<invalid> ago`가 나왔다. 시각을 비교하기 전에 각 VM에서 `date -u`와 `timedatectl status`로 시계가 맞는지 확인한다.
 - **리소스를 골라서 한 동기화(선택 동기화)는 Argo CD의 `status.history`에 남지 않는다.** 이런 동기화의 시각은 `kubectl -n argocd get app snipy-dev -o jsonpath='{.status.operationState.startedAt}{"  "}{.status.operationState.finishedAt}{"  "}{.status.operationState.syncResult.revision}{"\n"}'`로 보는데, 이 값은 다음 동기화가 실행되면 덮어써진다. 다음 `Sync`를 누르기 전에 적어 둔다.
 - **`kubectl`은 클러스터가 있는 VM(cp1)에서 root로 실행한다.** 호스트 PC의 `kubectl`은 다른 클러스터 설정을 가리킬 수 있어서 연결이 거부된다.
