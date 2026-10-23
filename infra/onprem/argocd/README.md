@@ -1,8 +1,9 @@
 # 온프렘 Argo CD
 
-클러스터(ON-guide, cp-addons.sh까지 끝난 상태)에 Argo CD를 설치하고 UI에 접속하는 방법이다. 설치만 다룬다. dev 환경을 Argo CD가 관리하게 하는 Application은 `infra/k8s/overlays/dev`를 가리키도록 따로 정리한다.
+클러스터(ON-guide, cp-addons.sh까지 끝난 상태)에 Argo CD를 설치하고 UI에 접속하는 방법이다. 설치와 dev 환경 Application 적용을 다룬다.
 
 - `cp-argocd.sh`: Argo CD 설치 (cp1에서 실행)
+- `snipy-dev-app.yaml`: dev 환경(`infra/k8s/overlays/dev`)을 `develop` 브랜치에서 가져오는 Application
 
 ## 버전과 호환성
 
@@ -53,7 +54,35 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.pas
 kubectl -n argocd delete secret argocd-initial-admin-secret
 ```
 
-## 3. 앱을 등록한 뒤 알아둘 것
+## 3. dev Application 적용
+
+dev 환경을 Argo CD가 `develop`에서 가져오게 한다. 호스트(저장소 루트)에서 cp1로 복사한다.
+
+```bash
+scp infra/onprem/argocd/snipy-dev-app.yaml k8s@192.168.122.11:~/argocd/
+```
+
+cp1에서 root로 실행한다. 먼저 만들지 않고 서버 검증만 한다.
+
+```bash
+kubectl apply --dry-run=server -f /home/k8s/argocd/snipy-dev-app.yaml
+```
+
+문제가 없으면 적용하고 상태를 본다.
+
+```bash
+kubectl apply -f /home/k8s/argocd/snipy-dev-app.yaml
+kubectl -n argocd get app snipy-dev -o jsonpath='{.status.sync.status} {.status.health.status}'; echo
+```
+
+- 같은 이름(`snipy-dev`)의 Application이 이미 있으면(예: 시험용 브랜치를 보던 것) 이 파일 내용으로 바뀐다.
+- 자동 동기화를 켜고 `prune`(Git에서 사라진 리소스 삭제)과 `selfHeal`(손으로 바꾼 것 자동 복구)은 끈다. `develop`에 머지되면 약 3분 안에 클러스터에 반영된다.
+- 끝난 Job(`db-migration`, `seaweedfs-bucket-init`)은 `ttlSecondsAfterFinished` 때문에 10분 뒤 사라져서 Argo CD에 `OutOfSync`, `Missing`으로 남는다. 새 커밋이 반영될 때 이 Job이 다시 만들어져 마이그레이션이 다시 실행된다. 마이그레이션이 여러 번 실행돼도 안전한지, Job을 어떻게 다룰지(Argo CD 훅 전환 또는 TTL 제거)는 아직 정하지 않았다.
+- 새 커밋이 `db-migration` 이미지 태그를 바꾸는데 이전 Job이 아직 남아 있으면 `field is immutable`로 동기화가 실패할 수 있다. 그때는 `kubectl -n snipy delete job db-migration`으로 지우고 다시 동기화한다.
+- 첫 동기화에서 `develop`과 클러스터의 현재 상태가 다르면 그 차이가 적용된다. UI의 `Diff`로 먼저 확인한다.
+- 자동 동기화를 끄고 수동으로 돌아가려면 아래 4번의 방법을 쓴다.
+
+## 4. 앱을 등록한 뒤 알아둘 것
 
 Argo CD는 Git에서 읽기만 한다. 저장소가 공개라 인증 정보도 주지 않았고, Git에 쓰지 않는다.
 
@@ -73,7 +102,7 @@ kubectl -n argocd patch app <앱 이름> --type merge -p '{"spec":{"syncPolicy":
 kubectl -n argocd patch app <앱 이름> --type merge -p '{"spec":{"syncPolicy":null}}'
 ```
 
-## 4. 되돌리기
+## 5. 되돌리기
 
 Argo CD 전체를 지운다 (CRD도 같이 지워진다). 앱이 관리하던 리소스는 finalizer가 없으면 남는다.
 
@@ -84,7 +113,7 @@ kubectl delete namespace argocd
 
 ## 주의
 
-- `infra/argocd/`의 Application은 아직 온프렘에 맞게 정리되지 않았다. `snipy-dev`는 `infra/k8s/overlays/dev`를 가리키지만 `destination`이 `default`이고 `prune: true`, `automated`가 켜져 있다. observability와 prod는 AWS용이다. 정리 전에는 온프렘에서 apply하지 않는다.
+- `infra/argocd/`의 Application은 클라우드(AWS)용이다. `snipy-dev`는 `destination`이 `default`이고 `prune: true`, `selfHeal: true`가 켜져 있고, root app은 observability와 prod까지 끌어온다. 온프렘에서는 apply하지 않고 이 폴더의 `snipy-dev-app.yaml`을 쓴다.
 - `snipy` 네임스페이스는 `infra/onprem/base`에서만 관리하고 Argo CD 앱 경로 밖에 둔다. 앱이 지워도 네임스페이스는 남는다.
 - 각자 클러스터를 만들기 때문에 이 절차는 각 클러스터에서 한 번씩 한다. 설치 전에 호스트 PC와 VM의 메모리, 디스크 여유를 확인한다.
 - Argo CD가 받는 이미지는 `quay.io`, `public.ecr.aws`, `ghcr.io`다. 워커에서 이 레지스트리에 접속되는지 먼저 확인한다.
