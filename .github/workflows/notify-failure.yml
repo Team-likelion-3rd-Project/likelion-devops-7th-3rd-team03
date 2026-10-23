@@ -15,7 +15,7 @@ jobs:
   slack:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'failure' &&
+      (contains(fromJSON('["failure","timed_out"]'), github.event.workflow_run.conclusion) &&
        contains(fromJSON('["develop","main"]'), github.event.workflow_run.head_branch))
     runs-on: ubuntu-latest
     steps:
@@ -25,7 +25,9 @@ jobs:
           WF_NAME: ${{ github.event.workflow_run.name || '시험 알림' }}
           BRANCH: ${{ github.event.workflow_run.head_branch || '-' }}
           TITLE: ${{ github.event.workflow_run.display_title || '-' }}
-          ACTOR: ${{ github.event.workflow_run.actor.login || github.actor }}
+          # Re-run 은 actor 가 처음 실행한 사람이라 triggering_actor(다시 실행한 사람)를 먼저 쓴다.
+          ACTOR: ${{ github.event.workflow_run.triggering_actor.login || github.event.workflow_run.actor.login || github.actor }}
+          RESULT: ${{ github.event.workflow_run.conclusion || '시험' }}
           RUN_URL: ${{ github.event.workflow_run.html_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
@@ -34,6 +36,6 @@ jobs:
           fi
           # Slack 은 & < > 를 멘션, 링크로 해석하니 (예: 커밋 제목의 <!channel>) 문자로 바꿔 둔다.
           esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
-          text=$(printf ':x: *%s* 실패\n브랜치: %s / 실행자: %s\n%s\n%s' "$(esc "$WF_NAME")" "$(esc "$BRANCH")" "$(esc "$ACTOR")" "$(esc "$TITLE")" "$RUN_URL")
+          text=$(printf ':x: *%s* 실패 (%s)\n브랜치: %s / 실행자: %s\n%s\n%s' "$(esc "$WF_NAME")" "$(esc "$RESULT")" "$(esc "$BRANCH")" "$(esc "$ACTOR")" "$(esc "$TITLE")" "$RUN_URL")
           jq -n --arg text "$text" '{text: $text}' |
             curl -fsS -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
