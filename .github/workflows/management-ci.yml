@@ -149,13 +149,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: write
+      contents: read # 태그 갱신 커밋은 CI 봇 토큰으로 push 한다
 
     steps:
+      # develop 보호 규칙의 우회 대상인 CI 봇(GitHub App) 토큰을 받는다. 태그 커밋 push 에 쓴다.
+      - name: CI 봇 토큰 발급
+        id: bot
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CI_BOT_APP_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+
       - name: 코드 체크아웃
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.BOT_PUSH_TOKEN }}
+          token: ${{ steps.bot.outputs.token }}
 
       - name: AWS 자격증명 설정
         uses: aws-actions/configure-aws-credentials@v4
@@ -192,9 +200,11 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           ECR_REPOSITORY: management-service
           IMAGE_TAG: ${{ github.sha }}
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BOT="${{ steps.bot.outputs.app-slug }}[bot]"
+          git config user.name "$BOT"
+          git config user.email "$(gh api "/users/$BOT" --jq .id)+$BOT@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
@@ -204,7 +214,7 @@ jobs:
               echo "변경 없음, 종료"
               exit 0
             fi
-            git commit -m "chore: management-service 이미지 태그 갱신 ($IMAGE_TAG)"
+            git commit -m "chore: management-service 이미지 태그 갱신 ($IMAGE_TAG) [skip ci]"
             if git push origin HEAD:${{ github.ref_name }}; then
               echo "push 성공"
               exit 0
