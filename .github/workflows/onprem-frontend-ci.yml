@@ -31,6 +31,8 @@ jobs:
   build-and-push:
     name: Build and push to GHCR
     runs-on: ubuntu-latest
+    # 평소 1분 안팎이고 캐시 없는 첫 빌드가 14분이었다. 멈추면 기본 6시간을 기다리지 않고 실패(timed_out)로 알린다.
+    timeout-minutes: 20
     env:
       # 구글이 IP·HTTP redirect URI 를 받지 않아 3종 모두 localhost 터널 주소로 통일한다.
       # localhost:3000 은 모든 PC에서 같은 주소라 이미지 하나를 같이 쓴다. 로그인은 터널(ssh -L 3000:...)을 연 상태에서 된다.
