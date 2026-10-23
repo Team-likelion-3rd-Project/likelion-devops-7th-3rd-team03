@@ -17,7 +17,7 @@ develop 에 태그 커밋 (CI)  ->  이상 발견  ->  git revert  ->  develop �
 
 | 대상 | 바뀌는 곳 | 태그를 바꾸는 주체 |
 |---|---|---|
-| 프론트 | `newTag` 1줄 (`...-frontend`) | `onprem-frontend-ci.yml`이 커밋 (`chore: 프론트 이미지 태그를 <SHA 7자리>로 갱신 [skip ci]`) |
+| 프론트 | `newTag` 1줄 (`...-frontend`) | `onprem-frontend-ci.yml`이 커밋 (`chore: 프론트 이미지 태그를 <SHA 7자리>로 갱신 [skip ci]`). 지금은 `develop` 보호 규칙 때문에 이 push가 막혀 있어서 봇 계정 설정 전에는 사람이 태그를 바꾸는 PR을 올린다 |
 | 백엔드 | `newTag` 3줄 (management-service, redirect-service, db-migration. 세 이미지는 같은 SHA) | 지금은 사람이 바꾼다. CI가 바꾸게 되면 같은 방식 |
 
 ## 동기화 방식
@@ -62,7 +62,7 @@ git revert <태그 커밋 SHA>
 git push -u origin HEAD
 ```
 
-GitHub에서 해당 커밋의 `Revert` 버튼으로 PR을 만들어도 된다. 리뷰와 머지를 거치므로 리허설에서는 이 방법으로 시간을 잰다. 급하면 권한이 있는 사람이 `develop`에 바로 push한다.
+GitHub에서 해당 커밋의 `Revert` 버튼으로 PR을 만들어도 된다. `develop`에는 PR과 리뷰를 거쳐야 하므로 그만큼 시간이 더 걸린다. 급하면 권한이 있는 사람이 `develop`에 바로 push한다. 이번 리허설은 시험용 브랜치에 바로 push해서 이 시간이 들어 있지 않다 (아래 "기록").
 
 **B. 이전 태그를 직접 지정** (revert 충돌이 날 때)
 
@@ -87,6 +87,8 @@ kubectl -n snipy get deploy frontend -o jsonpath='{.spec.template.spec.container
 kubectl -n snipy get pods -l app=frontend
 ```
 
+백엔드는 `deploy/frontend` 대신 `deploy/management-service`, `deploy/redirect-service`로 같은 명령을 쓴다.
+
 이미지가 1번에서 적어 둔 **이전 태그**로 돌아왔고, `Synced`, `Healthy`이며, 파드가 `Running`이어야 한다. 화면이 열리는지도 본다 (`http://192.168.122.21:30080`, 로그인은 터널 접속 `http://localhost:3000`에서만 된다).
 
 ## 알아둘 점
@@ -102,7 +104,7 @@ kubectl -n snipy get pods -l app=frontend
 완료 기준은 "롤백 기록"이다. 프론트와 백엔드가 함께 한다.
 
 1. 리허설 전 상태를 적는다: 현재 태그, Application 상태.
-2. 프론트 코드에 눈에 보이는 작은 변경을 머지해서 CI가 새 태그를 커밋하게 한다. 새 이미지가 배포된 것을 확인한다 (이 시점이 `T0`).
+2. 시험용 브랜치에서 이미지 태그를 GHCR에 있는 다른 태그로 바꿔 푸시하고 Argo CD로 반영한다. 새 이미지가 배포된 것을 확인한다 (이 시점이 `T0`).
 3. 위 롤백 순서를 따라 되돌린다. 단계마다 시각을 적는다.
 4. 이전 이미지로 복귀한 것을 확인한다.
 5. 되돌린 상태에서 화면이 정상인지 본다. 필요하면 다시 최신으로 돌아간다 (롤백을 되돌리는 revert 또는 새 머지).
@@ -110,9 +112,9 @@ kubectl -n snipy get pods -l app=frontend
 
 ### 기록
 
-시각은 한국 시간이다. Argo CD 반영 시각은 `kubectl -n argocd get app snipy-dev -o jsonpath='{range .status.history[*]}{.id}{"  "}{.revision}{"  "}{.deployedAt}{"\n"}{end}'`의 `deployedAt`(UTC)에 9시간을 더한 값이다.
+시각은 한국 시간이다. Argo CD 반영 시각은 전체 동기화이면 `kubectl -n argocd get app snipy-dev -o jsonpath='{range .status.history[*]}{.id}{"  "}{.revision}{"  "}{.deployedAt}{"\n"}{end}'`의 `deployedAt`(UTC)에 9시간을 더한 값이고, 리소스를 골라 한 동기화(백엔드)는 아래 "리허설에서 확인된 점"의 `operationState`의 `finishedAt`에 9시간을 더한 값이다.
 
-| 항목 | 프론트 (2026-10-22) | 백엔드 |
+| 항목 | 프론트 (2026-10-22) | 백엔드 (2026-10-23) |
 |---|---|---|
 | 롤백 전 태그 | `edb1805a26fe…` | `e04dfaa132cf…` (management, redirect, db-migration 같은 태그) |
 | 새 버전 태그(릴리스) | `691a567c6bc1…` | `3140a2a3a8a5…` |

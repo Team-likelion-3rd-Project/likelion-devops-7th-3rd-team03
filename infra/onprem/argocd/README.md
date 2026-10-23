@@ -3,6 +3,7 @@
 클러스터(ON-guide, cp-addons.sh까지 끝난 상태)에 Argo CD를 설치하고 UI에 접속하는 방법이다. 설치만 다룬다. dev 환경을 Argo CD가 관리하게 하는 Application은 `infra/k8s/overlays/dev`를 가리키도록 따로 정리한다.
 
 - `cp-argocd.sh`: Argo CD 설치 (cp1에서 실행)
+- [`rollback.md`](rollback.md): 배포를 이전 이미지로 되돌리는 절차와 리허설 기록
 
 ## 버전과 호환성
 
