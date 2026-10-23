@@ -94,8 +94,7 @@ kubectl -n snipy get pods -l app=frontend
 ## 알아둘 점
 
 - **다음 프론트 머지가 태그를 다시 올린다.** CI는 `src/frontend`가 머지될 때마다 태그를 새 SHA로 바꾼다. 문제 코드가 `develop`에 남아 있으면 다음 머지 때 그 코드가 다시 배포된다. 근본 해결은 문제가 된 코드 커밋을 되돌리는 것이고, 태그 롤백은 그 사이를 버티는 응급 조치다.
-- **DB 마이그레이션은 되돌려지지 않는다.** 백엔드를 이전 태그로 돌려도 `db-migration`이 이미 바꾼 스키마는 그대로다. 마이그레이션이 포함된 배포는 롤백 전에 스키마 호환 여부를 먼저 본다.
-- **ConfigMap, Secret 변경은 이미지와 별개다.** ConfigMap은 같은 `overlays/dev`에 있으니 `git revert`로 함께 되돌아간다. Secret은 `infra/onprem/secrets`의 SealedSecret이라 이미지 롤백과 따로 적용한다.
+- **DB 마이그레이션은 되돌려지지 않는다.** 백엔드를 이전 태그로 돌려도 `db-migration`이 이미 바꾼 스키마는 그대로다. 마이그레이션이 포함된 배포는 롤백 전에 스키마 호환 여부를 먼저 본다. 작성 규칙과 확인 방법은 [`src/db/README.md`의 마이그레이션 작성 규칙](../../../src/db/README.md#마이그레이션-작성-규칙)을 따른다.- **ConfigMap, Secret 변경은 이미지와 별개다.** ConfigMap은 같은 `overlays/dev`에 있으니 `git revert`로 함께 되돌아간다. Secret은 `infra/onprem/secrets`의 SealedSecret이라 이미지 롤백과 따로 적용한다.
 - **Argo CD UI의 `History and Rollback`은 쓰지 않는다.** 클러스터만 되돌리고 Git은 그대로라 곧 어긋난다. 자동 동기화가 켜져 있으면 아예 막힌다. 롤백의 기준은 Git이다.
 - **되돌리는 커밋은 이미지를 다시 만들지 않는다.** 되돌리는 커밋이 바꾸는 파일(`infra/k8s/**`)은 프론트 이미지 워크플로(`onprem-frontend-ci.yml`)의 `paths`에 없다. 이미지는 이미 GHCR에 있으니 다시 만들 필요도 없다. (시크릿 스캔처럼 모든 경로에서 도는 검사는 평소처럼 돈다.)
 
