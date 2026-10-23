@@ -1,0 +1,39 @@
+# 온프렘 이미지 워크플로가 develop, main에서 실패하면 Slack으로 알린다.
+# SLACK_WEBHOOK_URL 은 저장소 Secret 으로만 둔다. 없으면 알림을 건너뛰고 경고만 남긴다.
+# 시험: Actions 탭 > Notify Failure > Run workflow (이 파일이 기본 브랜치 develop 에 있어야 한다).
+name: Notify Failure
+
+on:
+  workflow_run:
+    workflows: ["Onprem Frontend Image", "Onprem Backend Images"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  slack:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+       contains(fromJSON('["develop","main"]'), github.event.workflow_run.head_branch))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WF_NAME: ${{ github.event.workflow_run.name || '시험 알림' }}
+          BRANCH: ${{ github.event.workflow_run.head_branch || '-' }}
+          TITLE: ${{ github.event.workflow_run.display_title || '-' }}
+          ACTOR: ${{ github.event.workflow_run.actor.login || github.actor }}
+          RUN_URL: ${{ github.event.workflow_run.html_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL 이 없어 알림을 보내지 않았다"
+            exit 0
+          fi
+          # Slack 은 & < > 를 멘션, 링크로 해석하니 (예: 커밋 제목의 <!channel>) 문자로 바꿔 둔다.
+          esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+          text=$(printf ':x: *%s* 실패\n브랜치: %s / 실행자: %s\n%s\n%s' "$(esc "$WF_NAME")" "$(esc "$BRANCH")" "$(esc "$ACTOR")" "$(esc "$TITLE")" "$RUN_URL")
+          jq -n --arg text "$text" '{text: $text}' |
+            curl -fsS -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
