@@ -1,5 +1,5 @@
 # =====================================================================
-# Redirect Service CI
+# Redirect-ci Service CI
 #
 # 목적: redirect-service 코드가 push/PR 될 때마다
 #       테스트 → (push일 때만) 도커 이미지 빌드 → 취약점 스캔 → ECR push 까지 자동화한다.
@@ -12,6 +12,8 @@
 #
 # 전제 조건:
 #   - infra/terraform/ecr.tf 로 ECR 저장소(redirect-service)가 미리 생성돼 있어야 함
+#
+#
 #   - AWS 자격증명은 GitHub OIDC(role-to-assume)로 처리 — 정적 키 불필요
 #     (Role: arn:aws:iam::834922934330:role/snipy-github-actions-ci)
 # =====================================================================
@@ -100,7 +102,7 @@ jobs:
           DB_ROOT_USER: root
           DB_ROOT_PASSWORD: root
           # APP_PASSWORD는 run-migration.sh가 shortlink_app 계정을 생성할 때 쓰는 값.
-          # 아래 "Gradle 테스트" 스텝의 DB_APP_PASSWORD와 반드시 같은 값이어야
+          # 아래 "Gradle 빌드 및 테스트" 스텝의 DB_APP_PASSWORD와 반드시 같은 값이어야
           # 앱이 그 계정으로 정상 로그인할 수 있다.
           APP_PASSWORD: ${{ env.DB_APP_PASSWORD }}
           MIGRATOR_PASSWORD: ${{ env.DB_MIGRATOR_PASSWORD }}
@@ -124,7 +126,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew test
 
-      # 테스트 실패 시에도 원인 파악용 리포트를 남겨둔다.
+      # 6. 테스트 실패 시에도 원인 파악용 리포트를 남겨둔다.
       - name: 테스트 결과 업로드 (실패 시에도 확인 가능하게)
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,13 +142,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: write
+      contents: read # 태그 갱신 커밋은 CI 봇 토큰으로 push 한다
 
     steps:
+      # develop 보호 규칙의 우회 대상인 CI 봇(GitHub App) 토큰을 받는다. 태그 커밋 push 에 쓴다.
+      - name: CI 봇 토큰 발급
+        id: bot
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CI_BOT_APP_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+
       - name: 코드 체크아웃
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.BOT_PUSH_TOKEN }}
+          token: ${{ steps.bot.outputs.token }}
 
       - name: AWS 자격증명 설정
         uses: aws-actions/configure-aws-credentials@v4
@@ -159,6 +169,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       # Dockerfile이 멀티스테이지라 이 스텝에서 컴파일(gradlew bootJar)과 실행 이미지 포장을 같이 한다.
+      # 별도로 jar를 미리 만들어둘 필요가 없다.
       - name: 도커 이미지 빌드
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
@@ -170,11 +181,14 @@ jobs:
         id: date
         run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
-      # 취약점 DB(약 1GB)를 하루 단위로 캐시해 다운로드 횟수를 줄인다
+      # 취약점 DB만 하루 단위로 캐시한다. 실행마다 새 캐시를 만들면 저장소 한도(10GB)가 차서
+      # Gradle·Docker 빌드 캐시가 먼저 지워진다. 분석 캐시(fanal)는 넣지 않는다
       - name: Trivy DB 캐시
         uses: actions/cache@v4
         with:
-          path: ~/.cache/trivy
+          path: |
+            ~/.cache/trivy/db
+            ~/.cache/trivy/java-db
           key: trivy-db-${{ steps.date.outputs.today }}
           restore-keys: trivy-db-
 
@@ -205,9 +219,11 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           ECR_REPOSITORY: redirect-service
           IMAGE_TAG: ${{ github.sha }}
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BOT="${{ steps.bot.outputs.app-slug }}[bot]"
+          git config user.name "$BOT"
+          git config user.email "$(gh api "/users/$BOT" --jq .id)+$BOT@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
@@ -217,7 +233,7 @@ jobs:
               echo "변경 없음, 종료"
               exit 0
             fi
-            git commit -m "chore: redirect-service 이미지 태그 갱신 ($IMAGE_TAG)"
+            git commit -m "chore: redirect-service 이미지 태그 갱신 ($IMAGE_TAG) [skip ci]"
             if git push origin HEAD:${{ github.ref_name }}; then
               echo "push 성공"
               exit 0
