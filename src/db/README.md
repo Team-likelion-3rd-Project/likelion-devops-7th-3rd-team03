@@ -12,7 +12,7 @@
 
 ```sql
 CREATE TABLE link_daily_dimension_stats (
-                                            id, link_id, stat_date, dimension_type, dimension_value, click_count
+    id, link_id, stat_date, dimension_type, dimension_value, click_count
     -- UNIQUE(link_id, stat_date, dimension_type, dimension_value)
 );
 ```
@@ -94,7 +94,7 @@ users (1) ──< links (1) ──< click_events
 
 논의 결과:
 
-* `links`↔`users`, `link_daily_stats`↔`links`, `link_daily_dimension_stats`↔`links`는 **유지** —
+* `links`↔`users`, `link_daily_stats`↔`links`, `link_daily_dimension_stats`↔`links`는 **유지** —  
 * `click_events`↔`links`만 **제거**했습니다(`V2__drop_click_events_fk.sql`) — 이 FK는 배포 방식과 무관하게, MySQL이 파티션된 InnoDB 테이블에 FK를 허용하지 않는다는 기술적 제약과 직결됩니다. 초당 800클릭 요구사항을 감당하려면 `click_events` 월별 파티셔닝이 필요해서, 이 FK만은 반드시 제거해야 했습니다.
 
 제거 후 FK는 3개(`links`↔`users`, `link_daily_stats`↔`links`, `link_daily_dimension_stats`↔`links`)가 남습니다.
@@ -103,7 +103,7 @@ users (1) ──< links (1) ──< click_events
 
 ```sql
 SELECT COUNT(*) FROM click_events e
-                         LEFT JOIN links l ON l.id = e.link_id WHERE l.id IS NULL;
+  LEFT JOIN links l ON l.id = e.link_id WHERE l.id IS NULL;
 ```
 
 ---
