@@ -4,6 +4,7 @@
 
 - `cp-argocd.sh`: Argo CD 설치 (cp1에서 실행)
 - `snipy-dev-app.yaml`: dev 환경(`infra/k8s/overlays/dev`)을 `develop` 브랜치에서 가져오는 Application
+- [`rollback.md`](rollback.md): 배포를 이전 이미지로 되돌리는 절차와 리허설 기록
 
 ## 버전과 호환성
 
