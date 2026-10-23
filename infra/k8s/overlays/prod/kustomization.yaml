@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - ../../base
   - external-secrets.yaml
+  - migration-job.yaml
 
 components:
   - ../../components/aws
@@ -16,3 +17,10 @@ patches:
   - path: patch-athena-sa.yaml
   - path: patch-ingress.yaml
   - path: patch-athena-cronjob.yaml
+
+# 마이그레이션 이미지는 온프렘 CI(onprem-backend-ci)가 GHCR에 올리는 것을 쓴다.
+# prod 이미지 레지스트리와 태그 자동 갱신은 (다)-2에서 정한다.
+images:
+  - name: db-migration
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
+    newTag: c571ad7d5d79b9e4aa7ddc1c1fb07a6cc802c8d9
