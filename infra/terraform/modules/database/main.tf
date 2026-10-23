@@ -56,6 +56,39 @@ resource "aws_secretsmanager_secret_version" "rds_app_password" {
   secret_string = random_password.rds_app_user.result
 }
 
+#── 마이그레이션·읽기 전용 계정 비밀번호 (Secrets Manager에 자동 저장) ───
+# src/db/00-database-setup.sql이 만드는 shortlink_migrator·shortlink_readonly 계정용.
+# prod 마이그레이션 Job(infra/k8s/overlays/prod/migration-job.yaml)이 ExternalSecret으로 받는다.
+resource "random_password" "rds_migrator" {
+  length  = 20
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "rds_migrator_password" {
+  name                    = "${var.cluster_name}/rds/migrator-password"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "rds_migrator_password" {
+  secret_id     = aws_secretsmanager_secret.rds_migrator_password.id
+  secret_string = random_password.rds_migrator.result
+}
+
+resource "random_password" "rds_readonly" {
+  length  = 20
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "rds_readonly_password" {
+  name                    = "${var.cluster_name}/rds/readonly-password"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "rds_readonly_password" {
+  secret_id     = aws_secretsmanager_secret.rds_readonly_password.id
+  secret_string = random_password.rds_readonly.result
+}
+
 # ── RDS 인스턴스 ───────────────────────────────
 # Multi-AZ로 이중화 (Primary + Standby, 동기 복제)
 resource "aws_db_instance" "main" {
