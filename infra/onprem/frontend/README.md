@@ -3,7 +3,7 @@
 프론트를 nginx 이미지로 만들어 GHCR에 올리고 VM 클러스터가 받아 간다. 매니페스트(Deployment, Service)와 배포 절차는 dev overlay로 옮겼다: [`infra/k8s/overlays/dev`](../../k8s/overlays/dev/README.md).
 
 - `src/frontend/Dockerfile.prod`, `src/frontend/nginx/default.conf.template`: 운영 이미지
-- `.github/workflows/onprem-frontend-ci.yml`: develop 머지 때 이미지를 만들어 GHCR에 올리고, overlay의 프론트 태그를 그 커밋 SHA로 바꾼다.
+- `.github/workflows/onprem-frontend-ci.yml`: develop 머지 때 이미지를 만들어 GHCR에 올리고, overlay의 프론트 태그를 그 커밋 SHA로 바꾼다. 이미지는 `linux/amd64`와 `linux/arm64`를 한 태그에 같이 올려서 Apple Silicon 맥의 로컬 클러스터도 같은 태그를 받는다.
 - `build-and-load.sh`: CI를 쓸 수 없을 때 손으로 하는 길. 기본은 워커 두 대에 tar로 넣고, `PUSH=1`이면 GHCR로 올린다.
 
 ```
