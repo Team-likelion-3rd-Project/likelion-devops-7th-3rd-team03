@@ -98,7 +98,10 @@ spec:
                 sleep 3
               done
               aws --endpoint-url http://seaweedfs:8333 s3 ls >/dev/null 2>&1 || { echo "!! 3분 안에 SeaweedFS에 연결하지 못했습니다"; exit 1; }
-              aws --endpoint-url http://seaweedfs:8333 s3 mb "s3://snipy-click-logs" || true
+              # 이미 있으면 mb가 실패하므로 무시하고, 실제로 있는지는 head-bucket으로 확인한다
+              aws --endpoint-url http://seaweedfs:8333 s3 mb "s3://snipy-click-logs" 2>/dev/null || true
+              aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket snipy-click-logs \
+                || { echo "!! 버킷 snipy-click-logs 를 만들지 못했습니다"; exit 1; }
               echo "bucket ready: snipy-click-logs"
           env:
             - name: AWS_ACCESS_KEY_ID

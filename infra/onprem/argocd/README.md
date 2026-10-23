@@ -78,8 +78,10 @@ kubectl -n argocd get app snipy-dev -o jsonpath='{.status.sync.status} {.status.
 
 - 같은 이름(`snipy-dev`)의 Application이 이미 있으면(예: 시험용 브랜치를 보던 것) 이 파일 내용으로 바뀐다.
 - 자동 동기화를 켜고 `prune`(Git에서 사라진 리소스 삭제)과 `selfHeal`(손으로 바꾼 것 자동 복구)은 끈다. `develop`에 머지되면 약 3분 안에 클러스터에 반영된다.
-- 끝난 Job(`db-migration`, `seaweedfs-bucket-init`)은 `ttlSecondsAfterFinished` 때문에 10분 뒤 사라져서 Argo CD에 `OutOfSync`, `Missing`으로 남는다. 새 커밋이 반영될 때 이 Job이 다시 만들어져 마이그레이션이 다시 실행된다. 마이그레이션이 여러 번 실행돼도 안전한지, Job을 어떻게 다룰지(Argo CD 훅 전환 또는 TTL 제거)는 아직 정하지 않았다.
-- 새 커밋이 `db-migration` 이미지 태그를 바꾸는데 이전 Job이 아직 남아 있으면 `field is immutable`로 동기화가 실패할 수 있다. 그때는 `kubectl -n snipy delete job db-migration`으로 지우고 다시 동기화한다.
+- 동기화가 실패하면(훅 Job 실패 등) Argo CD가 30초, 1분, 2분 간격으로 3번 다시 시도한다 (`retry`). 그래도 실패하면 원인을 고친 뒤 UI에서 `Sync`를 누른다.
+- `db-migration`과 `seaweedfs-bucket-init`은 Argo CD Sync 훅이다. 동기화할 때마다 이전 Job을 지우고(`BeforeHookCreation`) 새로 실행한다. 그래서 Argo CD 화면에 `OutOfSync`, `Missing`으로 남지 않고, 이미지 태그가 바뀌어도 `field is immutable`이 나지 않는다.
+- 순서는 sync-wave로 정한다: MySQL·SeaweedFS(0) → 마이그레이션·버킷 Job(1) → 앱(2). 앱이 `ddl-auto: validate`라서 마이그레이션보다 먼저 뜨면 기동에 실패하기 때문이다. 마이그레이션이 실패하면 앱은 새 버전으로 바뀌지 않는다.
+- 마이그레이션은 여러 번 실행해도 안전하다. `run-migration.sh`가 `schema_history`에 버전과 checksum을 남기고, 이미 성공한 버전은 건너뛴다. 단, 이미 적용된 `V*.sql`을 고치면 checksum이 달라져 Job이 실패한다. 이미 적용된 파일은 고치지 말고 새 버전 파일을 추가한다.
 - 첫 동기화에서 `develop`과 클러스터의 현재 상태가 다르면 그 차이가 적용된다. UI의 `Diff`로 먼저 확인한다.
 - 자동 동기화를 끄고 수동으로 돌아가려면 아래 4번의 방법을 쓴다.
 

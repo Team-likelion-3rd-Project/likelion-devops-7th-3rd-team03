@@ -1,0 +1,22 @@
+# 앱은 마이그레이션·버킷 Job(wave 1)이 끝난 뒤 배포한다.
+# Deployment는 base(AWS 공용)에 있어서 overlay에서 어노테이션만 붙인다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redirect-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
