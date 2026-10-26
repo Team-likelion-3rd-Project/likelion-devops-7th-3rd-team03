@@ -8,16 +8,22 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
+  Legend
 } from 'recharts'
 import { listLinks } from '../api/links'
-import { getDailyStats, getReferrerStats, getDailyChange, getBreakdown, getRealtimeCount } from '../api/stats'
+import {
+  getDailyStats,
+  getReferrerStats,
+  getDailyChange,
+  getBreakdown,
+  getRealtimeCount
+} from '../api/stats'
 import { ApiError } from '../api/http'
 
 const RANGE_OPTIONS = [
   { label: '7일', days: 7 },
   { label: '14일', days: 14 },
-  { label: '30일', days: 30 },
+  { label: '30일', days: 30 }
 ]
 
 function daysAgoIso(n) {
@@ -61,7 +67,7 @@ export function LinkStats() {
         getReferrerStats(linkId, from, to),
         getDailyChange(linkId),
         getBreakdown(linkId, 'DEVICE', from, to),
-        getBreakdown(linkId, 'REGION', from, to),
+        getBreakdown(linkId, 'REGION', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
@@ -150,7 +156,10 @@ export function LinkStats() {
           </>
         )}
         {/* link_daily_stats는 배치가 어제까지만 채워서 오늘 클릭이 빠져있다. realtime(오늘, Redis)을 더해 보정한다. */}
-        <StatTile label="총 클릭" value={(daily.summary.totalClicks + (realtime ?? 0)).toLocaleString()} />
+        <StatTile
+          label="총 클릭"
+          value={(daily.summary.totalClicks + (realtime ?? 0)).toLocaleString()}
+        />
       </div>
 
       <div className="card chart-card">
@@ -194,7 +203,7 @@ export function LinkStats() {
                   background: 'var(--surface-1)',
                   border: '1px solid var(--border)',
                   borderRadius: 8,
-                  fontSize: 13,
+                  fontSize: 13
                 }}
                 labelStyle={{ color: 'var(--text-primary)' }}
               />
@@ -242,7 +251,8 @@ export function LinkStats() {
 
 function BreakdownTable({ rows, nameKey }) {
   if (!rows) return <p className="empty-state empty-state--inline">불러오는 중...</p>
-  if (rows.length === 0) return <p className="empty-state empty-state--inline">해당 기간에 데이터가 없습니다.</p>
+  if (rows.length === 0)
+    return <p className="empty-state empty-state--inline">해당 기간에 데이터가 없습니다.</p>
   return (
     <table className="table">
       <thead>

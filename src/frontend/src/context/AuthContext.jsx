@@ -48,7 +48,12 @@ export function AuthProvider({ children }) {
   const signup = useCallback(async ({ nickname, email, profileImageUrl }) => {
     const pending = authApi.loadPendingSignup()
     if (!pending) throw new Error('가입 정보가 없습니다. 다시 로그인해주세요.')
-    await authApi.completeSignup({ signupToken: pending.signupToken, nickname, email, profileImageUrl })
+    await authApi.completeSignup({
+      signupToken: pending.signupToken,
+      nickname,
+      email,
+      profileImageUrl
+    })
     setStoredProvider(pending.provider)
     setPendingSignup(null)
     setUser(userFromStoredToken())
@@ -90,7 +95,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, pendingSignup, loginWithSocial, signup, cancelSignup, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, pendingSignup, loginWithSocial, signup, cancelSignup, logout }}
+    >
       {children}
     </AuthContext.Provider>
   )

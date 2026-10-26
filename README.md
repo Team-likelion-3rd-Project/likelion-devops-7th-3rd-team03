@@ -161,6 +161,8 @@ npm run dev
 
 ```bash
 {{./gradlew test}}
+cd frontend && npm run lint          # 코드 규칙 검사 (ESLint)
+cd frontend && npm run format:check  # 포맷 검사 (고치려면 npm run format)
 cd frontend && npm run build
 ```
 

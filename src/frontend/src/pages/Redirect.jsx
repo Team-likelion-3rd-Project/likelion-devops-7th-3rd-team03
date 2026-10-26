@@ -80,9 +80,9 @@ export function RedirectHandler() {
           <>
             <p className="redirect-status redirect-status--error">404 Not Found</p>
             <p className="hero__sub">
-              존재하지 않거나 삭제된 링크입니다. (삭제된 링크는 <code>deleted_at</code>이
-              채워져 있어 코드가 영구 점유된 채로 조회에서 제외됩니다 — 재발급 시 피싱 벡터가
-              되는 것을 막기 위함입니다)
+              존재하지 않거나 삭제된 링크입니다. (삭제된 링크는 <code>deleted_at</code>이 채워져
+              있어 코드가 영구 점유된 채로 조회에서 제외됩니다 — 재발급 시 피싱 벡터가 되는 것을
+              막기 위함입니다)
             </p>
           </>
         )}
@@ -94,8 +94,8 @@ export function RedirectHandler() {
               {reason === 'EXPIRED'
                 ? '만료된 링크입니다 (expires_at 경과).'
                 : '소유자가 비활성화한 링크입니다 (is_active = 0).'}{' '}
-              문서 6.13 미결정 사항 #5 — 이 데모는 404(존재하지 않음)와 410(존재했지만 접근
-              불가)을 구분해서 응답합니다.
+              문서 6.13 미결정 사항 #5 — 이 데모는 404(존재하지 않음)와 410(존재했지만 접근 불가)을
+              구분해서 응답합니다.
             </p>
           </>
         )}

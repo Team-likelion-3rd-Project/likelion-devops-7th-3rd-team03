@@ -15,13 +15,12 @@ import {
   MAX_CUSTOM_ALIASES_PER_USER,
   CACHE_TTL_MS,
   NEGATIVE_CACHE_TTL_MS,
-  BATCH_AGGREGATION_DELAY_MS,
+  BATCH_AGGREGATION_DELAY_MS
 } from './schema'
 
 // ---------------------------------------------------------------------------
 // 네트워크 왕복 시뮬레이션 (ALB -> EC2 -> RDS Proxy 하고도 비슷한 체감 지연)
 // ---------------------------------------------------------------------------
-const NOT_FOUND = Symbol('NOT_FOUND')
 const delay = (ms = 220 + Math.random() * 180) => new Promise((r) => setTimeout(r, ms))
 
 class ApiError extends Error {
@@ -52,7 +51,7 @@ function cacheSet(shortCode, value) {
   redirectCache.set(`link:v1:${shortCode}`, {
     value,
     isNegative: false,
-    expiresAt: Date.now() + CACHE_TTL_MS,
+    expiresAt: Date.now() + CACHE_TTL_MS
   })
 }
 
@@ -60,7 +59,7 @@ function cacheSetNegative(shortCode) {
   redirectCache.set(`link:v1:${shortCode}`, {
     value: '__NOT_FOUND__',
     isNegative: true,
-    expiresAt: Date.now() + NEGATIVE_CACHE_TTL_MS,
+    expiresAt: Date.now() + NEGATIVE_CACHE_TTL_MS
   })
 }
 
@@ -86,7 +85,7 @@ export async function mockSocialLogin(provider, nickname) {
         status: 'ACTIVE',
         created_at: nowIso(),
         updated_at: nowIso(),
-        deleted_at: null,
+        deleted_at: null
       }
       db.users.push(user)
       db.oauth_accounts.push({
@@ -94,7 +93,7 @@ export async function mockSocialLogin(provider, nickname) {
         user_id: user.id,
         provider: provider.toUpperCase(),
         provider_user_id: `${provider.toLowerCase()}_${user.id}_${Date.now()}`,
-        connected_at: nowIso(),
+        connected_at: nowIso()
       })
     }
     sessionStorage.setItem(SESSION_KEY, String(user.id))
@@ -136,7 +135,10 @@ function generateUniqueRandomCode(db) {
     if (RESERVED_CODES.has(candidate.toLowerCase())) continue
     if (!codeExists(db, candidate)) return candidate
   }
-  throw new ApiError(500, '단축코드 생성에 반복적으로 실패했습니다 (키 공간 고갈은 사실상 불가능한 확률이므로 일시적 오류일 가능성이 높습니다).')
+  throw new ApiError(
+    500,
+    '단축코드 생성에 반복적으로 실패했습니다 (키 공간 고갈은 사실상 불가능한 확률이므로 일시적 오류일 가능성이 높습니다).'
+  )
 }
 
 function validateCustomAlias(db, alias) {
@@ -160,7 +162,10 @@ function validateCustomAlias(db, alias) {
 export async function createLink({ userId, originalUrl, customAlias, title, expiresAt }) {
   await delay()
   if (!URL_SCHEME_PATTERN.test(originalUrl)) {
-    throw new ApiError(400, 'http:// 또는 https:// 로 시작하는 URL만 입력할 수 있습니다. (ck_links_url_scheme)')
+    throw new ApiError(
+      400,
+      'http:// 또는 https:// 로 시작하는 URL만 입력할 수 있습니다. (ck_links_url_scheme)'
+    )
   }
   if (originalUrl.length > 2048) {
     throw new ApiError(400, 'URL은 2048자를 넘을 수 없습니다.')
@@ -175,7 +180,10 @@ export async function createLink({ userId, originalUrl, customAlias, title, expi
         (l) => l.user_id === userId && l.is_custom && !l.deleted_at
       ).length
       if (ownedCustomCount >= MAX_CUSTOM_ALIASES_PER_USER) {
-        throw new ApiError(400, `커스텀 별칭은 사용자당 ${MAX_CUSTOM_ALIASES_PER_USER}개까지 만들 수 있습니다.`)
+        throw new ApiError(
+          400,
+          `커스텀 별칭은 사용자당 ${MAX_CUSTOM_ALIASES_PER_USER}개까지 만들 수 있습니다.`
+        )
       }
       validateCustomAlias(db, customAlias)
       code = customAlias
@@ -197,7 +205,7 @@ export async function createLink({ userId, originalUrl, customAlias, title, expi
       last_clicked_at: null,
       created_at: nowIso(),
       updated_at: nowIso(),
-      deleted_at: null,
+      deleted_at: null
     }
     db.links.push(link)
     return link
@@ -259,9 +267,7 @@ export async function resolveShortCode(shortCode) {
   await delay(180)
   trace.push('RDS Proxy → RDS MySQL (short_code UNIQUE 조회)')
 
-  const link = readDb((db) =>
-    db.links.find((l) => l.short_code === shortCode && !l.deleted_at)
-  )
+  const link = readDb((db) => db.links.find((l) => l.short_code === shortCode && !l.deleted_at))
 
   if (!link) {
     cacheSetNegative(shortCode)
@@ -297,7 +303,7 @@ export async function recordClick(shortCode, meta = {}) {
       referer: meta.referer || document.referrer || null,
       user_agent: navigator.userAgent,
       device_type: /Mobi/i.test(navigator.userAgent) ? 'MOBILE' : 'DESKTOP',
-      country: 'KR',
+      country: 'KR'
     })
   })
 
@@ -306,16 +312,14 @@ export async function recordClick(shortCode, meta = {}) {
       const link = db.links.find((l) => l.id === linkId)
       if (!link) return
       const today = new Date().toISOString().slice(0, 10)
-      let stat = db.link_daily_stats.find(
-        (s) => s.link_id === linkId && s.stat_date === today
-      )
+      let stat = db.link_daily_stats.find((s) => s.link_id === linkId && s.stat_date === today)
       if (!stat) {
         stat = {
           link_id: linkId,
           stat_date: today,
           click_count: 0,
           unique_count: 0,
-          updated_at: nowIso(),
+          updated_at: nowIso()
         }
         db.link_daily_stats.push(stat)
       }
@@ -354,7 +358,7 @@ export async function dailyStatsForLink(linkId, days = 14) {
       out.push({
         stat_date: key,
         click_count: row?.click_count || 0,
-        unique_count: row?.unique_count || 0,
+        unique_count: row?.unique_count || 0
       })
     }
     return out
