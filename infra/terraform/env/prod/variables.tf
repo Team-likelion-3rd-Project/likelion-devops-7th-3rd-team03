@@ -190,3 +190,9 @@ variable "naver_client_secret" {
   sensitive = true
   default   = ""
 }
+
+variable "argocd_target_revision" {
+  description = "ArgoCD가 prod 앱을 가져올 브랜치. 머지 전 검증할 때만 -var=\"argocd_target_revision=develop\""
+  type        = string
+  default     = "main"
+}
