@@ -23,8 +23,8 @@ permissions:
   contents: read
   packages: write
 
-# 연속으로 머지되면 앞의 실행은 취소한다. 앞 실행이 늦게 끝나 옛 SHA 로 태그를 덮어쓰는 일을 줄인다.
-# ponytail: 취소 직전에 이미 push 한 경우의 역전은 막지 못한다. 문제가 되면 push 직전에 develop 최신 SHA 와 비교한다.
+# 연속으로 머지되면 앞의 실행은 취소한다.
+# 취소되기 전에 이미 끝까지 간 실행이나 예전 실행 Re-run 이 옛 SHA 로 덮어쓰는 것은 Bump overlay tag 의 검사가 막는다.
 concurrency:
   group: onprem-frontend-image-${{ github.ref }}
   cancel-in-progress: true
@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ steps.bot.outputs.token }}
-          # 태그 커밋을 올리기 전에 git pull --rebase 를 하려면 히스토리가 필요하다
+          # 아래 git log $GITHUB_SHA..origin/develop 검사에 히스토리가 필요하다
           fetch-depth: 0
 
       - name: GHCR login
@@ -133,24 +133,44 @@ jobs:
           echo "pushed $IMAGE:$GITHUB_SHA (linux/amd64, linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
 
       # overlays/dev 의 프론트 태그를 이 SHA 로 바꿔 develop 에 커밋한다. Argo CD 가 이 변경을 보고 배포한다.
+      # 최신 develop 위에서 태그를 바꿔 push 한다. 백엔드·다른 프론트 태그 커밋과 겹쳐 push 가 거부되면
+      # 최신 develop 을 다시 받아 처음부터 다시 바꿔 push 한다. rebase 를 쓰지 않아서 충돌이 생기지 않는다.
+      # 이 실행보다 더 새 프론트 변경이 develop 에 이미 있으면 건너뛴다. 그 실행이 더 새 태그를 넣는다.
+      # (늦게 끝난 실행이나 예전 실행 Re-run 이 최신 태그를 옛 SHA 로 덮어쓰는 것을 막는다)
       # 봇 토큰으로 push 한 커밋은 다른 워크플로를 깨울 수 있지만, 각 워크플로의 paths 필터와 [skip ci] 로 다시 돌지 않는다.
-      # 다른 서비스의 태그 커밋과 겹치면 push 가 거부되니 pull --rebase 후 다시 시도한다 (서로 다른 줄을 바꾸므로 충돌하지 않는다).
+      # 다른 브랜치에서 workflow_dispatch 로 돌릴 때 develop 태그를 건드리지 않는다.
       - name: Bump overlay tag
+        if: github.ref == 'refs/heads/develop'
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
         run: |
-          bash infra/onprem/bump-image-tag.sh frontend "$GITHUB_SHA"
           BOT="${{ steps.bot.outputs.app-slug }}[bot]"
           git config user.name "$BOT"
           git config user.email "$(gh api "/users/$BOT" --jq .id)+$BOT@users.noreply.github.com"
-          git add infra/k8s/overlays/dev/kustomization.yaml
-          if git diff --cached --quiet; then
-            echo "태그가 이미 같아서 커밋하지 않습니다."
-            exit 0
-          fi
-          git commit -m "chore: 프론트 이미지 태그를 ${GITHUB_SHA::7}로 갱신 [skip ci]"
+
+          # 이 워크플로가 이미지를 새로 만드는 경로 (on.push.paths 와 같게 맞춘다)
+          FRONTEND_PATHS=(src/frontend .github/workflows/onprem-frontend-ci.yml .github/scripts/trivy-scan.sh)
+
           for i in 1 2 3; do
-            git pull --rebase origin develop && git push origin HEAD:develop && exit 0
+            # bash -e 라 fetch 가 실패하면 스텝이 바로 끝난다. 일시적인 네트워크 오류도 재시도하게 한다
+            git fetch origin develop || { echo "fetch 실패, 재시도 ($i/3)"; sleep $((i * 3)); continue; }
+            git reset --hard origin/develop
+
+            if [ -n "$(git log --oneline "$GITHUB_SHA"..origin/develop -- "${FRONTEND_PATHS[@]}")" ]; then
+              echo "develop 에 이 실행(${GITHUB_SHA::7})보다 새 프론트 변경이 있어 건너뜁니다. 그 실행이 태그를 바꿉니다."
+              exit 0
+            fi
+
+            bash infra/onprem/bump-image-tag.sh frontend "$GITHUB_SHA"
+            git add infra/k8s/overlays/dev/kustomization.yaml
+            if git diff --cached --quiet; then
+              echo "태그가 이미 같아서 커밋하지 않습니다."
+              exit 0
+            fi
+            git commit -m "chore: 프론트 이미지 태그를 ${GITHUB_SHA::7}로 갱신 [skip ci]"
+
+            git push origin HEAD:develop && exit 0
+            echo "push 실패, develop 을 다시 받아 재시도 ($i/3)"
             sleep $((i * 3))
           done
           echo "::error::태그 커밋을 develop 에 push 하지 못했습니다. 브랜치 보호나 권한을 확인하세요."
