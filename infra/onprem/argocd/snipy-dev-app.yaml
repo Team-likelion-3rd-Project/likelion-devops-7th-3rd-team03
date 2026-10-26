@@ -12,6 +12,10 @@ kind: Application
 metadata:
   name: snipy-dev
   namespace: argocd
+  # 배포 실패나 Degraded 일 때 Slack 으로 알린다 (notifications.yaml, README 6번). 웹훅을 넣지 않은 클러스터에서는 알림만 안 간다.
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
 spec:
   project: default
   source:

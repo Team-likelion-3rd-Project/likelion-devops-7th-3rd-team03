@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # control-plane(k8s-cp1)에서 root(sudo -i)로 실행: Argo CD 설치.
 #   bash /home/k8s/argocd/cp-argocd.sh
-# 설치: Argo CD (argocd 네임스페이스). 쓰지 않는 dex, notifications 는 0으로 줄여 메모리를 아낀다.
+# 설치: Argo CD (argocd 네임스페이스). 쓰지 않는 dex 는 0으로 줄여 메모리를 아낀다.
+# notifications 는 켜 둔다. Slack 웹훅을 넣어야 알림이 간다 (README 6번).
 # 버전은 ARGOCD_VERSION 으로 바꿀 수 있다 (기본 v3.3.16).
 # 클러스터는 Kubernetes v1.31.14 이고, Argo CD 3.3 이상의 공식 시험 범위는 v1.32 부터다.
 # 이 클러스터에서 v3.3.16 설치, 앱 동기화(Synced, Healthy), selfHeal 동작을 확인했다.
@@ -20,8 +21,9 @@ echo ">> 2/4 Argo CD $ARGOCD_VERSION 설치 (server-side apply: CRD 가 커서 �
 kubectl apply -n argocd --server-side --force-conflicts \
   -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
 
-echo ">> 3/4 쓰지 않는 구성요소 줄이기 (dex: SSO, notifications: 알림)"
-kubectl -n argocd scale deploy argocd-dex-server argocd-notifications-controller --replicas=0
+echo ">> 3/4 쓰지 않는 구성요소 줄이기 (dex: SSO) / 배포 실패 알림 설정(notifications.yaml) 적용"
+kubectl -n argocd scale deploy argocd-dex-server --replicas=0
+kubectl apply -f "$(dirname "$0")/notifications.yaml"
 
 echo ">> 4/4 기동 대기 (최대 5분씩)"
 kubectl -n argocd rollout status deploy/argocd-redis --timeout=300s

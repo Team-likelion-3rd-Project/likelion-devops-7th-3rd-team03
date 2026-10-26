@@ -4,7 +4,20 @@
 
 - `cp-argocd.sh`: Argo CD 설치 (cp1에서 실행)
 - `snipy-dev-app.yaml`: dev 환경(`infra/k8s/overlays/dev`)을 `develop` 브랜치에서 가져오는 Application
+- `notifications.yaml`: 배포 실패를 Slack으로 알리는 Argo CD Notifications 설정 ([6번](#6-배포-실패-slack-알림))
 - [`rollback.md`](rollback.md): 배포를 이전 이미지로 되돌리는 절차와 리허설 기록
+
+## 배포 방식: self-hosted 러너 대신 Argo CD
+
+온프렘 배포는 GitHub Actions의 self-hosted 러너가 클러스터에 밀어 넣는(push) 방식이 아니라, 클러스터의 Argo CD가 Git을 읽어 가는(pull) 방식이다.
+
+- **공개 저장소**: 누구든 포크해서 PR을 열 수 있는 저장소에 내부망 러너를 두면, PR 코드가 그 러너에서 실행될 수 있다. GitHub도 공개 저장소에서 self-hosted 러너를 권장하지 않는다.
+- **클러스터가 팀원 PC마다 따로 있고 사설 NAT 안에 있다**: 러너 방식이면 PC마다 러너가 필요하다.
+- **접근 정보가 GitHub에 필요 없다**: push 배포는 kubeconfig나 토큰을 GitHub에 저장해야 하지만, Argo CD는 Git만 읽는다.
+- **AWS 단계와 같은 구조**: `infra/argocd`의 GitOps 구조와 같다. CI(호스티드 러너)가 이미지를 빌드해 태그 갱신 커밋을 올리면 Argo CD가 반영한다.
+- 롤백은 `git revert`이고, 드리프트는 selfHeal로 복구한다 (자세한 절차는 [`rollback.md`](rollback.md)).
+
+CI 실패는 Actions의 Slack 알림(`notify-failure.yml`)이 알리고, 배포 실패는 Argo CD Notifications가 같은 방식으로 Slack에 알린다 ([6번](#6-배포-실패-slack-알림)).
 
 ## 버전과 호환성
 
@@ -26,7 +39,7 @@ cp1에서 root로 실행한다. 이미지(`quay.io`, `public.ecr.aws`)를 받는
 bash /home/k8s/argocd/cp-argocd.sh
 ```
 
-끝나면 파드가 모두 `Running`이어야 한다. dex와 notifications는 일부러 0개로 줄였다.
+끝나면 파드가 모두 `Running`이어야 한다. dex는 SSO를 쓰지 않아 일부러 0개로 줄였다. notifications는 켜 둔다 (6번).
 
 ```bash
 kubectl -n argocd get pods
@@ -112,6 +125,72 @@ Argo CD 전체를 지운다 (CRD도 같이 지워진다). 앱이 관리하던 �
 ```bash
 kubectl delete -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.3.16/manifests/install.yaml
 kubectl delete namespace argocd
+```
+
+## 6. 배포 실패 Slack 알림
+
+동기화(Sync)가 실패하거나 앱이 `Degraded`가 되면 Slack으로 알린다. 정상 배포에는 아무것도 오지 않는다. 설정은 `notifications.yaml`(ConfigMap)에 있고, `snipy-dev` Application의 `notifications.argoproj.io/subscribe.*` annotation이 알림을 받는다고 표시한다.
+
+웹훅 URL은 저장소에 올리지 않는다. `argocd-notifications-secret`은 Argo CD를 설치할 때 이미 만들어지는 Secret이라 Sealed Secrets로 덮어쓰지 않고, 클러스터마다 cp1에서 한 번 직접 넣는다. 채팅이나 Git에 붙이지 않는다 (CI 알림에 쓰는 웹훅과 같은 값을 써도 된다).
+
+이미 설치된 클러스터는 아래 순서로 켠다. 새로 설치하는 클러스터는 `cp-argocd.sh`가 `notifications.yaml` 적용과 컨트롤러 기동(3번)을 해 주고, `snipy-dev-app.yaml`은 위 3번 절에서 적용하니 웹훅 입력(2번)만 하면 된다.
+
+```bash
+# 1. 알림 설정과 Application annotation 반영
+kubectl apply -f /home/k8s/argocd/notifications.yaml
+kubectl apply -f /home/k8s/argocd/snipy-dev-app.yaml
+```
+
+```bash
+# 2. 웹훅 URL을 입력하면 화면에 보이지 않게 Secret에 넣는다
+read -rsp "Slack webhook URL: " U; echo
+kubectl -n argocd patch secret argocd-notifications-secret --type merge -p "{\"stringData\":{\"slack-webhook-url\":\"$U\"}}"
+unset U
+```
+
+```bash
+# 3. 컨트롤러를 켠다 (설치 때 0으로 줄여 둔 클러스터만)
+kubectl -n argocd scale deploy argocd-notifications-controller --replicas=1
+kubectl -n argocd rollout status deploy/argocd-notifications-controller
+```
+
+### 확인
+
+일부러 Sync가 실패하는 임시 Application을 만들어 알림이 오는지 본다. Argo CD 공식 예제(`guestbook`)를 없는 네임스페이스에 배포하게 해서 "namespace not found"로 실패시킨다. 아무것도 만들어지지 않고 `snipy` 앱에는 영향이 없다. (없는 경로를 가리키면 Sync가 시작되지 않고 설정 오류로만 끝나서 `on-sync-failed`가 울리지 않는다.)
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: notify-test
+  namespace: argocd
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: guestbook
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: notify-test-nonexistent
+  syncPolicy:
+    automated: {}
+EOF
+```
+
+1~2분 안에 Slack에 `notify-test 배포(Sync) 실패`가 오면 된다. 확인이 끝나면 지운다.
+
+```bash
+kubectl -n argocd delete app notify-test
+```
+
+오지 않으면 컨트롤러 로그를 본다.
+
+```bash
+kubectl -n argocd logs deploy/argocd-notifications-controller --tail=30
 ```
 
 ## 주의
