@@ -15,8 +15,8 @@ resources:
   - athena-batch-cronjob.yaml
   - athena-batch-configmap.yaml
 
-# 배치는 management-service와 같은 이미지를 쓴다. CI는 이미지 태그를 base의 images:에만 기록하는데,
-# base의 images:는 base 안의 리소스에만 적용되므로 여기서 Deployment의 최종 이미지를 CronJob에 복사한다.
+# 배치는 management-service와 같은 이미지를 쓴다. 여기서 Deployment의 이미지를 CronJob에 복사하고,
+# overlay의 images:가 둘을 같은 이름으로 함께 바꾼다 (이미지 태그는 overlay에만 기록한다).
 replacements:
   - source:
       kind: Deployment

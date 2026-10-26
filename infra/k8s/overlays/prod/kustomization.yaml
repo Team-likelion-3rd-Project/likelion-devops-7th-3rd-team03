@@ -18,9 +18,16 @@ patches:
   - path: patch-ingress.yaml
   - path: patch-athena-cronjob.yaml
 
-# 마이그레이션 이미지는 온프렘 CI(onprem-backend-ci)가 GHCR에 올리는 것을 쓴다.
-# prod 이미지 레지스트리와 태그 자동 갱신은 (다)-2에서 정한다.
+# 이미지는 온프렘 CI(onprem-backend-ci)가 GHCR에 한 번 빌드·스캔해 올린 것을 dev와 같이 쓴다 (#105).
+# 그 CI가 dev overlay와 이 파일의 태그를 같은 SHA로 develop에 커밋하고, 릴리스 PR이 main에 머지되면 prod에 배포된다.
+# name은 base 매니페스트에 적힌 이미지 이름이다 (dev overlay와 같은 규칙).
 images:
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
+    newTag: f7c94909ce0867bc3a9efd6cf5f87c9d7a7ec802
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
+    newTag: f7c94909ce0867bc3a9efd6cf5f87c9d7a7ec802
   - name: db-migration
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
-    newTag: c571ad7d5d79b9e4aa7ddc1c1fb07a6cc802c8d9
+    newTag: f7c94909ce0867bc3a9efd6cf5f87c9d7a7ec802
