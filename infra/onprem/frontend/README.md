@@ -61,3 +61,20 @@ kubectl -n snipy rollout restart deploy/frontend
 
 - 수동 경로(tar)는 워커가 늘면 `WORKERS`에 추가해야 한다. 평소에는 CI가 올린 GHCR 이미지를 쓴다.
 - 로그인은 터널로만 된다. 모두가 같은 주소로 쓰려면 HTTPS 도메인이 필요하다.
+
+
+## 이미지 취약점 스캔 (Trivy)
+
+`onprem-frontend-ci.yml`이 push 전에 `.github/scripts/trivy-scan.sh`로 이미지를 검사한다.
+패치가 나온 CRITICAL 취약점이 있으면 push와 태그 반영이 실행되지 않는다.
+
+막혔을 때:
+1. Actions 로그의 표에서 라이브러리와 고쳐진 버전을 확인한다.
+2. 베이스 이미지(`Dockerfile.prod`의 `FROM nginx:...`)를 지원 중인 버전으로 올린다. 프론트 최종 이미지는 nginx 베이스뿐이라 대부분 여기서 해결된다.
+3. 당장 올릴 수 없으면 저장소 루트 `.trivyignore`에 CVE ID와 사유·재검토일을 적는다.
+
+로컬에서 미리 확인:
+```bash
+docker build -t trivy-check/frontend -f src/frontend/Dockerfile.prod --build-arg VITE_SOCIAL_PROVIDERS=kakao --build-arg VITE_KAKAO_CLIENT_ID=dummy src/frontend
+MSYS_NO_PATHCONV=1 bash .github/scripts/trivy-scan.sh trivy-check/frontend   # Git Bash
+```

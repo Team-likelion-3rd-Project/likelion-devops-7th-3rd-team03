@@ -20,7 +20,9 @@ ARG VITE_NAVER_CLIENT_ID=
 ARG VITE_NAVER_REDIRECT_URI=
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# nginx 1.27 계열은 이미지 갱신이 끝나 OpenSSL 패치(CVE-2026-31789)를 받지 못했다. 지원 중인 stable 로 고정한다.
+# 마이너(1.30)까지만 고정해서 같은 계열의 보안 패치는 따라오고, 큰 버전 변경은 생기지 않게 한다.
+FROM nginx:1.30-alpine
 # nginx 이미지는 시작할 때 /etc/nginx/templates/*.template 을 envsubst로 치환해 default.conf를 만든다.
 # API_ 로 시작하는 변수만 치환해서 $uri 같은 nginx 변수는 그대로 둔다.
 ENV NGINX_ENVSUBST_FILTER=API_
