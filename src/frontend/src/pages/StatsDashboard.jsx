@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
+  Legend
 } from 'recharts'
 import { getDailyStats, compareLinks, getReferrerStats } from '../api/stats'
 import { listLinks } from '../api/links'
@@ -57,7 +57,7 @@ export function StatsDashboard() {
     try {
       const [dailyRes, referrerRes] = await Promise.all([
         getDailyStats(linkId, from, to),
-        getReferrerStats(linkId, from, to),
+        getReferrerStats(linkId, from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
@@ -83,7 +83,13 @@ export function StatsDashboard() {
       </div>
 
       <form className="card" onSubmit={handleLoad} style={{ display: 'grid', gap: 16 }}>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+        <div
+          style={{
+            display: 'grid',
+            gap: 12,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))'
+          }}
+        >
           <label className="field">
             <span>링크</span>
             <select value={linkId} onChange={(e) => setLinkId(e.target.value)}>
@@ -138,7 +144,10 @@ export function StatsDashboard() {
         <>
           <div className="stat-tiles">
             <StatTile label="총 클릭" value={daily.summary.totalClicks.toLocaleString()} />
-            <StatTile label="일별 방문자 합계" value={daily.summary.sumOfDailyVisitors.toLocaleString()} />
+            <StatTile
+              label="일별 방문자 합계"
+              value={daily.summary.sumOfDailyVisitors.toLocaleString()}
+            />
             <StatTile label="일평균 클릭" value={daily.summary.avgDailyClicks.toLocaleString()} />
             <StatTile label="최고 클릭일" value={daily.summary.peakClicks.toLocaleString()} />
             <StatTile label="활동일 수" value={daily.summary.activeDays.toLocaleString()} />
@@ -173,7 +182,7 @@ export function StatsDashboard() {
                       background: 'var(--surface-1)',
                       border: '1px solid var(--border)',
                       borderRadius: 8,
-                      fontSize: 13,
+                      fontSize: 13
                     }}
                     labelStyle={{ color: 'var(--text-primary)' }}
                   />
@@ -236,11 +245,16 @@ export function StatsDashboard() {
                         background: 'var(--surface-1)',
                         border: '1px solid var(--border)',
                         borderRadius: 8,
-                        fontSize: 13,
+                        fontSize: 13
                       }}
                       labelStyle={{ color: 'var(--text-primary)' }}
                     />
-                    <Bar dataKey="clickCount" name="클릭 수" fill="var(--series-1)" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="clickCount"
+                      name="클릭 수"
+                      fill="var(--series-1)"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

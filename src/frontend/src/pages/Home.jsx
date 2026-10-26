@@ -36,7 +36,7 @@ export function Home() {
       const link = await createLink({
         originalUrl: originalUrl.trim(),
         title: title.trim() || undefined,
-        expiresAt: new Date(expiresAt).toISOString(),
+        expiresAt: new Date(expiresAt).toISOString()
       })
       setResult(link)
       toast('단축 링크가 생성되었습니다.', 'success')

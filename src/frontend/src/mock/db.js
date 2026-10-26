@@ -10,7 +10,7 @@ const EMPTY_DB = () => ({
   oauth_accounts: [],
   links: [],
   click_events: [],
-  link_daily_stats: [],
+  link_daily_stats: []
 })
 
 function load() {

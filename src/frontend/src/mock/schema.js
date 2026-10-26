@@ -2,8 +2,7 @@
 // short_code 컬럼은 CHARACTER SET ascii COLLATE ascii_bin 이므로
 // JS 문자열 비교(===)를 그대로 쓰면 대소문자 구분이 동일하게 재현된다.
 
-export const BASE62_CHARS =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+export const BASE62_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 export const SHORT_CODE_LENGTH = 7
 export const CUSTOM_ALIAS_MIN = 4
@@ -24,7 +23,7 @@ export const RESERVED_CODES = new Set([
   'dashboard',
   'collections',
   'stats',
-  'architecture',
+  'architecture'
 ])
 
 export const URL_SCHEME_PATTERN = /^https?:\/\//i

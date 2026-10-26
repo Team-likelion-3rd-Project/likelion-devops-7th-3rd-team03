@@ -13,7 +13,10 @@ export async function listLinks(page = 0, size = 20) {
 }
 
 export async function updateLink(linkId, { originalUrl, title, expiresAt }) {
-  const res = await apiFetch(`/links/${linkId}`, { method: 'PATCH', body: { originalUrl, title, expiresAt } })
+  const res = await apiFetch(`/links/${linkId}`, {
+    method: 'PATCH',
+    body: { originalUrl, title, expiresAt }
+  })
   return res.data
 }
 

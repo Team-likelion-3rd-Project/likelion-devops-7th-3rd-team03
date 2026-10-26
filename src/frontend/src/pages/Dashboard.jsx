@@ -43,7 +43,7 @@ export function Dashboard() {
       await updateLink(link.linkId, {
         originalUrl: form.originalUrl.trim() || undefined,
         title: form.title.trim() || undefined,
-        expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
+        expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined
       })
       toast('링크를 수정했습니다.', 'success')
       setEditingLink(null)
@@ -81,8 +81,7 @@ export function Dashboard() {
 
       {links.length === 0 ? (
         <div className="card empty-state">
-          아직 만든 링크가 없습니다.{' '}
-          <Link to="/">지금 첫 링크를 만들어보세요.</Link>
+          아직 만든 링크가 없습니다. <Link to="/">지금 첫 링크를 만들어보세요.</Link>
         </div>
       ) : (
         <div className="card table-card">
@@ -111,7 +110,9 @@ export function Dashboard() {
                   </td>
                   <td>{link.title || '-'}</td>
                   <td>
-                    <span className={`badge ${isExpired(link.expiresAt) ? 'badge--off' : 'badge--good'}`}>
+                    <span
+                      className={`badge ${isExpired(link.expiresAt) ? 'badge--off' : 'badge--good'}`}
+                    >
                       {isExpired(link.expiresAt) ? '만료' : '활성'}
                     </span>
                   </td>
@@ -135,7 +136,11 @@ export function Dashboard() {
 
           {pagination.totalPages > 1 && (
             <div className="table-card__pager">
-              <button className="btn btn--ghost btn--sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+              <button
+                className="btn btn--ghost btn--sm"
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+              >
                 이전
               </button>
               <span>
@@ -183,13 +188,20 @@ function EditLinkModal({ link, onClose, onSave }) {
         </label>
         <label className="field">
           <span>만료일</span>
-          <input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          <input
+            type="datetime-local"
+            value={expiresAt}
+            onChange={(e) => setExpiresAt(e.target.value)}
+          />
         </label>
         <div className="modal-actions">
           <button className="btn btn--ghost" onClick={onClose}>
             취소
           </button>
-          <button className="btn btn--primary" onClick={() => onSave({ originalUrl, title, expiresAt })}>
+          <button
+            className="btn btn--primary"
+            onClick={() => onSave({ originalUrl, title, expiresAt })}
+          >
             저장
           </button>
         </div>
@@ -205,5 +217,9 @@ function isExpired(expiresAt) {
 
 function formatDate(iso) {
   if (!iso) return '-'
-  return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  return new Date(iso).toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
 }

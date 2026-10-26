@@ -51,7 +51,7 @@ export async function apiFetch(path, { method = 'GET', body, auth = true } = {})
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined
   })
 
   if (res.status === 401) {

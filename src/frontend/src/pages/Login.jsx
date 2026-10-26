@@ -33,8 +33,8 @@ export function Login() {
               </button>
               {!isConfigured(p) && (
                 <p className="form-error">
-                  VITE_{p.id.toUpperCase()}_CLIENT_ID / VITE_{p.id.toUpperCase()}_REDIRECT_URI가 설정되지 않았습니다.
-                  프론트엔드 <code>.env</code>를 확인해주세요.
+                  VITE_{p.id.toUpperCase()}_CLIENT_ID / VITE_{p.id.toUpperCase()}_REDIRECT_URI가
+                  설정되지 않았습니다. 프론트엔드 <code>.env</code>를 확인해주세요.
                 </p>
               )}
             </div>

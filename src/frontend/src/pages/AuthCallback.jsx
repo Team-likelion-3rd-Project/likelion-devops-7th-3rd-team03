@@ -46,7 +46,9 @@ export function AuthCallback() {
         navigate(redirectTo, { replace: true })
       })
       // 403(탈퇴 계정)의 서버 메시지에는 사용자 ID가 들어 있어서 그대로 보여주지 않는다.
-      .catch((err) => fail(err.status === 403 ? '탈퇴한 계정입니다.' : err.message || '로그인에 실패했습니다.'))
+      .catch((err) =>
+        fail(err.status === 403 ? '탈퇴한 계정입니다.' : err.message || '로그인에 실패했습니다.')
+      )
   }, [providerId, params, loginWithSocial, navigate])
 
   return <div className="page">로그인 처리 중...</div>

@@ -21,10 +21,12 @@ function isAllowedImageUrl(url) {
 function validate({ nickname, email, profileImageUrl }) {
   const errors = {}
   if (!nickname) errors.nickname = '닉네임을 입력해주세요.'
-  else if (nickname.length > NICKNAME_MAX) errors.nickname = `닉네임은 ${NICKNAME_MAX}자 이하로 입력해주세요.`
+  else if (nickname.length > NICKNAME_MAX)
+    errors.nickname = `닉네임은 ${NICKNAME_MAX}자 이하로 입력해주세요.`
 
   if (!email) errors.email = '이메일을 입력해주세요.'
-  else if (email.length > EMAIL_MAX || !EMAIL_PATTERN.test(email)) errors.email = '올바른 이메일 형식이 아닙니다.'
+  else if (email.length > EMAIL_MAX || !EMAIL_PATTERN.test(email))
+    errors.email = '올바른 이메일 형식이 아닙니다.'
 
   if (profileImageUrl && !isAllowedImageUrl(profileImageUrl)) {
     errors.profileImageUrl = `이미지 주소는 https:// 로 시작하고 ${IMAGE_URL_MAX}자 이하여야 합니다.`
@@ -42,7 +44,7 @@ export function SignupProfile() {
   const [form, setForm] = useState({
     nickname: prefill.nickname || '',
     email: prefill.email || '',
-    profileImageUrl: prefill.profileImageUrl || '',
+    profileImageUrl: prefill.profileImageUrl || ''
   })
   const [errors, setErrors] = useState({})
   const [serverError, setServerError] = useState('')
@@ -65,7 +67,7 @@ export function SignupProfile() {
     const values = {
       nickname: form.nickname.trim(),
       email: form.email.trim(),
-      profileImageUrl: form.profileImageUrl.trim(),
+      profileImageUrl: form.profileImageUrl.trim()
     }
     const found = validate(values)
     setErrors(found)
@@ -86,7 +88,7 @@ export function SignupProfile() {
           err.status === SESSION_EXPIRED_STATUS
             ? '가입 시간이 지났습니다. 다시 로그인해주세요.'
             : '탈퇴한 계정입니다.', // 403의 서버 메시지에는 사용자 ID가 들어 있어서 쓰지 않는다
-          'error',
+          'error'
         )
         navigate('/login', { replace: true })
         return
@@ -106,18 +108,32 @@ export function SignupProfile() {
         <form className="login-form" onSubmit={handleSubmit} noValidate>
           <div className="signup-avatar">
             {/* 주소가 비었거나 https가 아니면 src 없이 넘겨 기본 아이콘을 보여준다. 불러오지 못하면 Avatar가 기본 아이콘으로 바꾼다. */}
-            <Avatar src={isAllowedImageUrl(imageUrl) ? imageUrl : ''} size={88} alt="프로필 이미지 미리보기" />
+            <Avatar
+              src={isAllowedImageUrl(imageUrl) ? imageUrl : ''}
+              size={88}
+              alt="프로필 이미지 미리보기"
+            />
           </div>
 
           <label className="field">
             <span>닉네임 (필수)</span>
-            <input value={form.nickname} onChange={update('nickname')} maxLength={NICKNAME_MAX + 20} autoComplete="nickname" />
+            <input
+              value={form.nickname}
+              onChange={update('nickname')}
+              maxLength={NICKNAME_MAX + 20}
+              autoComplete="nickname"
+            />
           </label>
           {errors.nickname && <p className="form-error">{errors.nickname}</p>}
 
           <label className="field">
             <span>이메일 (필수)</span>
-            <input type="email" value={form.email} onChange={update('email')} autoComplete="email" />
+            <input
+              type="email"
+              value={form.email}
+              onChange={update('email')}
+              autoComplete="email"
+            />
           </label>
           {errors.email && <p className="form-error">{errors.email}</p>}
 
@@ -141,7 +157,9 @@ export function SignupProfile() {
           <button className="btn btn--primary btn--block" type="submit" disabled={submitting}>
             {submitting ? '가입 중...' : '가입 완료'}
           </button>
-          <p className="form-hint">15분 안에 완료해주세요. 시간이 지나면 처음부터 다시 로그인해야 합니다.</p>
+          <p className="form-hint">
+            15분 안에 완료해주세요. 시간이 지나면 처음부터 다시 로그인해야 합니다.
+          </p>
         </form>
       </div>
     </div>
