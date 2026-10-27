@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-FROM eclipse-temurin:17-jdk AS build
+# jar 는 CPU 와 무관하다. Gradle 빌드는 러너 플랫폼에서 한 번만 한다.
+# (arm64 이미지도 이 jar 를 그대로 쓴다. Gradle 을 QEMU 로 돌리면 매우 느리다)
+FROM --platform=$BUILDPLATFORM eclipse-temurin:17-jdk AS build
 
 WORKDIR /workspace
 
@@ -18,14 +20,18 @@ COPY src ./src
 RUN --mount=type=cache,id=gradle-management,target=/root/.gradle,sharing=locked \
     ./gradlew bootJar --no-daemon --build-cache
 
-# ▼ 추가: DuckDB httpfs 확장을 빌드 시점에 받아 둔다.
+# DuckDB httpfs 확장을 빌드 시점에 받아 둔다.
 # 온프렘 런타임은 외부 인터넷이 막혀 있을 수 있어, 배치 실행 중 다운로드에 의존하지 않는다.
+# 확장은 CPU 별 파일(linux_amd64 / linux_arm64)이라 대상 플랫폼에서 설치한다 (arm64 는 QEMU 로 돈다).
 # 앱 jar 안의 duckdb_jdbc를 꺼내 jshell로 INSTALL을 실행한다 (DuckDB 버전과 확장 버전이 자동으로 일치).
+FROM eclipse-temurin:17-jdk AS duckdb-ext
+
+COPY --from=build /workspace/build/libs/ /tmp/app/
 RUN <<'EOF'
 set -e
 mkdir -p /duckdb-extensions /tmp/duckdb-lib
 cd /tmp/duckdb-lib
-jar xf /workspace/build/libs/*.jar BOOT-INF/lib
+jar xf /tmp/app/*.jar BOOT-INF/lib
 DUCKDB_JAR=$(ls /tmp/duckdb-lib/BOOT-INF/lib/duckdb_jdbc-*.jar)
 cat > /tmp/install.jsh <<'JSH'
 var connection = java.sql.DriverManager.getConnection("jdbc:duckdb:");
@@ -44,8 +50,8 @@ FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 COPY --from=build /workspace/build/libs/*.jar app.jar
-# ▼ 추가: 미리 받아둔 확장을 런타임 이미지에 넣고, 앱이 그 위치를 쓰게 한다
-COPY --from=build /duckdb-extensions /app/duckdb-extensions
+# 미리 받아둔 확장을 런타임 이미지에 넣고, 앱이 그 위치를 쓰게 한다
+COPY --from=duckdb-ext /duckdb-extensions /app/duckdb-extensions
 ENV DUCKDB_EXTENSION_DIRECTORY=/app/duckdb-extensions
 
 EXPOSE 8080
