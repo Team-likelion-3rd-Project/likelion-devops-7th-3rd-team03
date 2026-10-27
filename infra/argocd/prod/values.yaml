@@ -1,0 +1,2 @@
+# 하위 앱이 가져올 브랜치. root Application이 terraform 변수(argocd_target_revision)로 덮어쓴다.
+targetRevision: main

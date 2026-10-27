@@ -2,7 +2,7 @@
 # cp1에서 한 번만 적용한다 (infra/onprem/argocd/README.md 3번).
 #   kubectl apply -f /home/k8s/argocd/snipy-dev-app.yaml
 #
-# 클라우드용 infra/argocd/dev/snipy-dev.yaml 과 다른 점
+# 예전 클라우드 dev용 Application(infra/argocd/dev, #133에서 삭제)과 다른 점
 #   - destination 네임스페이스가 snipy 다 (클라우드는 default).
 #   - 자동 동기화는 켜지만 prune(Git에서 사라진 리소스 삭제)과 selfHeal(손으로 바꾼 것 자동 복구)은 끈다.
 #   - RespectIgnoreDifferences 로 replicas 를 Sync 때 덮어쓰지 않는다.

@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: snipy-prod-observability
   namespace: argocd
+  annotations:
+    # 앱(0)이 만드는 시크릿 저장소(Grafana 비밀번호 ExternalSecret)와 gp3 StorageClass(PVC)를 쓴다
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
   source:
@@ -13,8 +16,8 @@ spec:
       releaseName: kube-prometheus
       values: |
         # prometheuses/alertmanagers CRD가 커서 ArgoCD sync 결과가 etcd 메시지 크기(2MB)를
-        # 넘어 상태 기록 자체가 실패함 (ResourceExhausted). CRD는 미리 별도로
-        # server-side apply 해두고, 여기서는 차트가 CRD를 다시 관리하지 않게 끈다.
+        # 넘어 상태 기록 자체가 실패함 (ResourceExhausted). CRD는 별도 앱
+        # (prometheus-crds.yaml, server-side apply)이 먼저 설치하고, 여기서는 관리하지 않는다.
         crds:
           enabled: false
         prometheus:
@@ -114,6 +117,14 @@ spec:
     automated:
       selfHeal: true
       prune: true
+      # 첫 배포에서 다른 앱(CRD·시크릿 저장소)이 아직 준비되지 않아 실패해도 다시 시도한다.
+      # (자동 동기화는 retry가 없으면 같은 커밋으로 다시 시도하지 않는다)
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true # alertmanagers/prometheuses CRD가 커서 client-side apply 시

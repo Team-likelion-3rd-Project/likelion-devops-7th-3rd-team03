@@ -98,6 +98,8 @@ module "gitops" {
   oidc_provider_arn = module.cluster.oidc_provider_arn
   oidc_provider     = module.cluster.oidc_provider
 
+  argocd_target_revision = var.argocd_target_revision
+
   depends_on = [module.cluster]
 }
 
