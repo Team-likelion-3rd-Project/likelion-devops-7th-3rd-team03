@@ -1,0 +1,12 @@
+# 노드 드레인(점검, 재부팅) 때 프론트 파드를 한꺼번에 내리지 않는다. replicas 2 중 최소 1개는 유지한다.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend

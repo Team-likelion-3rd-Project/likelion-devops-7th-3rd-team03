@@ -27,5 +27,7 @@ FROM nginx:1.30-alpine
 # API_ 로 시작하는 변수만 치환해서 $uri 같은 nginx 변수는 그대로 둔다.
 ENV NGINX_ENVSUBST_FILTER=API_
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+# 보안 헤더. default.conf.template 이 include 한다 (templates 밖이라 envsubst 대상이 아니다).
+COPY nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

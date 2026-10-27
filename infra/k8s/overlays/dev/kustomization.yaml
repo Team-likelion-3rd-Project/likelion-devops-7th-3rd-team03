@@ -20,6 +20,7 @@ resources:
   - migration-job.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
+  - frontend-pdb.yaml
   - ingress.yaml
   - seaweedfs.yaml
   - click-stats-batch-cronjob.yaml
@@ -43,7 +44,7 @@ configMapGenerator:
 images:
   - name: snipy-frontend
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-frontend
-    newTag: c3b73620bf1c9d4835ecaeae62f3fef6eb225e4d
+    newTag: c615dc8f2eba40eb8f7ba5db18ed3caff36cf61d
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
     newTag: 00fec4992e4cb297dac8c57f1430be78afd0c064
