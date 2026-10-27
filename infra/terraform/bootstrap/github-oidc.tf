@@ -99,6 +99,13 @@ resource "aws_iam_role_policy" "github_actions_frontend_deploy" {
         Effect   = "Allow"
         Action   = "cloudfront:CreateInvalidation"
         Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+      },
+      {
+        # 배포 ID가 apply마다 바뀌어서 frontend-ci가 별칭으로 배포를 찾는다. 목록 조회는 리소스를 지정할 수 없다
+        Sid      = "CloudFrontFindDistribution"
+        Effect   = "Allow"
+        Action   = "cloudfront:ListDistributions"
+        Resource = "*"
       }
     ]
   })

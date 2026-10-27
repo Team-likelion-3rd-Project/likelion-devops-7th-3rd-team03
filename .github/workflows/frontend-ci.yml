@@ -1,3 +1,15 @@
+# prod(AWS) 프론트를 빌드해 S3·CloudFront에 배포한다. 온프렘 dev 이미지는 onprem-frontend-ci.yml이 따로 만든다.
+#   - PR·develop push: 빌드만 확인한다.
+#   - main push(릴리스 PR 머지): 빌드 후 prod에 배포한다. 릴리스 PR 머지가 곧 배포다 (#105).
+#
+# 저장소 Variables (Settings → Secrets and variables → Actions → Variables). 모두 공개되어도 되는 값이다.
+#   KAKAO_CLIENT_ID, GOOGLE_CLIENT_ID, NAVER_CLIENT_ID  각 개발자 콘솔의 클라이언트 ID (온프렘과 같이 씀)
+#   PROD_APP_URL             https://app.snipy.life  (redirect URI는 여기에 /auth/<provider>/callback 을 붙인다)
+#   PROD_API_BASE_URL        https://snipy.life/api  (프론트와 API 도메인이 달라 절대 주소)
+#   PROD_SOCIAL_PROVIDERS    kakao,google,naver      (로그인 버튼을 보여줄 provider)
+#   PROD_FRONTEND_S3_BUCKET  terraform output frontend_s3_bucket_name
+#   AWS_CI_ROLE_ARN          terraform(bootstrap) output github_actions_role_arn
+# CloudFront 배포 ID는 apply할 때마다 바뀌어서 Variable로 두지 않고, 배포할 때 별칭(PROD_APP_URL의 호스트)으로 찾는다.
 name: Frontend CI
 
 on:
@@ -23,20 +35,16 @@ jobs:
     defaults:
       run:
         working-directory: src/frontend
-    # VITE_* 값은 브라우저에 공개되는 빌드 설정이다. GitHub Actions
-    # Repository/Environment Variables에 같은 이름으로 등록해 사용한다.
-    # dev/prod 구분
+    # VITE_* 값은 브라우저 번들에 들어가는 공개 값이다. prod 값으로 빌드한다.
     env:
-      VITE_API_BASE_URL: ${{ github.ref_name == 'main' && secrets.PROD_API_BASE_URL || secrets.API_BASE_URL }}
-      VITE_KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
-      VITE_KAKAO_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_KAKAO_REDIRECT_URI || secrets.KAKAO_REDIRECT_URI }}
-      # 구글·네이버: 등록되지 않은 Secret은 빈 값이 되어 빌드는 그대로 통과한다.
-      VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-      VITE_GOOGLE_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_GOOGLE_REDIRECT_URI || secrets.GOOGLE_REDIRECT_URI }}
-      VITE_NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
-      VITE_NAVER_REDIRECT_URI: ${{ github.ref_name == 'main' && secrets.PROD_NAVER_REDIRECT_URI || secrets.NAVER_REDIRECT_URI }}
-      # 로그인 버튼을 보여줄 provider (콤마 구분 소문자, 예: kakao,google)
-      VITE_SOCIAL_PROVIDERS: ${{ github.ref_name == 'main' && secrets.PROD_SOCIAL_PROVIDERS || secrets.SOCIAL_PROVIDERS }}
+      VITE_API_BASE_URL: ${{ vars.PROD_API_BASE_URL }}
+      VITE_SOCIAL_PROVIDERS: ${{ vars.PROD_SOCIAL_PROVIDERS }}
+      VITE_KAKAO_CLIENT_ID: ${{ vars.KAKAO_CLIENT_ID }}
+      VITE_KAKAO_REDIRECT_URI: ${{ vars.PROD_APP_URL }}/auth/kakao/callback
+      VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      VITE_GOOGLE_REDIRECT_URI: ${{ vars.PROD_APP_URL }}/auth/google/callback
+      VITE_NAVER_CLIENT_ID: ${{ vars.NAVER_CLIENT_ID }}
+      VITE_NAVER_REDIRECT_URI: ${{ vars.PROD_APP_URL }}/auth/naver/callback
 
     steps:
       - name: Checkout
@@ -73,16 +81,15 @@ jobs:
     name: Deploy frontend to S3
     needs: build
 
-    # PR은 검증만 한다. 실제 배포는 develop/main 브랜치 push에서만 수행한다.
-    # dev/prod 구분
-    if: github.event_name == 'push'
+    # prod 배포는 main에서만 한다 (릴리스 PR 머지 또는 main에서 수동 실행)
+    if: github.ref_name == 'main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     env:
-      S3_BUCKET: ${{ github.ref_name == 'main' && secrets.PROD_FRONTEND_S3_BUCKET || secrets.FRONTEND_S3_BUCKET }}
-      CLOUDFRONT_DISTRIBUTION_ID: ${{ github.ref_name == 'main' && secrets.PROD_CLOUDFRONT_DISTRIBUTION_ID || secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+      S3_BUCKET: ${{ vars.PROD_FRONTEND_S3_BUCKET }}
+      APP_URL: ${{ vars.PROD_APP_URL }}
 
     steps:
       - name: Download build artifact
@@ -92,16 +99,17 @@ jobs:
           path: dist
 
       - name: Validate deployment configuration
+        env:
+          ROLE_ARN: ${{ vars.AWS_CI_ROLE_ARN }}
         run: |
-          test -n "$S3_BUCKET" || {
-            echo "FRONTEND_S3_BUCKET GitHub Secret is required."
-            exit 1
-          }
+          for v in S3_BUCKET APP_URL ROLE_ARN; do
+            [ -n "${!v}" ] || { echo "::error::$v 값이 비어 있습니다. 저장소 Variables를 확인하세요 (파일 맨 위 목록)."; exit 1; }
+          done
 
       - name: AWS 자격증명 설정 (GitHub OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::834922934330:role/snipy-github-actions-ci
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
           aws-region: ap-southeast-1
 
       # 해시된 JS/CSS 파일은 길게 캐시하되, 새 배포를 가리키는 index.html은 매번 확인한다.
@@ -113,10 +121,15 @@ jobs:
           aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
             --cache-control "no-cache, no-store, must-revalidate"
 
-      # 배포 ID를 등록한 경우에만 즉시 CloudFront 캐시를 비운다.
+      # 배포 ID는 terraform apply마다 바뀌므로 별칭(app 도메인)으로 찾아 캐시를 비운다.
       - name: Invalidate CloudFront cache
-        if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
-            --paths '/*'
+          ALIAS="${APP_URL#https://}"
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, '$ALIAS')].Id | [0]" \
+            --output text)
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            echo "::error::별칭 $ALIAS 인 CloudFront 배포를 찾지 못했습니다."
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
