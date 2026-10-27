@@ -54,5 +54,10 @@ COPY --from=build /workspace/build/libs/*.jar app.jar
 COPY --from=duckdb-ext /duckdb-extensions /app/duckdb-extensions
 ENV DUCKDB_EXTENSION_DIRECTORY=/app/duckdb-extensions
 
+# /actuator/info 에 보여줄 빌드 커밋. CI 가 --build-arg GIT_SHA=<커밋> 으로 넘긴다.
+# 빌드 컨텍스트(src/management-service)에 .git 이 없어서 git 플러그인 대신 빌드 인자로 받는다.
+ARG GIT_SHA=unknown
+ENV APP_COMMIT=$GIT_SHA
+
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

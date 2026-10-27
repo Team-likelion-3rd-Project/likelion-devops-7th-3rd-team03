@@ -2,7 +2,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, prometheus
+        include: health, prometheus, info
+  # info.* 설정값을 /actuator/info 에 보여준다 (Spring Boot 기본은 꺼져 있다)
+  info:
+    env:
+      enabled: true
   endpoint:
     health:
       probes:
@@ -67,3 +71,11 @@ app:
 logging:
   level:
     redirect_service.redirect: ${REDIRECT_LOG_LEVEL:INFO}
+
+
+# /actuator/info 에 실행 중인 앱의 빌드 커밋을 보여준다.
+# APP_COMMIT 은 CI 가 이미지 빌드 때 넣는다 (Dockerfile 의 GIT_SHA 빌드 인자). 로컬 실행은 unknown.
+info:
+  app:
+    name: redirect-service
+    commit: ${APP_COMMIT:unknown}
