@@ -3,10 +3,10 @@ management:
     web:
       exposure:
         include: health, prometheus, info
-    # info.* 설정값을 /actuator/info 에 보여준다 (Spring Boot 기본은 꺼져 있다)
-    info:
-      env:
-        enabled: true
+  # info.* 설정값을 /actuator/info 에 보여준다 (Spring Boot 기본은 꺼져 있다)
+  info:
+    env:
+      enabled: true
   endpoint:
     health:
       probes:
