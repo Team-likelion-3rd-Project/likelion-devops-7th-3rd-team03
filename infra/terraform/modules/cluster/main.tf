@@ -13,6 +13,9 @@ module "eks" {
   # 클러스터에 사람이 로컬에서 apply할 때 관리자가 바뀌거나 중복돼 실패한다.
   # apply를 실행하는 주체(terraform CI 역할, 로컬 예비 실행자)는 반드시 cluster_admin_arns에 있어야 한다.
   # 같은 apply 안에서 helm/kubernetes provider가 클러스터에 접근하기 때문이다.
+  # 클러스터가 떠 있을 때 이 값을 true → false로 바꾸면, 자동으로 붙었던 생성자 access entry 삭제와
+  # cluster_admin_arns의 같은 주체 entry 생성이 한 번에 일어나 중복 오류나 권한 상실이 날 수 있다.
+  # 그래서 클러스터가 내려가 있을 때 적용했다 (#157). 떠 있다면 destroy 후 적용한다.
   enable_cluster_creator_admin_permissions = false
 
   access_entries = {

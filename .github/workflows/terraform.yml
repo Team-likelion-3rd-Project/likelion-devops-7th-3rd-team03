@@ -1,11 +1,16 @@
 # prod(AWS) terraform(infra/terraform/env/prod)을 GitHub Actions로 실행한다 (#157).
 #   PR(infra/terraform 변경): fmt·validate·plan → 결과를 PR 댓글로 남긴다. 읽기 전용 역할을 쓴다.
-#   main push(릴리스 PR 머지): production 승인 후 plan → apply (운영 사양, ArgoCD는 main)
-#   수동 실행: plan / apply / destroy, 사양(test-lite / prod), ArgoCD 브랜치(main / develop)를 고른다. production 승인 필요.
+#   main push(릴리스 PR 머지): plan → (production 승인) → apply. 운영 사양, ArgoCD는 main.
+#   수동 실행: plan / apply / destroy, 사양(test-lite / prod), ArgoCD 브랜치(main / develop)를 고른다.
+#
+# 승인 흐름: plan job이 바뀌는 내용을 실행 요약(Summary)에 남기고, 승인자는 그것을 보고 apply(destroy) job을 승인한다.
+#   apply job은 plan을 다시 만들어 "바뀌는 리소스와 동작"이 승인한 plan과 같은지 비교하고, 다르면 적용하지 않는다.
+#   (저장소가 public이라 plan 파일을 artifact로 넘기지 않는다. plan 파일에는 sensitive 값이 평문으로 들어 있다)
 #
 # 필요한 설정
 #   Variables: TF_PLAN_ROLE_ARN, TF_APPLY_ROLE_ARN  (terraform/bootstrap output)
-#   Environment "production": 승인자 지정, 배포 가능한 브랜치 main·develop
+#   Environment "production-plan": 승인자 없음, 배포 가능한 브랜치 main·develop
+#   Environment "production"     : 승인자 지정, 배포 가능한 브랜치 main·develop
 #   bootstrap(state 버킷·역할·OAuth 시크릿)은 로컬에서 계정당 한 번 apply한다 (infra/terraform/README.md)
 name: Terraform (prod)
 
@@ -41,25 +46,28 @@ on:
 permissions:
   contents: read
 
-# state를 같이 쓰므로 한 번에 하나만 실행한다. 실행 중인 apply를 취소하면 state가 꼬일 수 있어 취소하지 않는다
-concurrency:
-  group: terraform-prod
-  cancel-in-progress: false
-
 env:
   TF_VERSION: 1.10.5
   AWS_REGION: ap-southeast-1
   TF_IN_AUTOMATION: "true"
+  # main push일 때는 inputs가 비어 있어 운영 사양·main·apply가 된다
+  VAR_FILE: ${{ inputs.spec == 'test-lite' && '-var-file=test-lite.tfvars' || '' }}
+  ARGOCD_REVISION: ${{ inputs.argocd_revision || 'main' }}
+  ACTION: ${{ inputs.action || 'apply' }}
 
 jobs:
   # ── PR: 코드가 무엇을 바꾸는지만 보여준다 ─────────────────
   # -refresh=false: 실제 자원을 조회하지 않아 클러스터 접근 권한이 필요 없다
   # -lock=false: state에 잠금 파일을 쓰지 않아 읽기 전용 역할로 충분하다
+  # apply와 같은 동시 실행 그룹에 두지 않는다 (대기 중인 apply가 PR plan 때문에 취소되지 않게)
   plan-pr:
     name: Plan (PR)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: terraform-plan-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
@@ -141,24 +149,90 @@ jobs:
         if: steps.plan.outputs.exitcode != '0'
         run: exit 1
 
-  # ── main 머지 또는 수동 plan·apply ─────────────────────────
+  # ── main 머지·수동 실행: plan (승인 없음) ──────────────────
+  # 실제 자원을 조회(refresh)하므로 apply 역할을 쓴다. production-plan Environment는 승인자가 없지만
+  # 보호 브랜치(main·develop)에서만 실행되도록 막혀 있어 다른 브랜치의 워크플로는 이 역할을 받지 못한다.
+  plan:
+    name: Plan (${{ inputs.action || 'apply' }}, ${{ inputs.spec || 'prod' }}, argocd=${{ inputs.argocd_revision || 'main' }})
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production-plan
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      fingerprint: ${{ steps.plan.outputs.fingerprint }}
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+    defaults:
+      run:
+        working-directory: infra/terraform/env/prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: AWS 자격증명 (apply 역할, plan만 실행)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: init
+        run: terraform init -input=false -backend-config="bucket=snipy-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+
+      # 바뀌는 리소스와 동작 목록의 해시를 apply job에 넘긴다 (승인한 plan과 적용할 plan이 같은지 비교)
+      - name: plan
+        id: plan
+        run: |
+          DESTROY=""; [ "$ACTION" = "destroy" ] && DESTROY="-destroy"
+          # shellcheck disable=SC2086 # VAR_FILE·DESTROY는 비어 있거나 옵션 하나다
+          terraform plan -input=false -no-color -lock-timeout=10m $DESTROY $VAR_FILE \
+            -var="argocd_target_revision=$ARGOCD_REVISION" -out=tfplan
+          CHANGES=$(terraform show -json tfplan | jq -c '[.resource_changes[]? | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}] | sort_by(.address)')
+          echo "fingerprint=$(echo "$CHANGES" | sha256sum | cut -c1-64)" >> "$GITHUB_OUTPUT"
+          echo "has_changes=$([ "$CHANGES" = "[]" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+
+      # 승인자가 보는 plan. 텍스트 plan은 sensitive 값을 가려서 보여준다
+      - name: plan 요약
+        run: |
+          {
+            echo "### Terraform plan: $ACTION (사양: ${VAR_FILE:-운영}, ArgoCD: $ARGOCD_REVISION)"
+            echo
+            terraform show -no-color tfplan | grep -E '^(Plan:|No changes)' || true
+            echo
+            echo "아래 내용을 확인한 뒤 apply(destroy) job을 승인한다."
+            echo
+            echo '<details><summary>전체 plan</summary>'
+            echo
+            echo '```'
+            terraform show -no-color tfplan | tail -c 900000
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── apply (production 승인) ─────────────────────────────────
+  # 같은 state를 바꾸는 apply·destroy끼리만 한 그룹에 둔다. 실행 중인 것은 취소하지 않는다.
+  # (대기 중인 apply·destroy가 있는데 또 실행하면 GitHub은 마지막 요청 하나만 대기시킨다)
   apply:
-    name: ${{ github.event_name == 'push' && 'Apply (main)' || format('{0} ({1}, argocd={2})', inputs.action, inputs.spec, inputs.argocd_revision) }}
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action != 'destroy')
+    name: Apply
+    needs: plan
+    if: github.event_name != 'pull_request' && (inputs.action || 'apply') == 'apply' && needs.plan.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 90
+    concurrency:
+      group: terraform-prod
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     defaults:
       run:
         working-directory: infra/terraform/env/prod
-    env:
-      # main push일 때는 inputs가 비어 있어 운영 사양·main이 된다
-      VAR_FILE: ${{ inputs.spec == 'test-lite' && '-var-file=test-lite.tfvars' || '' }}
-      ARGOCD_REVISION: ${{ inputs.argocd_revision || 'main' }}
-      DO_APPLY: ${{ github.event_name == 'push' || inputs.action == 'apply' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -177,17 +251,23 @@ jobs:
       - name: init
         run: terraform init -input=false -backend-config="bucket=snipy-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
 
-      - name: plan
+      - name: plan 다시 만들고 승인한 plan과 비교
+        env:
+          APPROVED: ${{ needs.plan.outputs.fingerprint }}
         run: |
           # shellcheck disable=SC2086 # VAR_FILE은 비어 있거나 옵션 하나다
-          terraform plan -input=false -no-color $VAR_FILE -var="argocd_target_revision=$ARGOCD_REVISION" -out=tfplan
+          terraform plan -input=false -no-color -lock-timeout=10m $VAR_FILE \
+            -var="argocd_target_revision=$ARGOCD_REVISION" -out=tfplan
+          NOW=$(terraform show -json tfplan | jq -c '[.resource_changes[]? | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}] | sort_by(.address)' | sha256sum | cut -c1-64)
+          if [ "$NOW" != "$APPROVED" ]; then
+            echo "::error::승인한 plan과 지금 plan이 다릅니다 (그사이 코드나 실제 자원이 바뀜). 워크플로를 다시 실행해 새 plan을 확인하세요."
+            exit 1
+          fi
 
       - name: apply
-        if: env.DO_APPLY == 'true'
         run: terraform apply -input=false -no-color tfplan
 
       - name: 결과 요약
-        if: env.DO_APPLY == 'true'
         run: |
           {
             echo "### terraform apply 완료"
@@ -195,21 +275,22 @@ jobs:
             echo "- kubectl: \`aws eks update-kubeconfig --region $AWS_REGION --name snipy-cluster\` (cluster_admin_arns의 사용자)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 수동 destroy ───────────────────────────────────────────
+  # ── destroy (수동, production 승인) ─────────────────────────
   # 클러스터를 지우기 전에 k8s가 만든 AWS 자원(ALB, EBS 볼륨)을 먼저 정리한다.
   # 남아 있으면 ALB가 쓰는 보안 그룹 때문에 destroy가 멈추거나, EBS 볼륨이 계정에 남는다.
   destroy:
-    name: destroy (${{ inputs.spec }})
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    name: Destroy
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy' && needs.plan.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 90
+    concurrency:
+      group: terraform-prod
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
-    env:
-      VAR_FILE: ${{ inputs.spec == 'test-lite' && '-var-file=test-lite.tfvars' || '' }}
-      ARGOCD_REVISION: ${{ inputs.argocd_revision }}
     steps:
       - uses: actions/checkout@v4
 
@@ -252,8 +333,20 @@ jobs:
         working-directory: infra/terraform/env/prod
         run: terraform init -input=false -backend-config="bucket=snipy-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
 
-      - name: destroy
+      - name: destroy plan 다시 만들고 승인한 plan과 비교
         working-directory: infra/terraform/env/prod
+        env:
+          APPROVED: ${{ needs.plan.outputs.fingerprint }}
         run: |
           # shellcheck disable=SC2086 # VAR_FILE은 비어 있거나 옵션 하나다
-          terraform destroy -auto-approve -input=false -no-color $VAR_FILE -var="argocd_target_revision=$ARGOCD_REVISION"
+          terraform plan -destroy -input=false -no-color -lock-timeout=10m $VAR_FILE \
+            -var="argocd_target_revision=$ARGOCD_REVISION" -out=tfplan
+          NOW=$(terraform show -json tfplan | jq -c '[.resource_changes[]? | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}] | sort_by(.address)' | sha256sum | cut -c1-64)
+          if [ "$NOW" != "$APPROVED" ]; then
+            echo "::error::승인한 destroy plan과 지금 plan이 다릅니다. 워크플로를 다시 실행해 새 plan을 확인하세요."
+            exit 1
+          fi
+
+      - name: destroy
+        working-directory: infra/terraform/env/prod
+        run: terraform apply -input=false -no-color tfplan

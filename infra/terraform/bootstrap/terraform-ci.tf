@@ -4,7 +4,9 @@
 # env/prod terraform을 사람 PC 대신 GitHub Actions가 실행한다 (#157).
 # 역할을 둘로 나눠, PR을 올린 사람이 인프라를 바꾸는 권한을 받지 못하게 한다.
 #   plan  : PR에서 plan만 한다. 읽기 전용 (-refresh=false -lock=false라 state 쓰기·클러스터 접근 불필요)
-#   apply : GitHub Environment "production"을 거친 job만 받는다 (승인자 승인 + 허용 브랜치)
+#   apply : GitHub Environment를 거친 job만 받는다. 두 Environment 모두 보호 브랜치(main·develop)에서만 실행된다
+#           production-plan: 승인 없이 plan만 한다 (실제 자원 조회가 필요해 apply 역할을 쓴다)
+#           production     : 승인자 승인 후 apply·destroy
 # 이 역할들은 이 bootstrap이 만들므로 bootstrap 자체는 계정당 한 번 로컬에서 apply한다.
 
 locals {
@@ -54,7 +56,10 @@ resource "aws_iam_role" "terraform_apply" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Environment를 쓰는 job만 이 sub를 받는다. 승인자·허용 브랜치는 GitHub Environment 설정이 막는다
-          "token.actions.githubusercontent.com:sub" = "${local.github_repo_sub}:environment:production"
+          "token.actions.githubusercontent.com:sub" = [
+            "${local.github_repo_sub}:environment:production",
+            "${local.github_repo_sub}:environment:production-plan",
+          ]
         }
       }
     }]
