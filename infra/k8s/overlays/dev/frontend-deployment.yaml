@@ -34,7 +34,16 @@ spec:
           image: snipy-frontend:onprem
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          # 비root로 실행한다. 이미지(nginx-unprivileged)의 사용자가 uid 101이다.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           env:
             # nginx가 /api를 넘기는 백엔드. 같은 overlay의 management-service Service다.
             # nginx는 시작할 때 이 주소를 확인하므로 Service가 먼저(또는 같이) 있어야 한다.
@@ -43,13 +52,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 80
+              port: 8080
             initialDelaySeconds: 2
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 80
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
           resources:
