@@ -14,8 +14,17 @@
 # 값을 넣기 전에 prod를 올리면 ExternalSecret 동기화가 실패해 management-service가 뜨지 않는다.
 #
 # 이름의 접두사는 prod ESO 권한 범위(<cluster_name>/*)에 맞춘다.
+#
+# 다른 시크릿과 달리 실수로 지워지지 않게 막는다. prod 시크릿이 recovery_window_in_days = 0인 것은
+# destroy 후 같은 이름으로 바로 다시 만들기 위해서인데, 이 시크릿은 다시 만들 일이 없다.
+#   prevent_destroy: terraform이 지우려 하면 plan에서 멈춘다
+#   recovery_window_in_days = 7: 콘솔 등에서 지워도 7일 안에 복구할 수 있다
 resource "aws_secretsmanager_secret" "oauth" {
   name                    = "${var.cluster_name}/app/oauth"
   description             = "소셜 로그인 OAuth 값 (JSON). 값은 terraform 밖에서 관리한다"
-  recovery_window_in_days = 0
+  recovery_window_in_days = 7
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }

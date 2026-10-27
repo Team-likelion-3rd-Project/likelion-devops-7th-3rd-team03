@@ -15,9 +15,14 @@ elasticache_num_cache_clusters         = 2
 elasticache_automatic_failover_enabled = true
 elasticache_multi_az_enabled           = true
 
-# apply를 실행하는 사람은 자동으로 관리자가 되므로 여기 넣지 않는다 (중복 시 실패).
-# 다른 팀원의 IAM 사용자/역할 ARN을 넣는다. 예: "arn:aws:iam::<계정 ID>:user/<이름>"
-cluster_admin_arns = []
+# EKS 관리자 (kubectl). apply를 실행하는 주체도 반드시 넣는다 (modules/cluster 주석 참고).
+#   snipy-terraform-apply: terraform CI(.github/workflows/terraform.yml)가 apply할 때 쓰는 역할
+#   team03: 로컬 예비 apply와 kubectl 확인용 IAM 사용자
+# 팀원이 늘면 IAM 사용자 ARN을 추가한다.
+cluster_admin_arns = [
+  "arn:aws:iam::834922934330:role/snipy-terraform-apply",
+  "arn:aws:iam::834922934330:user/team03",
+]
 
 domain_name           = "snipy.life"
 waf_geo_match_enabled = true
