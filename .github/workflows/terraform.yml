@@ -1,0 +1,259 @@
+# prod(AWS) terraform(infra/terraform/env/prod)을 GitHub Actions로 실행한다 (#157).
+#   PR(infra/terraform 변경): fmt·validate·plan → 결과를 PR 댓글로 남긴다. 읽기 전용 역할을 쓴다.
+#   main push(릴리스 PR 머지): production 승인 후 plan → apply (운영 사양, ArgoCD는 main)
+#   수동 실행: plan / apply / destroy, 사양(test-lite / prod), ArgoCD 브랜치(main / develop)를 고른다. production 승인 필요.
+#
+# 필요한 설정
+#   Variables: TF_PLAN_ROLE_ARN, TF_APPLY_ROLE_ARN  (terraform/bootstrap output)
+#   Environment "production": 승인자 지정, 배포 가능한 브랜치 main·develop
+#   bootstrap(state 버킷·역할·OAuth 시크릿)은 로컬에서 계정당 한 번 apply한다 (infra/terraform/README.md)
+name: Terraform (prod)
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 실행할 작업
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      spec:
+        description: 사양 (test-lite = 동작 확인용 축소 사양)
+        type: choice
+        options: [test-lite, prod]
+        default: test-lite
+      argocd_revision:
+        description: ArgoCD가 prod 앱을 가져올 브랜치 (develop = 릴리스 전 검증)
+        type: choice
+        options: [main, develop]
+        default: main
+
+permissions:
+  contents: read
+
+# state를 같이 쓰므로 한 번에 하나만 실행한다. 실행 중인 apply를 취소하면 state가 꼬일 수 있어 취소하지 않는다
+concurrency:
+  group: terraform-prod
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.10.5
+  AWS_REGION: ap-southeast-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  # ── PR: 코드가 무엇을 바꾸는지만 보여준다 ─────────────────
+  # -refresh=false: 실제 자원을 조회하지 않아 클러스터 접근 권한이 필요 없다
+  # -lock=false: state에 잠금 파일을 쓰지 않아 읽기 전용 역할로 충분하다
+  plan-pr:
+    name: Plan (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: infra/terraform/env/prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: AWS 자격증명 (plan 역할)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: fmt
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+
+      - name: init
+        run: terraform init -input=false -backend-config="bucket=snipy-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+
+      - name: validate
+        run: terraform validate -no-color
+
+      - name: plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -no-color -refresh=false -lock=false > plan.txt 2>&1
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+          cat plan.txt
+
+      # 같은 PR에는 댓글 하나만 두고 새 plan으로 고쳐 쓴다
+      - name: PR 댓글
+        uses: actions/github-script@v7
+        env:
+          PLAN_EXIT: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- terraform-plan-prod -->';
+            let plan = fs.readFileSync('infra/terraform/env/prod/plan.txt', 'utf8');
+            const summary = (plan.match(/^(Plan:.*|No changes\..*)$/m) || ['(요약 없음)'])[0];
+            const max = 60000;
+            if (plan.length > max) plan = '...(앞부분 생략)\n' + plan.slice(-max);
+            const ok = process.env.PLAN_EXIT === '0';
+            const body = [
+              marker,
+              `### Terraform plan (env/prod) ${ok ? '✅' : '❌'}`,
+              `**${summary}**`,
+              '',
+              '`-refresh=false`: 실제 자원은 조회하지 않고 코드 변경분만 보여준다. 실제 적용은 main 머지 후 production 승인으로 실행된다.',
+              '',
+              '<details><summary>전체 출력</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '</details>',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const mine = comments.find(c => c.body && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: plan 실패 시 job 실패
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  # ── main 머지 또는 수동 plan·apply ─────────────────────────
+  apply:
+    name: ${{ github.event_name == 'push' && 'Apply (main)' || format('{0} ({1}, argocd={2})', inputs.action, inputs.spec, inputs.argocd_revision) }}
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action != 'destroy')
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/terraform/env/prod
+    env:
+      # main push일 때는 inputs가 비어 있어 운영 사양·main이 된다
+      VAR_FILE: ${{ inputs.spec == 'test-lite' && '-var-file=test-lite.tfvars' || '' }}
+      ARGOCD_REVISION: ${{ inputs.argocd_revision || 'main' }}
+      DO_APPLY: ${{ github.event_name == 'push' || inputs.action == 'apply' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: AWS 자격증명 (apply 역할)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 7200
+
+      - name: init
+        run: terraform init -input=false -backend-config="bucket=snipy-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+
+      - name: plan
+        run: |
+          # shellcheck disable=SC2086 # VAR_FILE은 비어 있거나 옵션 하나다
+          terraform plan -input=false -no-color $VAR_FILE -var="argocd_target_revision=$ARGOCD_REVISION" -out=tfplan
+
+      - name: apply
+        if: env.DO_APPLY == 'true'
+        run: terraform apply -input=false -no-color tfplan
+
+      - name: 결과 요약
+        if: env.DO_APPLY == 'true'
+        run: |
+          {
+            echo "### terraform apply 완료"
+            echo "- 사양: ${VAR_FILE:-운영(terraform.tfvars)}, ArgoCD: $ARGOCD_REVISION"
+            echo "- kubectl: \`aws eks update-kubeconfig --region $AWS_REGION --name snipy-cluster\` (cluster_admin_arns의 사용자)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 수동 destroy ───────────────────────────────────────────
+  # 클러스터를 지우기 전에 k8s가 만든 AWS 자원(ALB, EBS 볼륨)을 먼저 정리한다.
+  # 남아 있으면 ALB가 쓰는 보안 그룹 때문에 destroy가 멈추거나, EBS 볼륨이 계정에 남는다.
+  destroy:
+    name: destroy (${{ inputs.spec }})
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VAR_FILE: ${{ inputs.spec == 'test-lite' && '-var-file=test-lite.tfvars' || '' }}
+      ARGOCD_REVISION: ${{ inputs.argocd_revision }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: AWS 자격증명 (apply 역할)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 7200
+
+      - name: k8s 자원 정리 (ArgoCD 앱 → 앱 리소스 → 모니터링 → ALB 대기)
+        run: |
+          if ! aws eks describe-cluster --name snipy-cluster >/dev/null 2>&1; then
+            echo "클러스터가 없어 정리를 건너뜁니다."
+            exit 0
+          fi
+          aws eks update-kubeconfig --name snipy-cluster
+          # 앱을 먼저 지워야 리소스를 지우는 동안 ArgoCD가 다시 만들지 않는다 (finalizer가 없어 리소스는 남는다)
+          kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds --ignore-not-found
+          # CRD가 이미 없는 리소스(ServiceMonitor 등)는 오류가 나도 넘어간다
+          kubectl delete -k infra/k8s/overlays/prod --ignore-not-found || true
+          # Prometheus·Grafana PVC까지 지워 EBS 볼륨을 정리한다
+          kubectl delete namespace monitoring --ignore-not-found --timeout=10m
+          for i in $(seq 1 30); do
+            n=$(aws elbv2 describe-load-balancers --query "length(LoadBalancers[?contains(LoadBalancerName,'snipying')])" --output text)
+            [ "$n" = "0" ] && break
+            echo "ALB 삭제 대기 ($i/30)"
+            sleep 10
+          done
+          [ "$n" = "0" ] || { echo "::error::ALB가 5분 안에 삭제되지 않았습니다. 콘솔에서 확인하세요."; exit 1; }
+          # external-dns가 alb 레코드를 지울 시간을 준다 (1분 주기)
+          sleep 70
+
+      - name: init
+        working-directory: infra/terraform/env/prod
+        run: terraform init -input=false -backend-config="bucket=snipy-terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+
+      - name: destroy
+        working-directory: infra/terraform/env/prod
+        run: |
+          # shellcheck disable=SC2086 # VAR_FILE은 비어 있거나 옵션 하나다
+          terraform destroy -auto-approve -input=false -no-color $VAR_FILE -var="argocd_target_revision=$ARGOCD_REVISION"

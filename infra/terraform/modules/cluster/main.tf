@@ -9,10 +9,11 @@ module "eks" {
   subnet_ids = var.subnet_ids # 노드는 프라이빗 서브넷에 배치
 
   cluster_endpoint_public_access = true # access_entries 로 권한 관리
-  # apply를 실행한 주체(사람 또는 CI 역할)에게 관리자 권한을 준다. 같은 apply 안에서
-  # helm/kubernetes provider가 클러스터에 접근해야 하므로 꼭 필요하다.
-  # 실행 주체를 cluster_admin_arns에 또 넣으면 access entry가 중복돼 실패한다.
-  enable_cluster_creator_admin_permissions = true
+  # 관리자는 cluster_admin_arns에만 둔다. "apply를 실행한 주체"를 자동으로 넣으면 CI 역할이 만든
+  # 클러스터에 사람이 로컬에서 apply할 때 관리자가 바뀌거나 중복돼 실패한다.
+  # apply를 실행하는 주체(terraform CI 역할, 로컬 예비 실행자)는 반드시 cluster_admin_arns에 있어야 한다.
+  # 같은 apply 안에서 helm/kubernetes provider가 클러스터에 접근하기 때문이다.
+  enable_cluster_creator_admin_permissions = false
 
   access_entries = {
     for arn in var.cluster_admin_arns :
