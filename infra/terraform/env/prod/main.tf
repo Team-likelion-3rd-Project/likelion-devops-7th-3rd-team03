@@ -106,13 +106,7 @@ module "gitops" {
 module "app_secrets" {
   source = "../../modules/app-secrets"
 
-  cluster_name         = var.cluster_name
-  kakao_client_id      = var.kakao_client_id
-  kakao_client_secret  = var.kakao_client_secret
-  google_client_id     = var.google_client_id
-  google_client_secret = var.google_client_secret
-  naver_client_id      = var.naver_client_id
-  naver_client_secret  = var.naver_client_secret
+  cluster_name = var.cluster_name
 }
 
 resource "kubernetes_config_map" "management_service_config" {
