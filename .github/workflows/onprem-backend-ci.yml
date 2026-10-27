@@ -1,12 +1,14 @@
-# 온프렘 dev용 백엔드 이미지를 GHCR에 올린다.
+# 백엔드 이미지를 GHCR에 올린다. 온프렘 dev와 AWS prod가 같은 이미지를 쓴다 (#105).
 #   develop 에 백엔드 코드가 머지되면 3개 이미지를 같은 커밋 SHA 태그로 만든다.
 #   ghcr.io/<소유자>/<저장소>-management-service:<SHA>
 #   ghcr.io/<소유자>/<저장소>-redirect-service:<SHA>
 #   ghcr.io/<소유자>/<저장소>-db-migration:<SHA>
-# 세 이미지 태그를 같게 맞춰서, overlays/dev 의 images 를 태그 하나로 한 번에 바꿀 수 있게 한다.
+# 세 이미지 태그를 같게 맞춰서, overlay 의 images 를 태그 하나로 한 번에 바꿀 수 있게 한다.
 # push 전에 Trivy 로 CRITICAL 취약점을 검사해, 발견되면 그 이미지는 올리지 않는다.
-# 세 이미지를 모두 올린 뒤 overlays/dev 의 백엔드 태그를 이 SHA 로 바꿔 develop 에 커밋한다 (Argo CD 가 보고 배포한다).
-# 테스트는 PR 단계의 management-ci.yml, redirect-ci.yml 이 한다. AWS(ECR) 이미지도 그쪽에서 따로 만든다.
+# 세 이미지를 모두 올린 뒤 overlays/dev 와 overlays/prod 의 백엔드 태그를 이 SHA 로 바꿔 develop 에 커밋한다.
+#   dev: 온프렘 Argo CD 가 develop 을 보고 바로 배포한다.
+#   prod: 릴리스 PR 이 main 에 머지되면 AWS Argo CD 가 배포한다 (dev 에서 확인한 이미지가 그대로 prod 로 간다).
+# 테스트는 PR 단계의 management-ci.yml, redirect-ci.yml 이 한다.
 # 조직의 GHCR 는 여러 팀이 공유하므로 이름에 저장소 이름을 붙인다 (onprem-frontend-ci.yml 과 같은 규칙).
 name: Onprem Backend Images
 
@@ -103,7 +105,7 @@ jobs:
       - name: Summary
         run: echo "pushed ${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
 
-  # 세 이미지가 모두 올라간 뒤 한 번만 overlays/dev 의 백엔드 태그를 이 SHA 로 바꿔 develop 에 커밋한다.
+  # 세 이미지가 모두 올라간 뒤 한 번만 dev·prod overlay 의 백엔드 태그를 이 SHA 로 바꿔 develop 에 커밋한다.
   # Argo CD 가 이 변경을 보고 배포한다. 하나라도 실패하면(needs) 태그를 바꾸지 않아 세 이미지가 항상 같은 SHA 로 맞춰진다.
   bump-tag:
     name: Bump overlay tag
@@ -158,7 +160,9 @@ jobs:
             fi
 
             bash infra/onprem/bump-image-tag.sh management-service redirect-service db-migration "$GITHUB_SHA"
-            git add infra/k8s/overlays/dev/kustomization.yaml
+            FILE=infra/k8s/overlays/prod/kustomization.yaml \
+              bash infra/onprem/bump-image-tag.sh management-service redirect-service db-migration "$GITHUB_SHA"
+            git add infra/k8s/overlays/dev/kustomization.yaml infra/k8s/overlays/prod/kustomization.yaml
             if git diff --cached --quiet; then
               echo "태그가 이미 같아서 커밋하지 않습니다."
               exit 0
