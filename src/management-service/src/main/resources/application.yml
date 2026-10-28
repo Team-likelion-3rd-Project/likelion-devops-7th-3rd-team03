@@ -45,6 +45,11 @@ spring:
       password: ${REDIS_PASSWORD:}
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
+      # 명령 응답 대기. 지정하지 않으면 Lettuce 기본 60초를 기다려, Redis 가 응답하지 않을 때 요청 스레드가 묶인다.
+      # 캐시 조회는 실패하면 DB 로 넘어가므로 짧게 끊는다. 평소 응답은 수 ms 다.
+      timeout: ${REDIS_TIMEOUT:500ms}
+      # 연결 맺기 대기. ElastiCache TLS 핸드셰이크를 감안해 명령보다 길게 둔다.
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
 
 app:
   redirect-cache:
