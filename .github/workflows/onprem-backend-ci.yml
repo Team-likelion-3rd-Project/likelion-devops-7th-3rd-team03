@@ -4,6 +4,7 @@
 #   ghcr.io/<소유자>/<저장소>-redirect-service:<SHA>
 #   ghcr.io/<소유자>/<저장소>-db-migration:<SHA>
 # 세 이미지 태그를 같게 맞춰서, overlay 의 images 를 태그 하나로 한 번에 바꿀 수 있게 한다.
+# 이미지는 amd64·arm64 를 한 태그에 같이 올린다 (Apple Silicon 맥의 로컬 클러스터도 같은 태그를 받는다).
 # push 전에 Trivy 로 CRITICAL 취약점을 검사해, 발견되면 그 이미지는 올리지 않는다.
 # 세 이미지를 모두 올린 뒤 overlays/dev 와 overlays/prod 의 백엔드 태그를 이 SHA 로 바꿔 develop 에 커밋한다.
 #   dev: 온프렘 Argo CD 가 develop 을 보고 바로 배포한다.
@@ -37,7 +38,7 @@ jobs:
   build-and-push:
     name: Build and push ${{ matrix.service }}
     runs-on: ubuntu-latest
-    # 평소 2~3분이다. 멈추면 기본 6시간을 기다리지 않고 실패(timed_out)로 알린다.
+    # 평소 2~3분이고, arm64(QEMU) 단계가 붙어 몇 분 늘어난다. 멈추면 기본 6시간을 기다리지 않고 실패(timed_out)로 알린다.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -56,6 +57,11 @@ jobs:
       - name: Image name
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.service }}" >> "$GITHUB_ENV"
 
+      # arm64 이미지의 대상 플랫폼 단계(DuckDB 확장 설치, CDS 아카이브 생성, microdnf)를 amd64 러너에서 돌리려면 QEMU 가 필요하다.
+      # Gradle 빌드는 Dockerfile 에서 --platform=$BUILDPLATFORM 으로 러너에서 한 번만 하므로 QEMU 를 타지 않는다.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -66,11 +72,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # push 전에 스캔하려고 이미지를 로컬 Docker 에만 만든다
-      - name: Build
+      # push 전에 스캔하려고 러너와 같은 amd64 이미지를 로컬 Docker 에만 만든다 (--load 는 플랫폼 하나만 된다)
+      - name: Build (amd64)
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          platforms: linux/amd64
           push: false
           load: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
@@ -99,11 +106,31 @@ jobs:
       - name: Scan (CRITICAL 이면 push 중단)
         run: bash .github/scripts/trivy-scan.sh "${IMAGE}:${GITHUB_SHA}"
 
-      - name: Push
-        run: docker push "${IMAGE}:${GITHUB_SHA}"
+      # 스캔을 통과하면 amd64·arm64 를 한 태그로 올린다. amd64 는 위 빌드 캐시를 그대로 쓴다.
+      # arm64 는 같은 베이스 태그·같은 jar 라 패키지 버전이 같다고 보고 따로 스캔하지 않는다.
+      # --provenance=false: GHCR 에 플랫폼 정보가 없는 unknown/unknown 항목이 따로 생기지 않게 한다.
+      - name: Push (amd64, arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=onprem-${{ matrix.service }}
+          cache-to: type=gha,scope=onprem-${{ matrix.service }},mode=max
+
+      # 두 플랫폼이 모두 올라갔는지 확인한다. 하나라도 빠지면 태그 반영(bump-tag)으로 넘어가지 않는다
+      - name: Verify platforms
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" > /tmp/image-index.txt
+          for p in linux/amd64 linux/arm64; do
+            grep -Eq "Platform:[[:space:]]+$p" /tmp/image-index.txt || { echo "::error::푸시한 이미지에 $p 플랫폼이 없습니다"; exit 1; }
+          done
 
       - name: Summary
-        run: echo "pushed ${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "pushed ${IMAGE}:${GITHUB_SHA} (linux/amd64, linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
 
   # 세 이미지가 모두 올라간 뒤 한 번만 dev·prod overlay 의 백엔드 태그를 이 SHA 로 바꿔 develop 에 커밋한다.
   # Argo CD 가 이 변경을 보고 배포한다. 하나라도 실패하면(needs) 태그를 바꾸지 않아 세 이미지가 항상 같은 SHA 로 맞춰진다.
