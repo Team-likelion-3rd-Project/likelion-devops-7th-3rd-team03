@@ -31,6 +31,7 @@ patches:
   - path: patch-redirect-service-nodeport.yaml
   - path: patch-redirect-fluent-bit.yaml
   - path: patch-sync-wave.yaml
+  - path: patch-onprem-startup.yaml
 
 # Fluent Bit 설정. 파일을 고치면 이름이 바뀌어 redirect 파드가 새 설정으로 다시 뜬다
 configMapGenerator:

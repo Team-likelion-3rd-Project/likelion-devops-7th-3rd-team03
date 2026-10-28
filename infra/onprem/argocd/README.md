@@ -6,6 +6,7 @@
 - `snipy-dev-app.yaml`: dev 환경(`infra/k8s/overlays/dev`)을 `develop` 브랜치에서 가져오는 Application
 - `notifications.yaml`: 배포 실패를 Slack으로 알리는 Argo CD Notifications 설정 ([6번](#6-배포-실패-slack-알림))
 - [`rollback.md`](rollback.md): 배포를 이전 이미지로 되돌리는 절차와 리허설 기록
+- `argocd-cm-patch.yaml`: Argo CD 건강 판단 설정 (CronJob 실행 결과를 배포 상태에서 제외). `cp-argocd.sh`가 적용한다
 
 ## 배포 방식: self-hosted 러너 대신 Argo CD
 
