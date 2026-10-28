@@ -81,6 +81,8 @@ jobs:
           push: false
           load: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # /actuator/info 에 보여줄 빌드 커밋
+          build-args: GIT_SHA=${{ github.sha }}
           # 패키지를 이 저장소에 연결한다. 연결돼야 GITHUB_TOKEN 으로 다음 push 가 된다
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           # 서비스별로 빌드 캐시를 나눠 Gradle 의존성을 매번 새로 받지 않게 한다
@@ -117,6 +119,8 @@ jobs:
           push: true
           provenance: false
           tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # /actuator/info 에 보여줄 빌드 커밋
+          build-args: GIT_SHA=${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=onprem-${{ matrix.service }}
           cache-to: type=gha,scope=onprem-${{ matrix.service }},mode=max
