@@ -119,6 +119,7 @@ jobs:
           push: true
           provenance: false
           tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # /actuator/info 에 보여줄 빌드 커밋
           build-args: GIT_SHA=${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=onprem-${{ matrix.service }}
