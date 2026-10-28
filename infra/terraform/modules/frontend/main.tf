@@ -14,6 +14,8 @@ data "aws_route53_zone" "main" {
 # ══════════════════════════════════════════════════
 resource "aws_s3_bucket" "frontend" {
   bucket = "${var.cluster_name}-frontend-team03"
+  # 정적 파일은 CI(frontend-ci)가 언제든 다시 올리므로, 파일이 남아 있어도 destroy 가능하게 한다
+  force_destroy = true
 
   tags = {
     Name = "${var.cluster_name}-frontend"
