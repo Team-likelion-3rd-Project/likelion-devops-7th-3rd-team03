@@ -1,0 +1,35 @@
+# 온프렘 워커는 2코어라 JVM 여러 개가 동시에 뜨면(VM 재기동, Argo CD 첫 동기화) 기동이 3~5분 걸린다.
+# 기본 startup probe(5초 × 30 = 150초)를 넘기면 다 뜨기 전에 죽이고 다시 띄우는 악순환이 생겨 300초로 늘린다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: management-service
+          startupProbe:
+            failureThreshold: 60
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redirect-service
+spec:
+  template:
+    spec:
+      # 컨트롤플레인(cp1)은 taint 때문에 파드를 못 받는데, 기본값(nodeTaintsPolicy: Ignore)은 cp1 도 분산 대상으로 센다.
+      # 그러면 "cp1 에 0개"가 기준이 되어 워커에 2개째를 놓지 못하고, 롤링 업데이트 새 파드가 Pending 이 된다.
+      # Honor 로 두면 파드를 받을 수 없는 노드는 계산에서 뺀다. (AWS EKS 엔 이런 노드가 없어 base 는 그대로 둔다)
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels: { app: redirect-service }
+      containers:
+        - name: redirect-service
+          startupProbe:
+            failureThreshold: 60

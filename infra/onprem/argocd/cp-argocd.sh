@@ -21,9 +21,12 @@ echo ">> 2/4 Argo CD $ARGOCD_VERSION 설치 (server-side apply: CRD 가 커서 �
 kubectl apply -n argocd --server-side --force-conflicts \
   -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
 
-echo ">> 3/4 쓰지 않는 구성요소 줄이기 (dex: SSO) / 배포 실패 알림 설정(notifications.yaml) 적용"
-kubectl -n argocd scale deploy argocd-dex-server --replicas=0
+echo ">> 3/4 쓰지 않는 구성요소 줄이기 (dex: SSO, applicationset) / 배포 실패 알림·건강 판단 설정 적용"
+kubectl -n argocd scale deploy argocd-dex-server argocd-applicationset-controller --replicas=0
 kubectl apply -f "$(dirname "$0")/notifications.yaml"
+kubectl -n argocd patch configmap argocd-cm --type merge --patch-file "$(dirname "$0")/argocd-cm-patch.yaml"
+kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge --patch-file "$(dirname "$0")/argocd-cmd-params-patch.yaml"
+kubectl -n argocd rollout restart statefulset argocd-application-controller
 
 echo ">> 4/4 기동 대기 (최대 5분씩)"
 kubectl -n argocd rollout status deploy/argocd-redis --timeout=300s

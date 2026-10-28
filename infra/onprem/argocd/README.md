@@ -4,7 +4,8 @@
 
 - `cp-argocd.sh`: Argo CD 설치 (cp1에서 실행)
 - `snipy-dev-app.yaml`: dev 환경(`infra/k8s/overlays/dev`)을 `develop` 브랜치에서 가져오는 Application
-- `notifications.yaml`: 배포 실패를 Slack으로 알리는 Argo CD Notifications 설정 ([6번](#6-배포-실패-slack-알림))
+- `notifications.yaml`: 배포 실패와 배치 성공·실패를 Slack으로 알리는 Argo CD Notifications 설정 ([6번](#6-배포-실패-slack-알림))
+- `argocd-cm-patch.yaml`: Argo CD 건강 판단 설정 (CronJob 실행 결과를 배포 상태에서 빼고 알림용 표시만 남김). `cp-argocd.sh`가 적용한다
 - [`rollback.md`](rollback.md): 배포를 이전 이미지로 되돌리는 절차와 리허설 기록
 
 ## 배포 방식: self-hosted 러너 대신 Argo CD
@@ -17,7 +18,7 @@
 - **AWS 단계와 같은 구조**: `infra/argocd`의 GitOps 구조와 같다. CI(호스티드 러너)가 이미지를 빌드해 태그 갱신 커밋을 올리면 Argo CD가 반영한다.
 - 롤백은 `git revert`이고, 드리프트는 selfHeal로 복구한다 (자세한 절차는 [`rollback.md`](rollback.md)).
 
-CI 실패는 Actions의 Slack 알림(`notify-failure.yml`)이 알리고, 배포 실패는 Argo CD Notifications가 같은 방식으로 Slack에 알린다 ([6번](#6-배포-실패-slack-알림)).
+CI 실패는 Actions의 Slack 알림(`notify-failure.yml`)이 알리고, 배포 실패와 배치 결과는 Argo CD Notifications가 같은 방식으로 Slack에 알린다 ([6번](#6-배포-실패-slack-알림)).
 
 ## 버전과 호환성
 
@@ -39,7 +40,7 @@ cp1에서 root로 실행한다. 이미지(`quay.io`, `public.ecr.aws`)를 받는
 bash /home/k8s/argocd/cp-argocd.sh
 ```
 
-끝나면 파드가 모두 `Running`이어야 한다. dex는 SSO를 쓰지 않아 일부러 0개로 줄였다. notifications는 켜 둔다 (6번).
+끝나면 파드가 모두 `Running`이어야 한다. dex(SSO)와 applicationset(Application을 템플릿으로 찍어내는 기능)은 쓰지 않아 일부러 0개로 줄였다. notifications는 켜 둔다 (6번).
 
 ```bash
 kubectl -n argocd get pods
@@ -47,6 +48,12 @@ kubectl top pods -n argocd
 ```
 
 설치 후 노드 메모리 사용률은 38~47%였다. `kubectl top nodes`로 워커 메모리 여유를 확인한다.
+
+이미 설치한 클러스터에 `argocd-cm-patch.yaml`만 반영하려면:
+
+```bash
+kubectl -n argocd patch configmap argocd-cm --type merge --patch-file /home/k8s/argocd/argocd-cm-patch.yaml
+```
 
 ## 2. UI 접속
 
@@ -91,6 +98,7 @@ kubectl -n argocd get app snipy-dev -o jsonpath='{.status.sync.status} {.status.
 
 - 같은 이름(`snipy-dev`)의 Application이 이미 있으면(예: 시험용 브랜치를 보던 것) 이 파일 내용으로 바뀐다.
 - 자동 동기화를 켜고 `prune`(Git에서 사라진 리소스 삭제)과 `selfHeal`(손으로 바꾼 것 자동 복구)은 끈다. `develop`에 머지되면 약 3분 안에 클러스터에 반영된다.
+- selfHeal이 꺼져 있어 손으로 바꾼 값(예: `kubectl scale`)은 Git이 바뀔 때까지 되돌려지지 않는다. 시험으로 바꿨다면 직접 원래대로 돌려 놓는다.
 - 동기화가 실패하면(훅 Job 실패 등) Argo CD가 30초, 1분 간격으로 2번 더 시도한다 (`retry`). 그래도 실패하면 원인을 고친 뒤 UI에서 `Sync`를 누른다.
 - `db-migration`과 `seaweedfs-bucket-init`은 Argo CD Sync 훅이다. 동기화할 때마다 이전 Job을 지우고(`BeforeHookCreation`) 새로 실행한다. 그래서 Argo CD 화면에 `OutOfSync`, `Missing`으로 남지 않고, 이미지 태그가 바뀌어도 `field is immutable`이 나지 않는다.
 - 순서는 sync-wave로 정한다: MySQL·SeaweedFS(0) → 마이그레이션·버킷 Job(1) → 앱(2). 앱이 `ddl-auto: validate`라서 마이그레이션보다 먼저 뜨면 기동에 실패하기 때문이다. 마이그레이션이 실패하면 앱은 새 버전으로 바뀌지 않는다.
@@ -129,9 +137,9 @@ kubectl delete namespace argocd
 
 ## 6. 배포 실패 Slack 알림
 
-동기화(Sync)가 실패하거나 앱이 `Degraded`가 되면 Slack으로 알린다. 정상 배포에는 아무것도 오지 않는다. 설정은 `notifications.yaml`(ConfigMap)에 있고, `snipy-dev` Application의 `notifications.argoproj.io/subscribe.*` annotation이 알림을 받는다고 표시한다.
+동기화(Sync)가 실패하거나 앱이 `Degraded`가 되면 Slack으로 알린다. 배치(CronJob)는 성공·실패를 따로 알린다 ([배치 성공·실패 알림](#배치-성공실패-알림)). 정상 배포에는 아무것도 오지 않는다. 설정은 `notifications.yaml`(ConfigMap)에 있고, `snipy-dev` Application의 `notifications.argoproj.io/subscribe.*` annotation이 알림을 받는다고 표시한다.
 
-웹훅 URL은 저장소에 올리지 않는다. `argocd-notifications-secret`은 Argo CD를 설치할 때 이미 만들어지는 Secret이라 Sealed Secrets로 덮어쓰지 않고, 클러스터마다 cp1에서 한 번 직접 넣는다. 채팅이나 Git에 붙이지 않는다 (CI 알림에 쓰는 웹훅과 같은 값을 써도 된다).
+웹훅 URL은 저장소에 올리지 않는다. `argocd-notifications-secret`은 Argo CD를 설치할 때 이미 만들어지는 Secret이라 Sealed Secrets로 덮어쓰지 않고, 클러스터마다 cp1에서 한 번 직접 넣는다. 채팅이나 Git에 붙이지 않는다 (CI 알림에 쓰는 웹훅과 같은 값을 써도 된다). **이 Secret은 지우지 않는다.** 웹훅을 빼려면 키만 지운다.
 
 이미 설치된 클러스터는 아래 순서로 켠다. 새로 설치하는 클러스터는 `cp-argocd.sh`가 `notifications.yaml` 적용과 컨트롤러 기동(3번)을 해 주고, `snipy-dev-app.yaml`은 위 3번 절에서 적용하니 웹훅 입력(2번)만 하면 된다.
 
@@ -192,6 +200,76 @@ kubectl -n argocd delete app notify-test
 ```bash
 kubectl -n argocd logs deploy/argocd-notifications-controller --tail=30
 ```
+
+알림 전송이 실패해도 "보냄"으로 기록되는 경우가 있다. 웹훅을 고친 뒤 다시 보내려면 기록을 지운다.
+
+```bash
+kubectl -n argocd annotate app snipy-dev notified.notifications.argoproj.io-
+```
+
+### 배치 성공·실패 알림
+
+배치(CronJob) 결과는 배포 상태(Healthy/Degraded)에 넣지 않고 알림으로만 보낸다. 배치가 실패해도 동기화가 막히지 않는다 (`argocd-cm-patch.yaml`).
+
+| 트리거 | 언제 | 메시지 |
+|---|---|---|
+| `on-batch-succeeded` | 마지막 스케줄 실행이 성공 | `배치(CronJob) 성공 (BATCH_LAST_RUN_SUCCEEDED <시각>)` |
+| `on-batch-failed` | 마지막 스케줄 실행이 성공하지 않음 | `배치(CronJob) 실패 (BATCH_LAST_RUN_FAILED <시각>)` + 확인 명령 |
+
+- `argocd-cm-patch.yaml`의 Lua가 CronJob 상태(`lastScheduleTime`, `lastSuccessfulTime`)를 보고 health 메시지에 결과와 시각을 남긴다. 실행 중이면 판단하지 않는다.
+- 메시지에 시각이 들어가 실행마다 한 번씩 보낸다 (`oncePer`). 연속으로 실패해도 회차마다 온다.
+- CronJob이 직접 만든 Job만 반영된다. `kubectl create job --from=cronjob/...`으로 손으로 돌린 결과는 알림이 가지 않는다.
+
+#### 웹훅 없이 알림 내용 확인
+
+**웹훅을 아직 넣지 않은 클러스터에서만** 한다. `slack-webhook-url`을 테스트 주소로 바꾸기 때문이다. 클러스터 안에 받은 요청을 그대로 출력하는 서버를 띄워 Slack으로 갈 JSON을 확인한다.
+
+```bash
+kubectl -n argocd run webhook-echo --image=python:3.12-alpine --port=8080 --labels=app=webhook-echo -- \
+  python -u -c 'import http.server
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        n=int(self.headers.get("Content-Length",0)); print("POST",self.path,self.rfile.read(n).decode(),flush=True)
+        self.send_response(200); self.end_headers()
+http.server.HTTPServer(("",8080),H).serve_forever()'
+kubectl -n argocd expose pod webhook-echo --port=8080
+kubectl -n argocd patch secret argocd-notifications-secret --type merge \
+  -p '{"stringData":{"slack-webhook-url":"http://webhook-echo.argocd.svc:8080/slack"}}'
+kubectl -n argocd annotate app snipy-dev notified.notifications.argoproj.io-   # 이미 보낸 기록 지우고 다시
+kubectl -n argocd annotate app snipy-dev argocd.argoproj.io/refresh=normal --overwrite
+kubectl -n argocd logs webhook-echo
+```
+
+확인 후 테스트 서버를 지우고 웹훅 키만 비운다. Secret 자체는 지우지 않는다.
+
+```bash
+kubectl -n argocd delete pod,svc webhook-echo
+kubectl -n argocd patch secret argocd-notifications-secret --type json -p '[{"op":"remove","path":"/data/slack-webhook-url"}]'
+```
+
+실패 알림까지 보려면 배치를 실제로 실패시킨다. selfHeal이 꺼져 있어 손으로 바꾼 값은 Argo CD가 되돌리지 않으니, 끝나면 반드시 원래대로 돌린다.
+
+```bash
+kubectl -n argocd patch app snipy-dev --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'  # 시험 중 자동 동기화 끄기
+kubectl -n snipy scale statefulset seaweedfs --replicas=0
+kubectl -n snipy patch cronjob click-stats-batch -p '{"spec":{"schedule":"* * * * *"}}'
+# 새 Job 이 시작되면 바로 스케줄을 되돌린다 (Failed 까지 재시도 포함 수 분)
+kubectl -n snipy patch cronjob click-stats-batch -p '{"spec":{"schedule":"0 2 * * *"}}'
+
+# 확인 후 원복
+kubectl -n snipy scale statefulset seaweedfs --replicas=1
+kubectl apply -f /home/k8s/argocd/snipy-dev-app.yaml   # 자동 동기화 다시 켜기
+```
+
+## 문제 해결
+
+| 증상 | 원인 | 조치 |
+|---|---|---|
+| 동기화가 `CronJob has not completed its last execution successfully`로 계속 실패하고 마이그레이션·앱 교체까지 못 감 | VM을 켠 직후 놓친 새벽 배치가 MySQL보다 먼저 돌아 실패 → 기본 규칙은 CronJob을 Degraded로 보고, CronJob이 wave 0이라 동기화 전체가 멈춤 | `argocd-cm-patch.yaml` 적용 (1번 끝의 명령). `cp-argocd.sh`에 포함돼 있다 |
+| 앱이 `Startup probe failed`로 계속 재시작, 로그엔 에러 없이 기동만 느림 | 워커 CPU 포화 (측정한 클러스터는 워커 2코어). JVM 여러 개가 동시에 뜨면 기동이 3~5분. 워커에서 `vmstat 1 5`의 `id`가 0에 가까움 | 호스트의 Docker Desktop(WSL2) 종료 (`wsl --shutdown`). dev overlay에서 startup 대기를 300초로 둠 (`patch-onprem-startup.yaml`) |
+| 롤링 업데이트 중 redirect 새 파드가 `Pending` (`didn't match pod topology spread constraints`) | 파드 분산 계산에 파드를 못 받는 컨트롤플레인이 포함됨 | dev overlay에서 `nodeTaintsPolicy: Honor` (`patch-onprem-startup.yaml`) |
+| 이미지 pull이 `lookup ... i/o timeout`, `server misbehaving`, `Destination Host Unreachable`로 실패 | Windows의 VMware NAT 서비스가 멈춤 (Running으로 보여도 멈춰 있을 수 있다) | 관리자 PowerShell에서 `Restart-Service "VMware NAT Service" -Force` |
+| 알림이 `POST $slack-webhook-url ... unsupported protocol scheme`으로 실패 | `argocd-notifications-secret`에 웹훅 키가 없음 | 6번의 2단계로 웹훅을 넣고 `notified.notifications.argoproj.io` annotation을 지워 다시 보낸다 |
 
 ## 주의
 
