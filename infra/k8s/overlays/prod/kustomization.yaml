@@ -24,10 +24,10 @@ patches:
 images:
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
-    newTag: 60c638c12d36e8c45bf8196027cd84ba35d16e5f
+    newTag: e69a4a5765ec4e6cb62aa7c17d228804e54a241a
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
-    newTag: 60c638c12d36e8c45bf8196027cd84ba35d16e5f
+    newTag: e69a4a5765ec4e6cb62aa7c17d228804e54a241a
   - name: db-migration
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
-    newTag: 60c638c12d36e8c45bf8196027cd84ba35d16e5f
+    newTag: e69a4a5765ec4e6cb62aa7c17d228804e54a241a
