@@ -25,6 +25,8 @@ echo ">> 3/4 쓰지 않는 구성요소 줄이기 (dex: SSO, applicationset) / �
 kubectl -n argocd scale deploy argocd-dex-server argocd-applicationset-controller --replicas=0
 kubectl apply -f "$(dirname "$0")/notifications.yaml"
 kubectl -n argocd patch configmap argocd-cm --type merge --patch-file "$(dirname "$0")/argocd-cm-patch.yaml"
+kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge --patch-file "$(dirname "$0")/argocd-cmd-params-patch.yaml"
+kubectl -n argocd rollout restart statefulset argocd-application-controller
 
 echo ">> 4/4 기동 대기 (최대 5분씩)"
 kubectl -n argocd rollout status deploy/argocd-redis --timeout=300s

@@ -16,6 +16,8 @@ metadata:
   annotations:
     notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
     notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-succeeded.slack: ""
 spec:
   project: default
   source:
