@@ -51,3 +51,18 @@ RDS MySQL 기본 `max_connections` = 인스턴스 메모리 / 12,582,880 바이�
 
 `spring.data.redis.timeout=500ms`, `connect-timeout=2s` (#171). 기본 60초를 기다리지 않고 캐시 실패 시 DB로 넘어간다.
 Redis가 응답하지 않을 때 redirect 응답: 18.98초 → 1.02초.
+
+
+## prod 연결 확인 (prod를 띄울 때)
+
+```bash
+kubectl -n snipy port-forward deploy/redirect-service 18080:8080 &
+curl -s localhost:18080/actuator/health | python3 -m json.tool   # components.db, components.redis 가 UP
+kill %1
+```
+
+RDS에서 실제 한도와 현재 사용량:
+```sql
+SHOW VARIABLES LIKE 'max_connections';
+SHOW STATUS LIKE 'Threads_connected';
+```
