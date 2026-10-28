@@ -47,10 +47,10 @@ images:
     newTag: c615dc8f2eba40eb8f7ba5db18ed3caff36cf61d
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
-    newTag: 00fec4992e4cb297dac8c57f1430be78afd0c064
+    newTag: 60c638c12d36e8c45bf8196027cd84ba35d16e5f
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
-    newTag: 00fec4992e4cb297dac8c57f1430be78afd0c064
+    newTag: 60c638c12d36e8c45bf8196027cd84ba35d16e5f
   - name: db-migration
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
-    newTag: 00fec4992e4cb297dac8c57f1430be78afd0c064
+    newTag: 60c638c12d36e8c45bf8196027cd84ba35d16e5f
