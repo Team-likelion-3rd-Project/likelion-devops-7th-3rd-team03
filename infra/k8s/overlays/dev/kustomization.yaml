@@ -24,6 +24,8 @@ resources:
   - ingress.yaml
   - seaweedfs.yaml
   - click-stats-batch-cronjob.yaml
+  - redirect-rollout.yaml
+  - redirect-canary-analysis.yaml
 
 patches:
   - path: patch-app-resources.yaml
