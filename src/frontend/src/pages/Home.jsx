@@ -55,10 +55,7 @@ export function Home() {
     <div className="page page--narrow">
       <section className="hero">
         <h1>링크를 짧고, 안전하고, 추적 가능하게 (Argo CD 시연)</h1>
-        <p className="hero__sub">
-          긴 URL과 만료일을 입력하면 단축 링크를 즉시 발급합니다. 실제 백엔드(LinkController)에
-          연동되어 있습니다.
-        </p>
+        <p className="hero__sub">긴 URL과 만료일을 입력하면 단축 링크를 즉시 발급합니다.</p>
       </section>
 
       <form className="card shortener-form" onSubmit={handleSubmit}>
@@ -103,7 +100,6 @@ export function Home() {
         {!user && (
           <p className="form-hint">
             로그인하지 않아도 입력은 가능하지만, 발급 시 로그인 화면으로 이동합니다.
-            (links.user_id는 NOT NULL이라 소유자가 반드시 필요합니다)
           </p>
         )}
       </form>

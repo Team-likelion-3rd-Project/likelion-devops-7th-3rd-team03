@@ -78,7 +78,7 @@ export function StatsDashboard() {
       <div className="page__header">
         <div>
           <h1>통계 대시보드</h1>
-          <p className="hero__sub">실제 백엔드(StatsController)에서 조회한 통계입니다.</p>
+          <p className="hero__sub">링크별 클릭 통계를 확인합니다.</p>
         </div>
       </div>
 

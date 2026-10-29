@@ -11,7 +11,7 @@ import { SignupProfile } from './pages/SignupProfile'
 import { Dashboard } from './pages/Dashboard'
 import { LinkStats } from './pages/LinkStats'
 import { StatsDashboard } from './pages/StatsDashboard'
-import { RedirectHandler } from './pages/Redirect'
+import { NotFound } from './pages/NotFound'
 
 export default function App() {
   return (
@@ -48,8 +48,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            {/* 짧은 코드 리다이렉트는 항상 마지막 - 실제 서비스에서도 라우팅 우선순위가 같다 */}
-            <Route path="/:code" element={<RedirectHandler />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
         <ToastHost />
