@@ -132,7 +132,8 @@ resource "kubernetes_config_map" "management_service_config" {
     CORS_ALLOWED_ORIGINS               = "https://app.${var.domain_name}"
   }
 
-  depends_on = [module.database]
+  # 클러스터 관리자 권한(access entry)이 연결된 뒤에 만든다. 없으면 apply 역할이 forbidden으로 실패한다
+  depends_on = [module.database, module.cluster]
 }
 
 resource "kubernetes_config_map" "redirect_service_config" {
@@ -158,5 +159,6 @@ resource "kubernetes_config_map" "redirect_service_config" {
     JAVA_TOOL_OPTIONS = "-Xms512m -Xmx512m"
   }
 
-  depends_on = [module.database]
+  # 클러스터 관리자 권한(access entry)이 연결된 뒤에 만든다. 없으면 apply 역할이 forbidden으로 실패한다
+  depends_on = [module.database, module.cluster]
 }
