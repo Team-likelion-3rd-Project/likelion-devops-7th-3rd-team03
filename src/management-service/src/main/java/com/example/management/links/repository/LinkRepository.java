@@ -25,4 +25,7 @@ public interface LinkRepository extends JpaRepository<Link, Long> {
 
     /** 단건 통계 조회의 소유권·soft-delete 상태를 함께 확인한다. */
     Optional<Link> findByLinkIdAndUserIdAndIsVisibleTrue(String linkId, Long userId);
+
+    /** 워크스페이스를 삭제할 때 비활성화할 링크 */
+    List<Link> findByWorkspaceIdAndIsVisibleTrue(Long workspaceId);
 }

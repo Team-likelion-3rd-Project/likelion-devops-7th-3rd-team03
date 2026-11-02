@@ -59,6 +59,8 @@ class AuthServiceTest {
     private JwtTokenProvider jwtTokenProvider;
     @Mock
     private SignupSessionStore signupSessionStore;
+    @Mock
+    private UserRegistrar userRegistrar;
 
     private AuthService authService;
 
@@ -67,7 +69,7 @@ class AuthServiceTest {
         // JwtProperties는 record라 굳이 mock하지 않고 실제 값으로 생성한다
         JwtProperties jwtProperties = new JwtProperties("test-secret", 1800L, 1209600L);
         authService = new AuthService(userRepository, refreshTokenRepository, socialOAuthClientRegistry,
-                jwtTokenProvider, jwtProperties, signupSessionStore);
+                jwtTokenProvider, jwtProperties, signupSessionStore, userRegistrar);
     }
 
     @Test
@@ -183,7 +185,7 @@ class AuthServiceTest {
     void signup_validSession_createsUserAndIssuesTokens() {
         SignupSession session = new SignupSession(SocialProvider.GOOGLE, "g-100", "소셜닉", "social@test.com", "https://social-image");
         when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
-        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> {
+        when(userRegistrar.register(any(User.class))).thenAnswer(invocation -> {
             User saved = invocation.getArgument(0);
             ReflectionTestUtils.setField(saved, "id", 10L);
             return saved;
@@ -193,7 +195,7 @@ class AuthServiceTest {
         AuthTokens tokens = authService.signup("signup-token", "입력닉", "input@test.com", "https://input-image");
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).saveAndFlush(userCaptor.capture());
+        verify(userRegistrar).register(userCaptor.capture());
         User created = userCaptor.getValue();
         assertThat(created.getProvider()).isEqualTo(SocialProvider.GOOGLE);
         assertThat(created.getSocialId()).isEqualTo("g-100");
@@ -215,12 +217,12 @@ class AuthServiceTest {
     void signup_emptyProfileImage_savesNull() {
         SignupSession session = new SignupSession(SocialProvider.KAKAO, "110", null, null, null);
         when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
-        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRegistrar.register(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         authService.signup("signup-token", "닉네임", "user@test.com", "");
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).saveAndFlush(userCaptor.capture());
+        verify(userRegistrar).register(userCaptor.capture());
         assertThat(userCaptor.getValue().getProfileImageUrl()).isNull();
     }
 
@@ -232,7 +234,7 @@ class AuthServiceTest {
         assertThrows(SignupSessionExpiredException.class,
                 () -> authService.signup("expired-token", "닉네임", "user@test.com", null));
 
-        verifyNoInteractions(userRepository, jwtTokenProvider, refreshTokenRepository);
+        verifyNoInteractions(userRepository, userRegistrar, jwtTokenProvider, refreshTokenRepository);
     }
 
     @Test
@@ -244,7 +246,7 @@ class AuthServiceTest {
         assertThrows(SignupSessionStoreException.class,
                 () -> authService.signup("signup-token", "닉네임", "user@test.com", null));
 
-        verifyNoInteractions(userRepository, jwtTokenProvider, refreshTokenRepository);
+        verifyNoInteractions(userRepository, userRegistrar, jwtTokenProvider, refreshTokenRepository);
     }
 
     @Test
@@ -252,7 +254,7 @@ class AuthServiceTest {
     void signup_duplicateSocialAccount_issuesTokensForExistingUser() {
         SignupSession session = new SignupSession(SocialProvider.KAKAO, "120", null, null, null);
         when(signupSessionStore.consume("second-token")).thenReturn(Optional.of(session));
-        when(userRepository.saveAndFlush(any(User.class)))
+        when(userRegistrar.register(any(User.class)))
                 .thenThrow(new DataIntegrityViolationException("uk_users_provider_social_id"));
 
         User existingUser = User.builder().provider(SocialProvider.KAKAO).socialId("120")
@@ -276,7 +278,7 @@ class AuthServiceTest {
     void signup_duplicateWithdrawnUser_throwsWithdrawnUserException() {
         SignupSession session = new SignupSession(SocialProvider.KAKAO, "130", null, null, null);
         when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
-        when(userRepository.saveAndFlush(any(User.class)))
+        when(userRegistrar.register(any(User.class)))
                 .thenThrow(new DataIntegrityViolationException("uk_users_provider_social_id"));
 
         User withdrawnUser = User.builder().provider(SocialProvider.KAKAO).socialId("130").build();
@@ -295,7 +297,7 @@ class AuthServiceTest {
         SignupSession session = new SignupSession(SocialProvider.KAKAO, "140", null, null, null);
         when(signupSessionStore.consume("signup-token")).thenReturn(Optional.of(session));
         DataIntegrityViolationException violation = new DataIntegrityViolationException("other");
-        when(userRepository.saveAndFlush(any(User.class))).thenThrow(violation);
+        when(userRegistrar.register(any(User.class))).thenThrow(violation);
         when(userRepository.findByProviderAndSocialId(SocialProvider.KAKAO, "140")).thenReturn(Optional.empty());
 
         DataIntegrityViolationException thrown = assertThrows(DataIntegrityViolationException.class,
@@ -352,7 +354,7 @@ class AuthServiceTest {
 
         assertThrows(InvalidRefreshTokenException.class, () -> authService.reissue("unknown-token"));
 
-        verifyNoInteractions(userRepository, jwtTokenProvider);
+        verifyNoInteractions(userRepository, userRegistrar, jwtTokenProvider);
         verify(refreshTokenRepository, never()).delete(any());
     }
 
@@ -370,7 +372,7 @@ class AuthServiceTest {
         assertThrows(InvalidRefreshTokenException.class, () -> authService.reissue("expired-token"));
 
         verify(refreshTokenRepository, times(1)).delete(expired);
-        verifyNoInteractions(userRepository, jwtTokenProvider);
+        verifyNoInteractions(userRepository, userRegistrar, jwtTokenProvider);
     }
 
     @Test
