@@ -19,6 +19,7 @@ import {
 } from '../api/stats'
 import { ApiError } from '../api/http'
 import { useWorkspace } from '../context/WorkspaceContext'
+import { RequireWorkspace } from '../components/RequireWorkspace'
 import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
 
 const RANGE_OPTIONS = [
@@ -33,7 +34,16 @@ function daysAgoIso(n) {
   return d.toISOString().slice(0, 10)
 }
 
+// 팀을 바꾸면 RequireWorkspace가 이 화면을 새로 시작하고, 새 팀의 링크 안에서 다시 찾는다.
 export function LinkStats() {
+  return (
+    <RequireWorkspace>
+      <LinkStatsView />
+    </RequireWorkspace>
+  )
+}
+
+function LinkStatsView() {
   const { id: linkId } = useParams()
   const navigate = useNavigate()
   const { current } = useWorkspace()

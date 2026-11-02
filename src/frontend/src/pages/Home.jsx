@@ -129,6 +129,12 @@ export function Home() {
                 <FormField label="만료일" constraintText="필수" errorText={errors.expiresAt}>
                   <ExpiryInput value={expiresAt} onChange={setExpiresAt} />
                 </FormField>
+                {user && !current && (
+                  <Box color="text-body-secondary" fontSize="body-s">
+                    워크스페이스를 불러온 뒤에 만들 수 있어요. 계속 안 되면 상단바의 “팀 목록 다시
+                    불러오기”를 눌러 주세요.
+                  </Box>
+                )}
                 {!user && (
                   <Box color="text-body-secondary" fontSize="body-s">
                     로그인하지 않아도 입력은 가능하지만, 발급 시 로그인 화면으로 이동합니다.

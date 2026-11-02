@@ -14,6 +14,7 @@ import Table from '@cloudscape-design/components/table'
 import { listLinks, updateLink, deleteLink } from '../api/links'
 import { ApiError } from '../api/http'
 import { useWorkspace } from '../context/WorkspaceContext'
+import { RequireWorkspace } from '../components/RequireWorkspace'
 import { ExpiryInput } from '../components/ExpiryInput'
 import { toast } from '../components/Toast'
 
@@ -22,19 +23,15 @@ const TITLE_MAX = 100
 
 // 새로고침 직후에는 워크스페이스가 아직 없다. 팀을 바꾸면 쪽·수정 상태까지 처음부터 다시 시작한다.
 export function Dashboard() {
-  const { current } = useWorkspace()
-  if (!current) {
-    return (
-      <Box textAlign="center" padding="xxl">
-        <StatusIndicator type="loading">불러오는 중</StatusIndicator>
-      </Box>
-    )
-  }
-  return <LinkList key={current.workspaceId} ws={current} />
+  return (
+    <RequireWorkspace>
+      <LinkList />
+    </RequireWorkspace>
+  )
 }
 
-function LinkList({ ws }) {
-  const { refreshLinkCount } = useWorkspace()
+function LinkList() {
+  const { current: ws, refreshLinkCount } = useWorkspace()
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [data, setData] = useState(null)

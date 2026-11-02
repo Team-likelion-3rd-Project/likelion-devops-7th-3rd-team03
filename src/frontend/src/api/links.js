@@ -16,7 +16,7 @@ const toLink = (l) => ({
 })
 
 const MOCK_ID = 'mlink-'
-const isMockId = (linkId) => String(linkId).startsWith(MOCK_ID)
+const isMockId = (linkId) => MOCK_TEAMS && String(linkId).startsWith(MOCK_ID)
 const isMockTeam = (ws) => MOCK_TEAMS && !ws.personal
 
 export async function listLinks(ws, page = 0, size = 20) {
