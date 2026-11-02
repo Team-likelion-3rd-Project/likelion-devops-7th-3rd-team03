@@ -43,7 +43,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/*/login", "/api/auth/signup", "/api/auth/logout", "/api/auth/reissue",
-                                "/actuator/health/**", "/actuator/prometheus").permitAll()
+                                "/actuator/health/**", "/actuator/info","/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
                         (request, response, authException) -> {
