@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend
-} from 'recharts'
+import { useNavigate, useParams } from 'react-router-dom'
+import Alert from '@cloudscape-design/components/alert'
+import Box from '@cloudscape-design/components/box'
+import Button from '@cloudscape-design/components/button'
+import Container from '@cloudscape-design/components/container'
+import ContentLayout from '@cloudscape-design/components/content-layout'
+import Header from '@cloudscape-design/components/header'
+import SegmentedControl from '@cloudscape-design/components/segmented-control'
+import SpaceBetween from '@cloudscape-design/components/space-between'
+import StatusIndicator from '@cloudscape-design/components/status-indicator'
 import { listLinks } from '../api/links'
 import {
   getDailyStats,
@@ -19,11 +18,12 @@ import {
   getRealtimeCount
 } from '../api/stats'
 import { ApiError } from '../api/http'
+import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
 
 const RANGE_OPTIONS = [
-  { label: '7일', days: 7 },
-  { label: '14일', days: 14 },
-  { label: '30일', days: 30 }
+  { id: '7', text: '7일' },
+  { id: '14', text: '14일' },
+  { id: '30', text: '30일' }
 ]
 
 function daysAgoIso(n) {
@@ -34,9 +34,10 @@ function daysAgoIso(n) {
 
 export function LinkStats() {
   const { id: linkId } = useParams()
+  const navigate = useNavigate()
 
   const [link, setLink] = useState(null)
-  const [notFound, setNotFound] = useState(false)
+  const [state, setState] = useState('loading') // loading | ready | notfound | error
   const [days, setDays] = useState(14)
 
   const [daily, setDaily] = useState(null)
@@ -49,13 +50,19 @@ export function LinkStats() {
   const [refreshing, setRefreshing] = useState(false)
 
   // ponytail: 링크 단건 조회 API가 없어 목록에서 찾는다. 사용자당 링크가 100개를 넘으면 못 찾을 수 있음 — 그때 GET /api/links/{id} 추가.
-  useEffect(() => {
-    listLinks(0, 100).then((res) => {
-      const found = res.links.find((l) => l.linkId === linkId)
-      if (!found) setNotFound(true)
-      else setLink(found)
-    })
+  const loadLink = useCallback(() => {
+    listLinks(0, 100)
+      .then((res) => {
+        const found = res.links.find((l) => l.linkId === linkId)
+        if (!found) setState('notfound')
+        else setLink(found)
+      })
+      .catch(() => setState('error'))
   }, [linkId])
+
+  useEffect(() => {
+    loadLink()
+  }, [loadLink])
 
   const from = daysAgoIso(days - 1)
   const to = daysAgoIso(0)
@@ -74,8 +81,9 @@ export function LinkStats() {
       setChange(changeRes)
       setDeviceBreakdown(deviceRes)
       setRegionBreakdown(regionRes)
+      setState('ready')
     } catch (err) {
-      if (err instanceof ApiError) setNotFound(true)
+      setState(err instanceof ApiError ? 'notfound' : 'error')
     }
   }, [linkId, from, to])
 
@@ -92,15 +100,23 @@ export function LinkStats() {
     }
   }
 
+  function retry() {
+    setState('loading')
+    loadLink()
+    loadStats()
+  }
+
   useEffect(() => {
     let cancelled = false
     function poll() {
-      getRealtimeCount(linkId).then((res) => {
-        if (!cancelled) {
-          setRealtime(res.realtimeClickCount)
-          setRealtimeVisitors(res.realtimeUniqueVisitorCount)
-        }
-      })
+      getRealtimeCount(linkId)
+        .then((res) => {
+          if (!cancelled) {
+            setRealtime(res.realtimeClickCount)
+            setRealtimeVisitors(res.realtimeUniqueVisitorCount)
+          }
+        })
+        .catch(() => {})
     }
     poll()
     const timer = setInterval(poll, 10000)
@@ -110,181 +126,105 @@ export function LinkStats() {
     }
   }, [linkId])
 
-  if (notFound) {
+  if (state === 'notfound') {
     return (
-      <div className="page">
-        <p>링크를 찾을 수 없습니다.</p>
-        <Link to="/dashboard">내 링크로 돌아가기</Link>
-      </div>
+      <ContentLayout header={<Header variant="h1">링크를 찾을 수 없습니다</Header>}>
+        <Button onClick={() => navigate('/dashboard')}>내 링크로 돌아가기</Button>
+      </ContentLayout>
     )
   }
 
-  if (!link || !daily) return <div className="page">불러오는 중...</div>
+  if (state === 'error') {
+    return (
+      <ContentLayout header={<Header variant="h1">통계</Header>}>
+        <Alert
+          type="error"
+          header="통계를 불러오지 못했습니다"
+          action={<Button onClick={retry}>다시 시도</Button>}
+        >
+          잠시 후 다시 시도해 주세요.
+        </Alert>
+      </ContentLayout>
+    )
+  }
+
+  if (!link || !daily) {
+    return (
+      <Box padding="xxl" textAlign="center">
+        <StatusIndicator type="loading">불러오는 중...</StatusIndicator>
+      </Box>
+    )
+  }
+
+  const tiles = [
+    { label: '오늘 클릭 수', value: realtime ?? '-' },
+    { label: '오늘 방문자 수 (UV)', value: realtimeVisitors ?? '-' },
+    ...(change
+      ? [
+          {
+            label: '어제 클릭 (전일 대비)',
+            value: `${change.clicks.base.toLocaleString()} (${formatRate(change.clicks.changeRate)})`
+          },
+          {
+            label: '어제 방문자 (전일 대비)',
+            value: `${change.visitors.base.toLocaleString()} (${formatRate(change.visitors.changeRate)})`
+          }
+        ]
+      : []),
+    // link_daily_stats는 배치가 어제까지만 채워서 오늘 클릭이 빠져있다. realtime(오늘, Redis)을 더해 보정한다.
+    { label: '총 클릭', value: (daily.summary.totalClicks + (realtime ?? 0)).toLocaleString() }
+  ]
 
   return (
-    <div className="page">
-      <div className="page__header">
-        <div>
-          <h1>{link.title || link.shortUrl}</h1>
-          <p className="hero__sub" title={link.originalUrl}>
-            {link.originalUrl}
-          </p>
-        </div>
-        <div className="page__header-actions">
-          <button className="btn btn--ghost" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? '새로고침 중...' : '새로고침'}
-          </button>
-          <Link to="/dashboard" className="btn btn--ghost">
-            ← 내 링크
-          </Link>
-        </div>
-      </div>
+    <ContentLayout
+      header={
+        <Header
+          variant="h1"
+          description={link.originalUrl}
+          actions={
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button iconName="refresh" loading={refreshing} onClick={handleRefresh}>
+                새로고침
+              </Button>
+              <Button onClick={() => navigate('/dashboard')}>내 링크</Button>
+            </SpaceBetween>
+          }
+        >
+          {link.title || link.shortUrl}
+        </Header>
+      }
+    >
+      <SpaceBetween size="l">
+        <StatGrid items={tiles} columns={3} />
 
-      <div className="stat-tiles">
-        <StatTile label="오늘 클릭 수" value={realtime ?? '-'} />
-        <StatTile label="오늘 방문자 수 (UV)" value={realtimeVisitors ?? '-'} />
-        {change && (
-          <>
-            <StatTile
-              label="어제 클릭 (전일 대비)"
-              value={`${change.clicks.base.toLocaleString()} (${formatRate(change.clicks.changeRate)})`}
-            />
-            <StatTile
-              label="어제 방문자 (전일 대비)"
-              value={`${change.visitors.base.toLocaleString()} (${formatRate(change.visitors.changeRate)})`}
-            />
-          </>
-        )}
-        {/* link_daily_stats는 배치가 어제까지만 채워서 오늘 클릭이 빠져있다. realtime(오늘, Redis)을 더해 보정한다. */}
-        <StatTile
-          label="총 클릭"
-          value={(daily.summary.totalClicks + (realtime ?? 0)).toLocaleString()}
-        />
-      </div>
+        <Container
+          header={
+            <Header
+              variant="h2"
+              actions={
+                <SegmentedControl
+                  selectedId={String(days)}
+                  onChange={({ detail }) => setDays(Number(detail.selectedId))}
+                  options={RANGE_OPTIONS}
+                />
+              }
+            >
+              일별 클릭/방문자 추이
+            </Header>
+          }
+        >
+          <TrendChart daily={daily.daily} />
+        </Container>
 
-      <div className="card chart-card">
-        <div className="chart-card__header">
-          <h2>일별 클릭/방문자 추이</h2>
-          <div className="segmented">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.days}
-                className={`segmented__item ${days === opt.days ? 'is-active' : ''}`}
-                onClick={() => setDays(opt.days)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="viz-root">
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={daily.daily} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="var(--gridline)" />
-              <XAxis
-                dataKey="date"
-                tickFormatter={(d) => d.slice(5)}
-                stroke="var(--muted)"
-                tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                axisLine={{ stroke: 'var(--axis)' }}
-                tickLine={false}
-              />
-              <YAxis
-                allowDecimals={false}
-                stroke="var(--muted)"
-                tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                axisLine={false}
-                tickLine={false}
-                width={32}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'var(--surface-1)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  fontSize: 13
-                }}
-                labelStyle={{ color: 'var(--text-primary)' }}
-              />
-              <Legend wrapperStyle={{ fontSize: 13 }} />
-              <Line
-                type="monotone"
-                dataKey="clickCount"
-                name="클릭 수"
-                stroke="var(--series-1)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="visitorCount"
-                name="방문자 수"
-                stroke="var(--series-2)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>유입 경로</h2>
-        <BreakdownTable rows={referrers} nameKey="referrerCategory" />
-      </div>
-
-      <div className="card">
-        <h2>디바이스 분포</h2>
-        <BreakdownTable rows={deviceBreakdown?.breakdown} nameKey="value" />
-      </div>
-
-      <div className="card">
-        <h2>접속 지역 분포</h2>
-        <BreakdownTable rows={regionBreakdown?.breakdown} nameKey="value" />
-      </div>
-    </div>
-  )
-}
-
-function BreakdownTable({ rows, nameKey }) {
-  if (!rows) return <p className="empty-state empty-state--inline">불러오는 중...</p>
-  if (rows.length === 0)
-    return <p className="empty-state empty-state--inline">해당 기간에 데이터가 없습니다.</p>
-  return (
-    <table className="table">
-      <thead>
-        <tr>
-          <th>구분</th>
-          <th>클릭 수</th>
-          <th>비율</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r[nameKey]}>
-            <td>{r[nameKey]}</td>
-            <td>{r.clickCount.toLocaleString()}</td>
-            <td>{r.percentage}%</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+        <BreakdownTable title="유입 경로" rows={referrers} nameKey="referrerCategory" />
+        <BreakdownTable title="디바이스 분포" rows={deviceBreakdown?.breakdown} nameKey="value" />
+        <BreakdownTable title="접속 지역 분포" rows={regionBreakdown?.breakdown} nameKey="value" />
+      </SpaceBetween>
+    </ContentLayout>
   )
 }
 
 function formatRate(rate) {
   const sign = rate > 0 ? '+' : ''
   return `${sign}${rate}%`
-}
-
-function StatTile({ label, value }) {
-  return (
-    <div className="card stat-tile">
-      <span className="stat-tile__label">{label}</span>
-      <span className="stat-tile__value">{value}</span>
-    </div>
-  )
 }
