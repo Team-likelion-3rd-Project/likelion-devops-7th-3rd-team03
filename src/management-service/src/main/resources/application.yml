@@ -55,6 +55,13 @@ spring:
       # 연결 맺기 대기. ElastiCache TLS 핸드셰이크를 감안해 명령보다 길게 둔다.
       connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
 
+  http:
+    clients:
+      # 소셜 로그인(카카오·구글·네이버) 호출 타임아웃. 지정하지 않으면 외부 API 가 응답하지 않을 때
+      # 로그인 요청이 오래 묶여 스레드가 쌓인다. Boot 4 는 주입된 RestClient.Builder 에 이 값을 적용한다.
+      connect-timeout: ${HTTP_CLIENT_CONNECT_TIMEOUT:2s}
+      read-timeout: ${HTTP_CLIENT_READ_TIMEOUT:5s}
+
 app:
   redirect-cache:
     # 관리 서비스와 리다이렉트 서비스가 같은 TTL을 써야 갱신 정책이 일관된다.
@@ -90,6 +97,16 @@ jwt:
 # 예: 로컬 http://localhost:8080, 운영 https://s.short.ly
 short-url:
   base-url: ${SHORT_URL_BASE_URL}
+
+
+# /actuator/info 에 실행 중인 앱의 빌드 커밋을 보여준다.
+# APP_COMMIT 은 CI 가 이미지 빌드 때 넣는다 (Dockerfile 의 GIT_SHA 빌드 인자). 로컬 실행은 unknown.
+# 아래 --- 밑은 batch 프로필 전용이라, 이 블록은 반드시 --- 위에 둔다.
+info:
+  app:
+    name: management-service
+    commit: ${APP_COMMIT:unknown}
+
 
 ---
 # batch 프로필: K8s CronJob 전용. 웹서버 안 띄우고 AthenaBatchRunner만 돌고 종료한다.
@@ -134,9 +151,3 @@ app:
       max-delay-ms: ${DUCKDB_RETRY_MAX_DELAY_MS:30000}
 
 
-# /actuator/info 에 실행 중인 앱의 빌드 커밋을 보여준다.
-# APP_COMMIT 은 CI 가 이미지 빌드 때 넣는다 (Dockerfile 의 GIT_SHA 빌드 인자). 로컬 실행은 unknown.
-info:
-  app:
-    name: management-service
-    commit: ${APP_COMMIT:unknown}

@@ -7,6 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.firehose.FirehoseClient;
 
+import java.time.Duration;
+
 /**
  * 자격증명은 SDK 기본 체인이 처리한다 — EKS에서는 IRSA(redirect-service-sa)가 주입하는
  * AWS_ROLE_ARN / AWS_WEB_IDENTITY_TOKEN_FILE 환경변수를 자동으로 읽어간다.
@@ -25,10 +27,21 @@ import software.amazon.awssdk.services.firehose.FirehoseClient;
 @ConditionalOnProperty(name = "app.click-event.sink", havingValue = "firehose", matchIfMissing = true)   // 추가
 public class FirehoseConfig {
 
+    /**
+     * Firehose 호출 타임아웃. 지정하지 않으면 SDK 기본값대로 오래 기다려, Firehose 가 느려지면
+     * 전송 스레드(firehoseClickEventPublisherExecutor)가 묶이고 대기열이 차서 클릭을 버린다.
+     * attempt: 한 번 시도의 한도, call: 재시도를 포함한 전체 한도.
+     */
     @Bean
-    public FirehoseClient firehoseClient(@Value("${app.click-event.aws-region}") String awsRegion) {
+    public FirehoseClient firehoseClient(
+            @Value("${app.click-event.aws-region}") String awsRegion,
+            @Value("${app.click-event.firehose.attempt-timeout:2s}") Duration attemptTimeout,
+            @Value("${app.click-event.firehose.call-timeout:5s}") Duration callTimeout) {
         return FirehoseClient.builder()
                 .region(Region.of(awsRegion))
+                .overrideConfiguration(c -> c
+                        .apiCallAttemptTimeout(attemptTimeout)
+                        .apiCallTimeout(callTimeout))
                 .build();
     }
 }

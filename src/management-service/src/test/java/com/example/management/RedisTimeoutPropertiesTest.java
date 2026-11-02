@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Redis 가 응답하지 않을 때 기본 60초를 기다리지 않도록 타임아웃이 설정돼 있는지 확인한다.
- * 앱 전체(DB·Redis)를 띄우지 않고 application.yml 만 읽어서 본다.
+ * 기본 문서(첫 번째)만 읽는다. --- 아래는 batch 프로필 전용이다.
  */
 class RedisTimeoutPropertiesTest {
 
@@ -20,7 +20,8 @@ class RedisTimeoutPropertiesTest {
         StandardEnvironment env = new StandardEnvironment();
         new YamlPropertySourceLoader()
                 .load("application", new ClassPathResource("application.yml"))
-                .forEach(env.getPropertySources()::addLast);
+                .stream().findFirst()
+                .ifPresent(env.getPropertySources()::addLast);
 
         assertThat(env.getProperty("spring.data.redis.timeout")).isEqualTo("500ms");
         assertThat(env.getProperty("spring.data.redis.connect-timeout")).isEqualTo("2s");

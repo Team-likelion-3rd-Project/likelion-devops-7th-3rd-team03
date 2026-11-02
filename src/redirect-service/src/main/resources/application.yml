@@ -66,6 +66,10 @@ app:
     # infra/terraform/streaming.tf의 aws_kinesis_firehose_delivery_stream.click_events.name
     firehose-stream-name: ${FIREHOSE_STREAM_NAME:}
     aws-region: ${AWS_REGION:ap-southeast-1}
+    firehose:
+      # Firehose 호출 타임아웃 (한 번 시도 / 재시도 포함 전체)
+      attempt-timeout: ${FIREHOSE_ATTEMPT_TIMEOUT:2s}
+      call-timeout: ${FIREHOSE_CALL_TIMEOUT:5s}
 
   realtime-stats:
     # Redis는 당일 잠정 통계만 보관한다. 원본 클릭 이벤트가 최종 집계의 기준이다.
