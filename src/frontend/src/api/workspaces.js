@@ -3,7 +3,8 @@
 // 확정되면 아래 toWorkspace/toMember 만 고친다.
 import { apiFetch, ApiError, getAccessToken } from './http'
 
-const USE_MOCK = import.meta.env.VITE_WORKSPACE_API !== 'real'
+// mock은 개발 서버(npm run dev)에서만 쓴다. 운영 빌드에는 들어가지 않는다.
+const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_WORKSPACE_API !== 'real'
 
 // workspace = { workspaceId, name, personal, role }  role: 'ADMIN' | 'MEMBER'
 // member    = { userId, name, email, role, joinedAt }  (email 필드 제공 여부는 백엔드 확인 필요)
@@ -47,7 +48,8 @@ const real = {
     (await apiFetch(`/workspaces/${id}/invite-code`, { method: 'POST' })).data.inviteCode,
   join: async (code) =>
     toWorkspace(
-      (await apiFetch('/workspaces/join', { method: 'POST', body: { inviteCode: code } })).data
+      (await apiFetch('/workspaces/join', { method: 'POST', body: { inviteCode: code.trim() } }))
+        .data
     )
 }
 

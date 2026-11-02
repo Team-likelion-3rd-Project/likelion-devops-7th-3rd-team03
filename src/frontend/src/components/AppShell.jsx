@@ -16,7 +16,7 @@ import TopNavigation from '@cloudscape-design/components/top-navigation'
 import { useAuth } from '../context/AuthContext'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { createWorkspace, joinWorkspace } from '../api/workspaces'
-import { ROLE_LABEL } from '../permissions'
+import { roleLabel } from '../permissions'
 import { toast, useFlashes } from './Toast'
 import { displayName } from '../auth/devLogin'
 import Flashbar from '@cloudscape-design/components/flashbar'
@@ -125,10 +125,24 @@ export function AppShell() {
   )
 }
 
+// 로그인 전후로 셸이 바뀌어도, 새로고침해도 고른 모드를 유지한다. 저장소를 못 써도 화면은 동작해야 한다.
+const MODE_KEY = 'snipy_color_mode'
+
 function useColorMode() {
-  const [dark, setDark] = useState(false)
+  const [dark, setDark] = useState(() => {
+    try {
+      return localStorage.getItem(MODE_KEY) === 'dark'
+    } catch {
+      return false
+    }
+  })
   useEffect(() => {
     applyMode(dark ? Mode.Dark : Mode.Light)
+    try {
+      localStorage.setItem(MODE_KEY, dark ? 'dark' : 'light')
+    } catch {
+      /* 저장하지 못해도 현재 화면에는 영향이 없다 */
+    }
   }, [dark])
   return [dark, setDark]
 }
@@ -217,7 +231,7 @@ function TopBar({ onCreate, onJoin }) {
               items: workspaces.map((w) => ({
                 id: `ws:${w.workspaceId}`,
                 text: w.name,
-                secondaryText: `${ROLE_LABEL[w.role]}${w.personal ? ' · 개인' : ''}`,
+                secondaryText: `${roleLabel(w.role)}${w.personal ? ' · 개인' : ''}`,
                 iconName: w.workspaceId === current?.workspaceId ? 'check' : undefined
               }))
             },
@@ -264,7 +278,17 @@ function TopBar({ onCreate, onJoin }) {
 }
 
 // 이름(또는 코드) 하나를 받아 서버에 보내고, 성공하면 그 팀으로 전환한다
-function NameModal({ header, label, description, placeholder, submitText, run, done, onDismiss }) {
+function NameModal({
+  header,
+  label,
+  description,
+  placeholder,
+  submitText,
+  max,
+  run,
+  done,
+  onDismiss
+}) {
   const { refresh } = useWorkspace()
   const [value, setValue] = useState('')
   const [error, setError] = useState(null)
@@ -272,6 +296,7 @@ function NameModal({ header, label, description, placeholder, submitText, run, d
 
   async function submit() {
     if (!value.trim()) return setError(`${label}을(를) 입력해 주세요.`)
+    if (max && value.trim().length > max) return setError(`${max}자 이내로 입력해 주세요.`)
     setBusy(true)
     try {
       const w = await run(value)
@@ -331,6 +356,7 @@ const CreateWorkspaceModal = ({ onDismiss }) => (
     description="링크를 함께 관리할 팀이나 프로젝트 이름이면 좋아요. 만든 사람은 관리자가 돼요."
     placeholder="예: 브랜드전략팀"
     submitText="만들기"
+    max={50} // workspaces.name VARCHAR(50)
     run={createWorkspace}
     done={(w) => `'${w.name}' 워크스페이스를 만들었어요. 이제 팀원을 초대해 보세요.`}
     onDismiss={onDismiss}
@@ -343,7 +369,7 @@ const JoinWorkspaceModal = ({ onDismiss }) => (
     header="초대 코드로 합류"
     label="초대 코드"
     description="팀 관리자에게 받은 코드를 입력해 주세요. 합류하면 멤버 역할로 시작해요."
-    placeholder="예: Mk7Qx2pRt9"
+    placeholder="관리자에게 받은 코드"
     submitText="합류"
     run={joinWorkspace}
     done={(w) => `'${w.name}'에 멤버로 합류했어요.`}

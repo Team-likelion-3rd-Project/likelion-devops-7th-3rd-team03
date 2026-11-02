@@ -21,6 +21,9 @@ const PERMISSIONS = {
   MEMBER: new Set(MEMBER)
 }
 
+// 서버가 모르는 역할(예: 이후에 추가될 VIEWER)을 보내도 화면이 멈추지 않게, 권한은 없는 것으로 본다.
 export function hasPermission(role, permission) {
-  return Boolean(role) && PERMISSIONS[role].has(permission)
+  return PERMISSIONS[role]?.has(permission) ?? false
 }
+
+export const roleLabel = (role) => ROLE_LABEL[role] ?? role

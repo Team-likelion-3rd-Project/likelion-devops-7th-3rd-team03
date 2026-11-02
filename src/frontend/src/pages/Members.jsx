@@ -21,19 +21,32 @@ import {
   reissueInviteCode,
   removeMember
 } from '../api/workspaces'
-import { ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from '../permissions'
+import { ROLES, ROLE_DESCRIPTION, roleLabel } from '../permissions'
+import { RequireWorkspace } from '../components/RequireWorkspace'
 import { toast } from '../components/Toast'
+
+// 모르는 역할은 맨 뒤로 보낸다
+const roleRank = (role) => (ROLES.includes(role) ? ROLES.indexOf(role) : ROLES.length)
 
 const roleOption = (role) => ({
   value: role,
-  label: ROLE_LABEL[role],
+  label: roleLabel(role),
   description: ROLE_DESCRIPTION[role]
 })
 
 const fmtDate = (iso) =>
   new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
 
+// 팀을 바꾸면 RequireWorkspace가 이 화면을 새로 시작해서 이전 팀의 멤버가 남아 보이지 않는다
 export function Members() {
+  return (
+    <RequireWorkspace>
+      <MemberList />
+    </RequireWorkspace>
+  )
+}
+
+function MemberList() {
   const { user } = useAuth()
   const { current, can } = useWorkspace()
   const id = current?.workspaceId
@@ -50,8 +63,7 @@ export function Members() {
       setMembers(
         [...list].sort(
           (a, b) =>
-            ROLES.indexOf(a.role) - ROLES.indexOf(b.role) ||
-            new Date(a.joinedAt) - new Date(b.joinedAt)
+            roleRank(a.role) - roleRank(b.role) || new Date(a.joinedAt) - new Date(b.joinedAt)
         )
       )
       setStatus('ready')
@@ -158,7 +170,7 @@ export function Members() {
                   ariaLabel={`${row.name} 역할`}
                 />
               ) : (
-                ROLE_LABEL[row.role]
+                roleLabel(row.role)
               ),
             width: 200
           },
@@ -271,7 +283,7 @@ function InviteCodeModal({ workspace, onDismiss }) {
       <SpaceBetween size="m">
         <Box>
           Snipy에 가입한 사람이 <strong>워크스페이스 전환 → 초대 코드로 합류</strong>에서 이 코드를
-          입력하면 <strong>{workspace.name}</strong>에 <strong>{ROLE_LABEL.MEMBER}</strong>로
+          입력하면 <strong>{workspace.name}</strong>에 <strong>{roleLabel('MEMBER')}</strong>로
           합류해요. 역할은 합류 후에 바꿀 수 있어요.
         </Box>
         {error && <Alert type="error">{error}</Alert>}
