@@ -57,6 +57,15 @@ class SocialLoginFlowIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        // 가입하면 개인 워크스페이스가 생기므로 users의 FK를 가진 행부터 지운다
+        jdbcTemplate.update("""
+                DELETE FROM workspace_members WHERE user_id IN (SELECT id FROM (
+                    SELECT id FROM users WHERE social_id LIKE ?) t)
+                """, SOCIAL_ID_PREFIX + "%");
+        jdbcTemplate.update("""
+                DELETE FROM workspaces WHERE personal_owner_id IN (SELECT id FROM (
+                    SELECT id FROM users WHERE social_id LIKE ?) t)
+                """, SOCIAL_ID_PREFIX + "%");
         jdbcTemplate.update("""
                 DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM (
                     SELECT id FROM users WHERE social_id LIKE ?) t)

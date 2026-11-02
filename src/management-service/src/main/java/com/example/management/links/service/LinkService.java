@@ -140,6 +140,19 @@ public class LinkService {
         publishRedirectCacheRefresh(link);
     }
 
+    /**
+     * 워크스페이스에 속한 링크를 모두 비활성화한다(워크스페이스 삭제, 회원 탈퇴).
+     * 일괄 UPDATE 대신 링크마다 캐시 갱신 이벤트를 보내, Redis에 남은 캐시로 리다이렉트가 계속되지 않게 한다.
+     * 링크 개수 제한(100개)이 있어 한 건씩 처리해도 된다.
+     */
+    @Transactional
+    public void deactivateAllInWorkspace(Long workspaceId) {
+        for (Link link : linkRepository.findByWorkspaceIdAndIsVisibleTrue(workspaceId)) {
+            link.softDelete();
+            publishRedirectCacheRefresh(link);
+        }
+    }
+
     private void validateExpirationPolicy(OffsetDateTime expiresAt) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         if (!expiresAt.isAfter(now) || expiresAt.isAfter(now.plusYears(MAX_EXPIRATION_YEARS))) {

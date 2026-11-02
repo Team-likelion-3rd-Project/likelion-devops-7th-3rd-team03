@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -302,6 +303,28 @@ class LinkServiceTest {
 
         assertThat(link.isVisible()).isFalse();
         verifyRedirectCacheRefresh(link, false);
+    }
+
+    @Test
+    @DisplayName("deactivateAllInWorkspace: 워크스페이스의 링크를 모두 비활성화하고 링크마다 비활성 캐시 갱신 이벤트를 발행한다")
+    void deactivateAllInWorkspace_softDeletesEachLinkAndPublishesInactiveCacheRefresh() {
+        Link first = link("first", "첫째", "AbC1234", LocalDateTime.of(2026, 8, 10, 12, 0), null);
+        Link second = link("second", "둘째", "XyZ9876", LocalDateTime.of(2026, 8, 11, 12, 0), null);
+        ReflectionTestUtils.setField(second, "id", 2L);
+        when(linkRepository.findByWorkspaceIdAndIsVisibleTrue(7L)).thenReturn(List.of(first, second));
+
+        linkService.deactivateAllInWorkspace(7L);
+
+        assertThat(first.isVisible()).isFalse();
+        assertThat(second.isVisible()).isFalse();
+        ArgumentCaptor<RedirectCacheRefreshEvent> eventCaptor =
+                ArgumentCaptor.forClass(RedirectCacheRefreshEvent.class);
+        verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+                .extracting(event -> event.entry().linkId(), event -> event.entry().isEnabled())
+                .containsExactly(
+                        tuple(1L, false),
+                        tuple(2L, false));
     }
 
     private Link link(String originalUrl, String title, String slug,
