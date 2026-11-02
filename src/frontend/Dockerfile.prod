@@ -21,8 +21,10 @@ ARG VITE_NAVER_REDIRECT_URI=
 RUN npm run build
 
 # nginx 1.27 계열은 이미지 갱신이 끝나 OpenSSL 패치(CVE-2026-31789)를 받지 못했다. 지원 중인 stable 로 고정한다.
-# 마이너(1.30)까지만 고정해서 같은 계열의 보안 패치는 따라오고, 큰 버전 변경은 생기지 않게 한다.
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+# slim 은 이미지 필터 같은 추가 모듈을 뺀 변형이다. 우리는 nginx 코어·gzip·envsubst 만 써서 필요 없고,
+# 일반 이미지에만 들어 있는 brotli-libs 1.2.0-r1 의 CRITICAL(CVE-2026-111497)이 Trivy 게이트에 걸려서 slim 으로 쓴다.
+# 알파인 버전(3.24)까지 고정했다. 3.25 로 넘어갈 때는 이 태그를 직접 올린다.
+FROM nginxinc/nginx-unprivileged:1.30-alpine3.24-slim
 # 비root(uid 101)로 실행하는 nginx 이미지. 1024 미만 포트를 못 열어서 8080으로 받는다 (Service가 80 -> 8080으로 이어 준다).
 # 이 이미지도 시작할 때 /etc/nginx/templates/*.template 을 envsubst로 치환해 default.conf를 만든다.
 # API_ 로 시작하는 변수만 치환해서 $uri 같은 nginx 변수는 그대로 둔다.
