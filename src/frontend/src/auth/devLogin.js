@@ -22,5 +22,6 @@ export function devLogin(account) {
 
 // 상단바에 보여 줄 이름. 테스트 계정이 아니면 사용자 ID 앞부분을 쓴다.
 export function displayName(userId) {
-  return DEV_ACCOUNTS.find((a) => a.userId === userId)?.name ?? userId.slice(0, 8)
+  const dev = import.meta.env.DEV && DEV_ACCOUNTS.find((a) => a.userId === userId)
+  return dev?.name ?? userId.slice(0, 8)
 }

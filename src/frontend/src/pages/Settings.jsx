@@ -12,7 +12,7 @@ import Input from '@cloudscape-design/components/input'
 import KeyValuePairs from '@cloudscape-design/components/key-value-pairs'
 import Modal from '@cloudscape-design/components/modal'
 import SpaceBetween from '@cloudscape-design/components/space-between'
-import StatusIndicator from '@cloudscape-design/components/status-indicator'
+import { RequireWorkspace } from '../components/RequireWorkspace'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { deleteWorkspace, renameWorkspace } from '../api/workspaces'
 import { toast } from '../components/Toast'
@@ -20,17 +20,13 @@ import { toast } from '../components/Toast'
 const NAME_MAX = 50 // workspaces.name VARCHAR(50)
 
 // 새로고침 직후에는 워크스페이스 목록이 오기 전이라 current가 비어 있다.
-// 목록이 오면 그때 그리고, 팀을 바꾸면 입력창의 이름도 새 팀 것으로 다시 시작한다.
+// RequireWorkspace가 목록이 온 뒤에 그리고, 팀을 바꾸면 입력창의 이름도 새 팀 것으로 다시 시작한다.
 export function Settings() {
-  const { current } = useWorkspace()
-  if (!current) {
-    return (
-      <Box textAlign="center" padding="xxl">
-        <StatusIndicator type="loading">불러오는 중</StatusIndicator>
-      </Box>
-    )
-  }
-  return <SettingsForm key={current.workspaceId} />
+  return (
+    <RequireWorkspace>
+      <SettingsForm />
+    </RequireWorkspace>
+  )
 }
 
 function SettingsForm() {
