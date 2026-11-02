@@ -3,7 +3,13 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: management-service-hpa
 spec:
-  minReplicas: 1
+  # 카나리 배포라 Deployment 대신 Rollout 의 파드 수를 조절한다 (redirect 와 같은 이유)
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: management-service
+  # 카나리 50% 단계가 의미 있으려면 파드가 2개 이상이어야 한다
+  minReplicas: 2
   maxReplicas: 2
 ---
 apiVersion: autoscaling/v2

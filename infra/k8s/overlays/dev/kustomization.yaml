@@ -26,6 +26,8 @@ resources:
   - click-stats-batch-cronjob.yaml
   - redirect-rollout.yaml
   - redirect-canary-analysis.yaml
+  - management-rollout.yaml
+  - management-canary-analysis.yaml
 
 patches:
   - path: patch-app-resources.yaml
