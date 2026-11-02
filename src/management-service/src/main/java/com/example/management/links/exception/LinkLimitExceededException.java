@@ -1,6 +1,6 @@
 package com.example.management.links.exception;
 
-/** visible 링크 수가 사용자별 허용 개수에 도달했을 때 사용한다. */
+/** visible 링크 수가 워크스페이스별 허용 개수에 도달했을 때 사용한다. */
 public class LinkLimitExceededException extends RuntimeException {
 
     public LinkLimitExceededException() {
