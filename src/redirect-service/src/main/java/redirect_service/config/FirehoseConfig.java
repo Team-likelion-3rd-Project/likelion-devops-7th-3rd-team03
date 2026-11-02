@@ -2,6 +2,7 @@ package redirect_service.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.regions.Region;
@@ -31,17 +32,18 @@ public class FirehoseConfig {
      * Firehose 호출 타임아웃. 지정하지 않으면 SDK 기본값대로 오래 기다려, Firehose 가 느려지면
      * 전송 스레드(firehoseClickEventPublisherExecutor)가 묶이고 대기열이 차서 클릭을 버린다.
      * attempt: 한 번 시도의 한도, call: 재시도를 포함한 전체 한도.
+     * 값은 문자열("2s")로 받아 직접 Duration 으로 바꾼다. 변환기 없는 환경(설정만 띄우는 테스트)에서도 똑같이 동작하게.
      */
     @Bean
     public FirehoseClient firehoseClient(
             @Value("${app.click-event.aws-region}") String awsRegion,
-            @Value("${app.click-event.firehose.attempt-timeout:2s}") Duration attemptTimeout,
-            @Value("${app.click-event.firehose.call-timeout:5s}") Duration callTimeout) {
+            @Value("${app.click-event.firehose.attempt-timeout:2s}") String attemptTimeout,
+            @Value("${app.click-event.firehose.call-timeout:5s}") String callTimeout) {
         return FirehoseClient.builder()
                 .region(Region.of(awsRegion))
                 .overrideConfiguration(c -> c
-                        .apiCallAttemptTimeout(attemptTimeout)
-                        .apiCallTimeout(callTimeout))
+                        .apiCallAttemptTimeout(DurationStyle.detectAndParse(attemptTimeout))
+                        .apiCallTimeout(DurationStyle.detectAndParse(callTimeout)))
                 .build();
     }
 }
