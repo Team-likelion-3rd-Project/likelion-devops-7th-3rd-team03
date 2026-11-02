@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 export function NotFound() {
   return (
     <div className="page page--narrow">
-      <div className="card redirect-card">
+      <div className="card">
         <h1>페이지를 찾을 수 없습니다</h1>
         <p className="hero__sub">주소가 잘못되었거나 이동된 페이지입니다.</p>
         <Link to="/" className="btn btn--primary" style={{ marginTop: 16 }}>
