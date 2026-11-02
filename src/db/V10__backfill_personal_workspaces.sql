@@ -28,7 +28,7 @@ SELECT UUID(),
 
 -- 2) 주인을 관리자로 등록 (아직 멤버가 아닌 경우만)
 INSERT INTO workspace_members (workspace_id, user_id, role, joined_at)
-SELECT w.id, w.personal_owner_id, 'ADMIN', w.created_at
+SELECT w.id, w.personal_owner_id, 'ADMIN', COALESCE(w.created_at, NOW())
   FROM workspaces w
  WHERE w.is_personal = TRUE
    AND NOT EXISTS (
