@@ -11,5 +11,11 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: redirect-service-hpa
 spec:
-  minReplicas: 1
+  # 카나리 배포라 Deployment 대신 Rollout 의 파드 수를 조절한다 (Deployment 를 보면 Rollout 과 파드 수를 서로 뺏는다)
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: redirect-service
+  # 카나리 50% 단계가 의미 있으려면 파드가 2개 이상이어야 한다 (1개면 0% 아니면 100%)
+  minReplicas: 2
   maxReplicas: 2

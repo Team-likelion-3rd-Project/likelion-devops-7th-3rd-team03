@@ -1,0 +1,74 @@
+# redirect 카나리 판단 기준. k6 가 카나리 파드에만 요청하고, 기준을 못 넘으면 k6 가 실패로 끝나 Rollout 이 자동 롤백한다.
+#
+# 요청 대상은 없는 slug(/canary-check)다. 정상이면 404 가 나와서
+#   - 테스트 링크가 없는 새 클러스터에서도 그대로 돈다
+#   - 리다이렉트(302)가 아니라 클릭 로그가 남지 않아 통계를 더럽히지 않는다
+# 302·404 는 정상, 5xx 는 실패로 센다. 302 를 따라 외부로 나가지 않게 redirects: 0.
+#
+# 기준: 에러율 1% 미만, p95 150ms 미만 (팀 부하 테스트 SLO).
+# 부하: 초당 10건 2분 (워커가 작아서 부하 때문에 실패로 판정되지 않게 고정).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redirect-canary-k6
+data:
+  canary.js: |
+    import http from 'k6/http';
+
+    http.setResponseCallback(http.expectedStatuses(302, 404));
+
+    export const options = {
+        scenarios: {
+            canary: {
+                executor: 'constant-arrival-rate',
+                rate: 10,
+                timeUnit: '1s',
+                duration: '2m',
+                preAllocatedVUs: 5,
+                maxVUs: 20,
+            },
+        },
+        thresholds: {
+            http_req_failed: ['rate<0.01'],
+            http_req_duration: ['p(95)<150'],
+        },
+    };
+
+    export default function () {
+        http.get(`${__ENV.TARGET}/canary-check`, { redirects: 0 });
+    }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: redirect-canary-k6
+spec:
+  args:
+    - name: target
+  metrics:
+    - name: k6
+      # 한 번이라도 기준을 못 넘으면 실패 → 자동 롤백
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: k6
+                    image: grafana/k6:1.0.0
+                    args: ["run", "/scripts/canary.js"]
+                    env:
+                      - name: TARGET
+                        value: "{{args.target}}"
+                    resources:
+                      requests: { cpu: 50m, memory: 64Mi }
+                      limits:   { cpu: 500m, memory: 256Mi }
+                    volumeMounts:
+                      - { name: script, mountPath: /scripts }
+                volumes:
+                  - name: script
+                    configMap: { name: redirect-canary-k6 }
