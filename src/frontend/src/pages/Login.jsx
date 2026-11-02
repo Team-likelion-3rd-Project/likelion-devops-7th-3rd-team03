@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { enabledProviders, isConfigured, buildAuthorizeUrl, createState } from '../auth/providers'
 import { DEV_ACCOUNTS } from '../auth/devLogin'
 import { resetMockWorkspaces } from '../api/workspaces'
+import { resetMockLinks } from '../api/links'
 import { toast } from '../components/Toast'
 
 export const POST_LOGIN_REDIRECT_KEY = 'linkshortener_post_login_redirect'
@@ -95,6 +96,7 @@ export function Login() {
                 variant="link"
                 onClick={() => {
                   resetMockWorkspaces()
+                  resetMockLinks()
                   toast('테스트 데이터를 처음 상태로 되돌렸어요.', 'success')
                 }}
               >

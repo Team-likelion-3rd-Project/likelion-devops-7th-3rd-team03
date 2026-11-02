@@ -13,13 +13,28 @@ import StatusIndicator from '@cloudscape-design/components/status-indicator'
 import Table from '@cloudscape-design/components/table'
 import { listLinks, updateLink, deleteLink } from '../api/links'
 import { ApiError } from '../api/http'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { ExpiryInput } from '../components/ExpiryInput'
 import { toast } from '../components/Toast'
 
 const PAGE_SIZE = 20
 const TITLE_MAX = 100
 
+// 새로고침 직후에는 워크스페이스가 아직 없다. 팀을 바꾸면 쪽·수정 상태까지 처음부터 다시 시작한다.
 export function Dashboard() {
+  const { current } = useWorkspace()
+  if (!current) {
+    return (
+      <Box textAlign="center" padding="xxl">
+        <StatusIndicator type="loading">불러오는 중</StatusIndicator>
+      </Box>
+    )
+  }
+  return <LinkList key={current.workspaceId} ws={current} />
+}
+
+function LinkList({ ws }) {
+  const { refreshLinkCount } = useWorkspace()
   const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [data, setData] = useState(null)
@@ -30,13 +45,13 @@ export function Dashboard() {
   const load = useCallback(async () => {
     setStatus('loading')
     try {
-      setData(await listLinks(page, PAGE_SIZE))
+      setData(await listLinks(ws, page, PAGE_SIZE))
       setStatus('ready')
     } catch (err) {
       setStatus('error')
       toast(err instanceof ApiError ? err.message : '링크 목록을 불러오지 못했습니다.', 'error')
     }
-  }, [page])
+  }, [ws, page])
 
   useEffect(() => {
     load()
@@ -47,6 +62,7 @@ export function Dashboard() {
     try {
       await deleteLink(link.linkId)
       toast('링크를 삭제했습니다.', 'success')
+      refreshLinkCount()
       // 마지막 쪽의 마지막 링크를 지우면 그 쪽이 비므로 앞 쪽으로 간다
       if (data.links.length === 1 && page > 0) setPage(page - 1)
       else load()
@@ -84,6 +100,10 @@ export function Dashboard() {
         header={
           <Header
             variant="awsui-h1-sticky"
+            counter={data ? `(${data.pagination.totalElements})` : undefined}
+            description={
+              ws.personal ? undefined : `${ws.name}의 링크예요. 팀원이 만든 링크도 함께 보여요.`
+            }
             actions={
               <Button variant="primary" onClick={() => navigate('/')}>
                 새 링크
@@ -136,6 +156,7 @@ export function Dashboard() {
             cell: (link) => <span title={link.originalUrl}>{truncate(link.originalUrl, 48)}</span>
           },
           { id: 'title', header: '제목', cell: (link) => link.title || '-' },
+          { id: 'creator', header: '만든 사람', cell: (link) => link.creator || '-' },
           {
             id: 'status',
             header: '상태',

@@ -18,6 +18,7 @@ import {
   getRealtimeCount
 } from '../api/stats'
 import { ApiError } from '../api/http'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
 
 const RANGE_OPTIONS = [
@@ -35,6 +36,7 @@ function daysAgoIso(n) {
 export function LinkStats() {
   const { id: linkId } = useParams()
   const navigate = useNavigate()
+  const { current } = useWorkspace()
 
   const [link, setLink] = useState(null)
   const [state, setState] = useState('loading') // loading | ready | notfound | error
@@ -50,15 +52,17 @@ export function LinkStats() {
   const [refreshing, setRefreshing] = useState(false)
 
   // ponytail: 링크 단건 조회 API가 없어 목록에서 찾는다. 사용자당 링크가 100개를 넘으면 못 찾을 수 있음 — 그때 GET /api/links/{id} 추가.
+  // 지금 선택한 워크스페이스의 링크 안에서만 찾는다. 다른 팀 링크는 여기에 없으므로 안내 화면이 뜬다.
   const loadLink = useCallback(() => {
-    listLinks(0, 100)
+    if (!current) return
+    listLinks(current, 0, 100)
       .then((res) => {
         const found = res.links.find((l) => l.linkId === linkId)
-        if (!found) setState('notfound')
+        if (!found) setState('forbidden')
         else setLink(found)
       })
-      .catch(() => setState('error'))
-  }, [linkId])
+      .catch((err) => setState(err?.status === 403 ? 'forbidden' : 'error'))
+  }, [linkId, current])
 
   useEffect(() => {
     loadLink()
@@ -83,7 +87,14 @@ export function LinkStats() {
       setRegionBreakdown(regionRes)
       setState('ready')
     } catch (err) {
-      setState(err instanceof ApiError ? 'notfound' : 'error')
+      // 링크 조회에서 이미 "이 팀의 링크가 아님"으로 판단했다면 통계 오류가 그 안내를 덮어쓰지 않게 한다
+      setState((prev) =>
+        prev === 'forbidden' || err?.status === 403
+          ? 'forbidden'
+          : err instanceof ApiError
+            ? 'notfound'
+            : 'error'
+      )
     }
   }, [linkId, from, to])
 
@@ -125,6 +136,20 @@ export function LinkStats() {
       clearInterval(timer)
     }
   }, [linkId])
+
+  if (state === 'forbidden') {
+    return (
+      <ContentLayout header={<Header variant="h1">볼 수 없는 링크예요</Header>}>
+        <Alert
+          type="warning"
+          action={<Button onClick={() => navigate('/dashboard')}>링크 목록으로</Button>}
+        >
+          이 링크는 {current?.name ?? '지금 워크스페이스'}에 없어요. 다른 팀의 링크이거나 삭제된
+          링크일 수 있어요. 워크스페이스를 바꾸거나 목록에서 다시 골라 주세요.
+        </Alert>
+      </ContentLayout>
+    )
+  }
 
   if (state === 'notfound') {
     return (

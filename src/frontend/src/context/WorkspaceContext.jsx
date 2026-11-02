@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import { listWorkspaces } from '../api/workspaces'
+import { listLinks } from '../api/links'
 import { hasPermission } from '../permissions'
 
 const WorkspaceContext = createContext(null)
@@ -39,7 +40,8 @@ export function WorkspaceProvider({ children }) {
       setStatus((s) => (s === 'ready' ? s : 'loading'))
       try {
         const list = await listWorkspaces()
-        setWorkspaces(list)
+        // 포커스마다 다시 불러와도 내용이 같으면 객체를 그대로 둔다. 그래야 이 값을 쓰는 화면이 불필요하게 다시 불러오지 않는다.
+        setWorkspaces((prev) => (JSON.stringify(prev) === JSON.stringify(list) ? prev : list))
         setSelectedId((prev) => {
           const want = preferId ?? loadSelected(userId) ?? prev
           const id = list.some((w) => w.workspaceId === want)
@@ -84,6 +86,26 @@ export function WorkspaceProvider({ children }) {
   const current = workspaces.find((w) => w.workspaceId === selectedId) ?? null
   const role = current?.role ?? null
 
+  // 사이드바 "링크" 옆 개수. 못 가져오면 null로 두고 숨긴다. 링크를 만들거나 지운 화면이 refreshLinkCount로 갱신한다.
+  const [linkCount, setLinkCount] = useState(null)
+  const currentId = current?.workspaceId
+  const countRequest = useRef(0)
+  const refreshLinkCount = useCallback(() => {
+    if (!current) return
+    // 팀을 빠르게 바꾸면 이전 팀의 응답이 늦게 도착할 수 있어, 가장 마지막 요청의 응답만 쓴다
+    const request = ++countRequest.current
+    listLinks(current, 0, 1)
+      .then((res) => request === countRequest.current && setLinkCount(res.pagination.totalElements))
+      .catch(() => request === countRequest.current && setLinkCount(null))
+    // current 객체가 아니라 id·개인 여부가 바뀔 때만 다시 만든다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, current?.personal])
+
+  useEffect(() => {
+    setLinkCount(null)
+    refreshLinkCount()
+  }, [refreshLinkCount])
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -93,7 +115,9 @@ export function WorkspaceProvider({ children }) {
         can: (permission) => hasPermission(role, permission),
         status,
         select,
-        refresh
+        refresh,
+        linkCount,
+        refreshLinkCount
       }}
     >
       {children}
