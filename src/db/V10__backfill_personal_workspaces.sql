@@ -22,7 +22,7 @@ SELECT UUID(),
        TRUE,
        u.id,
        CASE WHEN u.status = 'WITHDRAWN' THEN 'DELETED' ELSE 'ACTIVE' END,
-       u.created_at
+       COALESCE(u.created_at, NOW())
   FROM users u
  WHERE NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.personal_owner_id = u.id);
 
