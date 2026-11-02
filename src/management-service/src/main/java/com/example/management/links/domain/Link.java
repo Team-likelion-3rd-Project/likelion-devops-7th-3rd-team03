@@ -27,6 +27,12 @@ import java.util.UUID;
  *   여기서는 columnDefinition을 쓰지 않는다 — 실제 DDL은 Flyway가 관리하고
  *   ddl-auto=validate 에서는 columnDefinition이 무시되므로 중복 선언이 혼란만 준다.
  *
+ * 소유와 만든 사람 (V9__add_links_workspace_id.sql):
+ *   workspace_id - 링크를 소유하는 워크스페이스. 권한은 이 워크스페이스의 멤버 여부로 판단한다.
+ *                  기존 링크는 V10에서 만든 사람의 개인 워크스페이스로 옮겼다.
+ *                  NOT NULL 전환 전까지는 이전 버전 앱이 만든 링크가 null일 수 있다(#206).
+ *   user_id      - 링크를 만든 사람. 소유자가 아니다.
+ *
  * userId를 @ManyToOne으로 걸지 않은 이유:
  *   auth-service와 link-service가 분리되어 있고 소유권 검증은 JWT 클레임으로 하기 때문.
  *   DB 레벨 FK는 V1에 존재하지만 JPA 연관관계로는 매핑하지 않는다.
@@ -41,6 +47,7 @@ import java.util.UUID;
         indexes = {
                 // 목록 조회는 항상 is_visible = true 필터가 붙는다
                 @Index(name = "idx_links_user_visible", columnList = "user_id, is_visible"),
+                @Index(name = "idx_links_workspace_visible", columnList = "workspace_id, is_visible"),
                 @Index(name = "idx_links_slug_visible", columnList = "slug, is_visible"),
                 @Index(name = "idx_links_expires_at", columnList = "expires_at")
         }
@@ -62,9 +69,13 @@ public class Link {
     @Column(name = "link_id", length = 36, nullable = false, updatable = false)
     private String linkId;
 
-    /** 소유자 (users.id). DB에 FK가 있으나 JPA 연관관계로는 매핑하지 않는다 */
+    /** 링크를 만든 사람 (users.id). DB에 FK가 있으나 JPA 연관관계로는 매핑하지 않는다 */
     @Column(name = "user_id", nullable = false, updatable = false)
     private Long userId;
+
+    /** 소유 워크스페이스 (workspaces.id). NOT NULL 전환 전까지 이전 버전 앱이 만든 링크는 null일 수 있다 */
+    @Column(name = "workspace_id")
+    private Long workspaceId;
 
     /** 리다이렉트 경로. 대소문자를 구분한다 */
     @Column(name = "slug", length = SLUG_MAX_LENGTH, nullable = false, updatable = false)
@@ -93,9 +104,10 @@ public class Link {
     private LocalDateTime updatedAt;
 
     @Builder
-    private Link(Long userId, String slug, String originalUrl, String title, LocalDateTime expiresAt) {
+    private Link(Long userId, Long workspaceId, String slug, String originalUrl, String title, LocalDateTime expiresAt) {
         this.linkId = UUID.randomUUID().toString();
         this.userId = userId;
+        this.workspaceId = workspaceId;
         this.slug = slug;
         this.originalUrl = originalUrl;
         this.title = title;
