@@ -33,6 +33,46 @@ public class WorkspaceExceptionHandler {
         return error(HttpStatus.CONFLICT, "WORKSPACE_HAS_MEMBERS", e.getMessage());
     }
 
+    @ExceptionHandler(WorkspaceMemberNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleWorkspaceMemberNotFound(WorkspaceMemberNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, "WORKSPACE_MEMBER_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(LastAdminException.class)
+    public ResponseEntity<ApiErrorResponse> handleLastAdmin(LastAdminException e) {
+        return error(HttpStatus.CONFLICT, "LAST_ADMIN", e.getMessage());
+    }
+
+    @ExceptionHandler(PersonalWorkspaceLeaveException.class)
+    public ResponseEntity<ApiErrorResponse> handlePersonalWorkspaceLeave(PersonalWorkspaceLeaveException e) {
+        return error(HttpStatus.CONFLICT, "PERSONAL_WORKSPACE_LEAVE", e.getMessage());
+    }
+
+    @ExceptionHandler(PersonalWorkspaceOwnerException.class)
+    public ResponseEntity<ApiErrorResponse> handlePersonalWorkspaceOwner(PersonalWorkspaceOwnerException e) {
+        return error(HttpStatus.CONFLICT, "PERSONAL_WORKSPACE_OWNER", e.getMessage());
+    }
+
+    @ExceptionHandler(SoleMemberCannotLeaveException.class)
+    public ResponseEntity<ApiErrorResponse> handleSoleMemberCannotLeave(SoleMemberCannotLeaveException e) {
+        return error(HttpStatus.CONFLICT, "SOLE_MEMBER_CANNOT_LEAVE", e.getMessage());
+    }
+
+    @ExceptionHandler(CannotRemoveSelfException.class)
+    public ResponseEntity<ApiErrorResponse> handleCannotRemoveSelf(CannotRemoveSelfException e) {
+        return error(HttpStatus.BAD_REQUEST, "CANNOT_REMOVE_SELF", e.getMessage());
+    }
+
+    @ExceptionHandler(AlreadyMemberException.class)
+    public ResponseEntity<ApiErrorResponse> handleAlreadyMember(AlreadyMemberException e) {
+        return error(HttpStatus.CONFLICT, "ALREADY_MEMBER", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidInviteCodeException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidInviteCode(InvalidInviteCodeException e) {
+        return error(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", e.getMessage());
+    }
+
     private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String type, String message) {
         return ResponseEntity.status(status).body(ApiErrorResponse.of(status.value(), type, message));
     }

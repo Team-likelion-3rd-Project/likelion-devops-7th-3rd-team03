@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/** 워크스페이스 생성·조회·이름 변경·삭제 유스케이스. 멤버·초대 코드는 별도 이슈(#201)에서 다룬다. */
+/** 워크스페이스 생성·조회·이름 변경·삭제 유스케이스. 멤버·초대 코드는 WorkspaceMemberService가 다룬다. */
 @Service
 @RequiredArgsConstructor
 public class WorkspaceService {
@@ -60,10 +60,11 @@ public class WorkspaceService {
      * 워크스페이스를 soft delete하고 소속 링크를 모두 비활성화한다.
      * 개인 워크스페이스, 그리고 요청한 관리자 외에 다른 멤버가 남아 있는 워크스페이스는 삭제할 수 없다.
      * 멤버 행은 남겨 둔다(삭제된 워크스페이스는 목록·권한 검사에서 status로 걸러진다).
+     * 멤버 수를 센 뒤 삭제하기 전에 누가 합류하지 못하도록 워크스페이스 행을 잠근다.
      */
     @Transactional
     public void delete(Long userId, String workspaceId) {
-        WorkspaceAccess access = workspaceAccessChecker.requireAdmin(workspaceId, userId);
+        WorkspaceAccess access = workspaceAccessChecker.requireAdminForUpdate(workspaceId, userId);
         Workspace workspace = access.workspace();
 
         if (workspace.isPersonal()) {
