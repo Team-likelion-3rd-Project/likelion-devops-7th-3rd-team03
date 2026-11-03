@@ -69,7 +69,7 @@ function StatsView() {
   const [compareRows, setCompareRows] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  // ponytail: 목록 API가 페이지네이션이라 최근 100개만 불러옴. 그 이상이면 페이지 넘김 UI 추가 필요.
+  // 팀당 링크는 100개로 제한되므로(#204) 한 번에 100개를 불러오면 그 팀의 링크가 모두 들어온다.
   const loadLinks = useCallback(() => {
     setLinksState('loading')
     listLinks(current, 0, 100)

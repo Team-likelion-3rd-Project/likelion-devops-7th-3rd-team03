@@ -1,51 +1,45 @@
-// 링크 목록·생성은 선택한 워크스페이스 기준이고(/api/workspaces/{id}/links, #204),
-// 수정·삭제는 linkId만으로 기존 /api/links/{linkId}를 쓴다. userId는 JWT에서 서버가 추출한다.
+// 링크 API는 모두 선택한 워크스페이스 경로 아래에 있다(/api/workspaces/{id}/links[/{linkId}], #204).
+// userId는 JWT에서 서버가 추출한다.
 //
-// 팀 API(#204)가 나오기 전까지는 워크스페이스 mock(api/workspaces.js)과 같은 규칙으로 동작한다.
-//  - mock 모드의 개인 워크스페이스: 기존 /api/links (실제 데이터)
-//  - mock 모드의 팀 워크스페이스: localStorage mock (아래)
-//  - VITE_WORKSPACE_API=real: 모든 워크스페이스가 /api/workspaces/{id}/links
+// 워크스페이스 API를 mock으로 쓰는 개발 모드(MOCK_TEAMS)에서는 링크도 localStorage mock으로 동작한다.
+// VITE_WORKSPACE_API=real 이면 모든 워크스페이스가 실제 API를 쓴다.
 import { apiFetch, ApiError } from './http'
 import { MOCK_TEAMS, mockAssertMember, mockMe } from './workspaces'
 
-// 백엔드는 목록에 "만든 사람"을 내려 줄 예정이다. 필드 이름이 확정되면 여기만 고친다.
-const toLink = (l) => ({
-  ...l,
-  creator:
-    l.creatorName ?? l.createdBy?.name ?? (typeof l.createdBy === 'string' ? l.createdBy : '')
-})
+// 목록 항목의 만든 사람은 createdBy { userId, nickname, profileImageUrl }이다(회원 정보가 없으면 null).
+const toLink = (l) => ({ ...l, creator: l.createdBy?.nickname ?? '' })
 
 const MOCK_ID = 'mlink-'
-const isMockId = (linkId) => MOCK_TEAMS && String(linkId).startsWith(MOCK_ID)
-const isMockTeam = (ws) => MOCK_TEAMS && !ws.personal
+const linkPath = (ws) => `/workspaces/${ws.workspaceId}/links`
 
 export async function listLinks(ws, page = 0, size = 20) {
-  if (isMockTeam(ws)) return mock.list(ws.workspaceId, page, size)
+  if (MOCK_TEAMS) return mock.list(ws.workspaceId, page, size)
   const params = new URLSearchParams({ page, size })
-  const path = MOCK_TEAMS ? '/links' : `/workspaces/${ws.workspaceId}/links`
-  const { data } = await apiFetch(`${path}?${params}`)
+  const { data } = await apiFetch(`${linkPath(ws)}?${params}`)
   return { ...data, links: data.links.map(toLink) }
 }
 
 export async function createLink(ws, { originalUrl, title, expiresAt }) {
-  if (isMockTeam(ws)) return mock.create(ws.workspaceId, { originalUrl, title, expiresAt })
-  const path = MOCK_TEAMS ? '/links' : `/workspaces/${ws.workspaceId}/links`
-  const res = await apiFetch(path, { method: 'POST', body: { originalUrl, title, expiresAt } })
-  return toLink(res.data)
+  if (MOCK_TEAMS) return mock.create(ws.workspaceId, { originalUrl, title, expiresAt })
+  const res = await apiFetch(linkPath(ws), {
+    method: 'POST',
+    body: { originalUrl, title, expiresAt }
+  })
+  return res.data
 }
 
-export async function updateLink(linkId, { originalUrl, title, expiresAt }) {
-  if (isMockId(linkId)) return mock.update(linkId, { originalUrl, title, expiresAt })
-  const res = await apiFetch(`/links/${linkId}`, {
+export async function updateLink(ws, linkId, { originalUrl, title, expiresAt }) {
+  if (MOCK_TEAMS) return mock.update(linkId, { originalUrl, title, expiresAt })
+  const res = await apiFetch(`${linkPath(ws)}/${linkId}`, {
     method: 'PATCH',
     body: { originalUrl, title, expiresAt }
   })
-  return toLink(res.data)
+  return res.data
 }
 
-export async function deleteLink(linkId) {
-  if (isMockId(linkId)) return mock.remove(linkId)
-  await apiFetch(`/links/${linkId}`, { method: 'DELETE' })
+export async function deleteLink(ws, linkId) {
+  if (MOCK_TEAMS) return mock.remove(linkId)
+  await apiFetch(`${linkPath(ws)}/${linkId}`, { method: 'DELETE' })
 }
 
 // ---- mock: 같은 팀 멤버는 서로의 링크를 보고 고치고 지울 수 있고, 다른 팀 링크는 403이다. ----

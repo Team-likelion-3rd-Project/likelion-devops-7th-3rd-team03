@@ -61,7 +61,7 @@ function LinkStatsView() {
   const [realtimeVisitors, setRealtimeVisitors] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  // ponytail: 링크 단건 조회 API가 없어 목록에서 찾는다. 사용자당 링크가 100개를 넘으면 못 찾을 수 있음 — 그때 GET /api/links/{id} 추가.
+  // 링크 단건 조회 API가 없어 목록에서 찾는다. 팀당 링크는 100개로 제한되므로(#204) 100개를 불러오면 그 팀의 링크가 모두 들어온다.
   // 지금 선택한 워크스페이스의 링크 안에서만 찾는다. 다른 팀 링크는 여기에 없으므로 안내 화면이 뜬다.
   const loadLink = useCallback(() => {
     if (!current) return

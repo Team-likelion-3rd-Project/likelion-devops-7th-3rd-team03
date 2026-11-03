@@ -57,7 +57,7 @@ function LinkList() {
   async function handleDelete(link) {
     setDeletingLink(null)
     try {
-      await deleteLink(link.linkId)
+      await deleteLink(ws, link.linkId)
       toast('링크를 삭제했습니다.', 'success')
       refreshLinkCount()
       // 마지막 쪽의 마지막 링크를 지우면 그 쪽이 비므로 앞 쪽으로 간다
@@ -70,7 +70,7 @@ function LinkList() {
 
   async function handleSaveEdit(link, form) {
     try {
-      await updateLink(link.linkId, {
+      await updateLink(ws, link.linkId, {
         originalUrl: form.originalUrl.trim() || undefined,
         title: form.title.trim() || undefined,
         expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined
@@ -169,6 +169,7 @@ function LinkList() {
           {
             id: 'actions',
             header: '',
+            minWidth: 150, // 좁은 화면에서 통계·수정·삭제가 글자 단위로 줄바꿈되지 않게
             cell: (link) => (
               <SpaceBetween direction="horizontal" size="xs">
                 <Button
