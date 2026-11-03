@@ -68,7 +68,10 @@ public class WorkspaceMemberService {
         return WorkspaceMemberResponse.of(target, targetUser, userId);
     }
 
-    /** 관리자가 다른 멤버를 내보낸다. 요청한 관리자가 남아 있으므로 관리자가 0명이 되지는 않는다 */
+    /**
+     * 관리자가 다른 멤버를 내보낸다. 요청한 관리자가 남아 있으므로 관리자가 0명이 되지는 않는다.
+     * 내보낸 사람이 알고 있는 코드로 바로 다시 합류하지 못하도록 초대 코드를 새로 발급한다.
+     */
     @Transactional
     public void removeMember(Long userId, String workspaceId, String targetUserId) {
         WorkspaceAccess access = workspaceAccessChecker.requireAdminForUpdate(workspaceId, userId);
@@ -83,6 +86,9 @@ public class WorkspaceMemberService {
         }
 
         workspaceMemberRepository.delete(target);
+        if (workspace.getInviteCode() != null) {
+            workspace.changeInviteCode(inviteCodeGenerator.generateAvailable());
+        }
     }
 
     /**
@@ -129,8 +135,12 @@ public class WorkspaceMemberService {
     /** 초대 코드로 합류한다. 멤버로 시작한다 */
     @Transactional
     public WorkspaceResponse join(Long userId, String inviteCode) {
+        String code = InviteCodeGenerator.normalize(inviteCode);
+        if (!InviteCodeGenerator.isWellFormed(code)) {
+            throw new InvalidInviteCodeException();
+        }
         Workspace workspace = workspaceRepository
-                .findByInviteCodeAndStatusForUpdate(InviteCodeGenerator.normalize(inviteCode), WorkspaceStatus.ACTIVE)
+                .findByInviteCodeAndStatusForUpdate(code, WorkspaceStatus.ACTIVE)
                 .orElseThrow(InvalidInviteCodeException::new);
 
         if (workspaceMemberRepository.existsByWorkspaceIdAndUserId(workspace.getId(), userId)) {

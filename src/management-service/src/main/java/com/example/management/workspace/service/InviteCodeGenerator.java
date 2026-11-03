@@ -38,6 +38,15 @@ public class InviteCodeGenerator {
         return code.strip().toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 발급할 수 있는 형식(허용 문자 12자리)인지 확인한다.
+     * invite_code 컬럼이 ascii라서 한글 등 비ASCII 문자를 그대로 비교하면 MySQL이 콜레이션 충돌(500)을 낸다.
+     */
+    public static boolean isWellFormed(String normalizedCode) {
+        return normalizedCode.length() == CODE_LENGTH
+                && normalizedCode.chars().allMatch(c -> ALPHABET.indexOf(c) >= 0);
+    }
+
     private String generate() {
         StringBuilder code = new StringBuilder(CODE_LENGTH);
         for (int i = 0; i < CODE_LENGTH; i++) {

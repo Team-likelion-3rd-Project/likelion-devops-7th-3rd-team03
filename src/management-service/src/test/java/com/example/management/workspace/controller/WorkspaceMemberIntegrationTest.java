@@ -216,6 +216,38 @@ class WorkspaceMemberIntegrationTest {
     }
 
     @Test
+    @DisplayName("멤버를 내보내면 초대 코드가 재발급되어, 내보낸 사람이 이전 코드로 다시 합류할 수 없다")
+    void removeMember_regeneratesInviteCode() throws Exception {
+        User admin = newUser();
+        User member = newUser();
+        String adminToken = tokenOf(admin);
+        String workspaceId = createdWorkspaceId(adminToken, "팀");
+        String oldCode = inviteCode(adminToken, workspaceId);
+        join(tokenOf(member), oldCode).andExpect(status().isOk());
+
+        removeMember(adminToken, workspaceId, member).andExpect(status().isOk());
+
+        join(tokenOf(member), oldCode)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.type").value("INVALID_INVITE_CODE"));
+        String newCode = inviteCode(adminToken, workspaceId);
+        assertThat(newCode).isNotEqualTo(oldCode);
+        join(tokenOf(newUser()), newCode).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("형식에 맞지 않는 초대 코드(한글 포함, 길이 다름)는 DB를 조회하지 않고 404다")
+    void join_malformedCodeIs404() throws Exception {
+        String token = tokenOf(newUser());
+
+        for (String code : List.of("한글코드ABCDEFGH", "ABCDEFGHJK", "ABCDEFGHJKLM0")) {
+            join(token, code)
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.type").value("INVALID_INVITE_CODE"));
+        }
+    }
+
+    @Test
     @DisplayName("개인 워크스페이스 주인·혼자 남은 멤버·마지막 관리자는 나갈 수 없고, 그 밖의 멤버는 나갈 수 있다")
     void leave_rules() throws Exception {
         User owner = newUser();
