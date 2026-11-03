@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
  *   - 없거나, 삭제됐거나, 멤버가 아니면 404 (다른 워크스페이스의 존재 여부를 드러내지 않는다)
  *   - 멤버이지만 관리자가 아니면 403
  * 호출하는 서비스의 트랜잭션 안에서 실행된다.
+ * ...ForUpdate는 워크스페이스 행을 트랜잭션이 끝날 때까지 잠근다. 멤버 구성(역할, 내보내기, 나가기, 삭제, 초대 코드)을 바꿀 때 쓴다.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,13 +27,30 @@ public class WorkspaceAccessChecker {
     public WorkspaceAccess requireMember(String workspaceId, Long userId) {
         Workspace workspace = workspaceRepository.findByWorkspaceIdAndStatus(workspaceId, WorkspaceStatus.ACTIVE)
                 .orElseThrow(WorkspaceNotFoundException::new);
+        return toAccess(workspace, userId);
+    }
+
+    public WorkspaceAccess requireAdmin(String workspaceId, Long userId) {
+        return requireAdminRole(requireMember(workspaceId, userId));
+    }
+
+    public WorkspaceAccess requireMemberForUpdate(String workspaceId, Long userId) {
+        Workspace workspace = workspaceRepository.findByWorkspaceIdAndStatusForUpdate(workspaceId, WorkspaceStatus.ACTIVE)
+                .orElseThrow(WorkspaceNotFoundException::new);
+        return toAccess(workspace, userId);
+    }
+
+    public WorkspaceAccess requireAdminForUpdate(String workspaceId, Long userId) {
+        return requireAdminRole(requireMemberForUpdate(workspaceId, userId));
+    }
+
+    private WorkspaceAccess toAccess(Workspace workspace, Long userId) {
         WorkspaceMember member = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspace.getId(), userId)
                 .orElseThrow(WorkspaceNotFoundException::new);
         return new WorkspaceAccess(workspace, member);
     }
 
-    public WorkspaceAccess requireAdmin(String workspaceId, Long userId) {
-        WorkspaceAccess access = requireMember(workspaceId, userId);
+    private WorkspaceAccess requireAdminRole(WorkspaceAccess access) {
         if (!access.member().isAdmin()) {
             throw new WorkspaceAccessDeniedException();
         }
