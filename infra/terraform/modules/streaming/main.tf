@@ -243,8 +243,8 @@ resource "aws_glue_catalog_table" "click_events" {
 # Athena Workgroup — 쿼리 결과 위치 + 비용 통제
 # ══════════════════════════════════════════════════
 resource "aws_athena_workgroup" "snipy" {
-  name = "${var.cluster_name}-workgroup"
-  force_destroy = true   # 콘솔에서 저장한 쿼리가 있어도 prod destroy가 멈추지 않게 한다
+  name          = "${var.cluster_name}-workgroup"
+  force_destroy = true # 콘솔에서 저장한 쿼리가 있어도 prod destroy가 멈추지 않게 한다
 
   configuration {
     enforce_workgroup_configuration    = true
