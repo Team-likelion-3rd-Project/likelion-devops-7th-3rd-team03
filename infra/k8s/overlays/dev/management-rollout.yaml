@@ -1,0 +1,62 @@
+# management 를 롤링 업데이트 대신 카나리로 배포한다 (redirect-rollout.yaml 과 같은 방식).
+# base Deployment(AWS 공용)는 그대로 두고, Rollout 이 workloadRef 로 Deployment 의 파드 템플릿을 넘겨받는다.
+# Rollout 이 정상으로 뜨면 원래 Deployment 는 0개로 줄인다(scaleDown: onsuccess).
+#
+# 단계: 새 버전을 파드 50% 로 → 1분 예열 → k6 가 카나리 파드에만 2분간 요청해 판단 → 통과하면 100%, 실패하면 자동 롤백.
+# 트래픽은 파드 수 비율로 나뉜다 (2개 중 1개 = 50%). ingress-nginx 가중치 방식은 쓰지 않는다.
+# 클릭 집계 배치(CronJob)는 같은 이미지를 쓰지만 Rollout 과 무관하게 따로 돈다.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: management-service
+  annotations:
+    # 마이그레이션·버킷 Job(wave 1) 다음에 앱과 같이 배포한다
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: management-service }
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: management-service
+    scaleDown: onsuccess
+  strategy:
+    canary:
+      canaryService: management-service-canary
+      stableService: management-service-stable
+      steps:
+        - setWeight: 50
+        # 새 파드는 JVM 예열 때문에 처음 수십 초가 느리다 (redirect 와 같은 이유)
+        - pause: { duration: 60s }
+        - analysis:
+            templates:
+              - templateName: management-canary-k6
+            args:
+              - name: target
+                value: http://management-service-canary.snipy.svc:8080
+        - setWeight: 100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: management-service-canary
+  labels: { app: management-service }
+spec:
+  selector: { app: management-service }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: management-service-stable
+  labels: { app: management-service }
+spec:
+  selector: { app: management-service }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

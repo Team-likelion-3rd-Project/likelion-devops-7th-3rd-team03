@@ -1,0 +1,72 @@
+# management 카나리 판단 기준. k6 가 카나리 파드에만 요청하고, 기준을 못 넘으면 실패로 끝나 Rollout 이 자동 롤백한다.
+#
+# 요청 대상은 로그인 없이 부르는 GET /api/links 다. 정상이면 401 이 나온다.
+#   - 앱이 떠서 보안 필터까지 처리했다는 뜻이고, 테스트 계정·토큰이 필요 없다
+#   - 데이터를 바꾸지 않는다
+# 401 은 정상, 5xx 는 실패로 센다. 장애 주입 필터는 인증보다 앞에 있어 이 요청에도 500 이 섞인다.
+#
+# 기준: 에러율 1% 미만, p95 150ms 미만 (redirect 와 같음). 부하: 초당 10건 2분.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: management-canary-k6
+data:
+  canary.js: |
+    import http from 'k6/http';
+
+    http.setResponseCallback(http.expectedStatuses(401));
+
+    export const options = {
+        scenarios: {
+            canary: {
+                executor: 'constant-arrival-rate',
+                rate: 10,
+                timeUnit: '1s',
+                duration: '2m',
+                preAllocatedVUs: 5,
+                maxVUs: 20,
+            },
+        },
+        thresholds: {
+            http_req_failed: ['rate<0.01'],
+            http_req_duration: ['p(95)<150'],
+        },
+    };
+
+    export default function () {
+        http.get(`${__ENV.TARGET}/api/links`);
+    }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: management-canary-k6
+spec:
+  args:
+    - name: target
+  metrics:
+    - name: k6
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: k6
+                    image: grafana/k6:1.0.0
+                    args: ["run", "/scripts/canary.js"]
+                    env:
+                      - name: TARGET
+                        value: "{{args.target}}"
+                    resources:
+                      requests: { cpu: 50m, memory: 64Mi }
+                      limits:   { cpu: 500m, memory: 256Mi }
+                    volumeMounts:
+                      - { name: script, mountPath: /scripts }
+                volumes:
+                  - name: script
+                    configMap: { name: management-canary-k6 }
