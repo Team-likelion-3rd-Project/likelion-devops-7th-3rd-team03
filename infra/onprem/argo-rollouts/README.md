@@ -68,6 +68,7 @@ bash /home/k8s/argo-rollouts/cp-argo-rollouts.sh
 | 새 이미지, 예열 1분 대기 | 통과 | 자동 승격 |
 | 장애 주입 50% | 1,190건, 에러 48.31%, p95 41.14ms | 자동 롤백 (응답은 빨랐지만 에러율 기준에서 걸림) |
 | 머지 후 자동 배포 (#196) | 통과 | 사람 개입 없이 자동 승격 |
+| management 머지 후 자동 배포 (0aabceb, 링크 API 워크스페이스 전환 #204) | 1,201건, 에러 0.00%, p95 7.87ms | 자동 승격 (redirect 와 동시 카나리, 1,178건·p95 22.09ms 로 함께 승격) |
 
 ## 4. 보기와 수동 조작
 
@@ -142,6 +143,8 @@ prod(AWS)는 롤링 업데이트 그대로다. 이 설정은 dev overlay 에만 
 | 정상 버전인데 p95 로 Failed | 예열 중이거나 다른 부하 측정과 겹침 | 측정 중이면 끝난 뒤 `retry rollout` |
 | Deployment 와 Rollout 파드가 같이 늘어남 | HPA 가 Deployment 를 보고 있음 | `patch-hpa.yaml`의 `scaleTargetRef`가 Rollout 인지 확인 |
 | 카나리가 옛 이미지로 진행됨 | 오래된 overlay 로 `kubectl apply -k` 해서 Deployment 이미지 태그가 되돌아감 | `abort` 후 최신 develop 으로 다시 적용. 머지 후엔 손으로 apply 하지 않는다 |
+| 동기화가 멈추고 HPA 가 `unable to get the target's current scale: rollouts ... not found` | HPA 가 Rollout 보다 먼저 만들어짐 (sync-wave 수정 전 클러스터) | `kubectl -n snipy apply -f infra/k8s/overlays/dev/<서비스>-rollout.yaml` 로 Rollout 을 먼저 만든다 |
+| Deployment 와 Rollout 파드가 같이 떠 있고 워커 CPU 가 포화 | Rollout 이 Healthy 가 되기 전엔 Deployment 를 줄이지 않는다 (`scaleDown: onsuccess`). CPU 가 부족하면 Rollout 이 못 떠서 서로 기다림 | Rollout stable 파드가 Ready 인지 확인 후 `kubectl -n snipy scale deploy <서비스> --replicas=0` |
 
 ## 8. 되돌리기 (롤링 업데이트로)
 

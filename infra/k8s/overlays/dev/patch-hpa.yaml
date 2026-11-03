@@ -2,8 +2,12 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: management-service-hpa
+  annotations:
+    # HPA 는 Rollout(wave 2)을 대상으로 하므로 Rollout 다음에 만든다.
+    # wave 0 이면 새 클러스터에서 Rollout 이 아직 없어 HPA 가 Degraded 가 되고, 동기화가 wave 2 로 넘어가지 못한다.
+    argocd.argoproj.io/sync-wave: "3"
 spec:
-  # 카나리 배포라 Deployment 대신 Rollout 의 파드 수를 조절한다 (redirect 와 같은 이유)
+  # 카나리 배포라 Deployment 대신 Rollout 의 파드 수를 조절한다 (Deployment 를 보면 Rollout 과 파드 수를 서로 뺏는다)
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
     kind: Rollout
@@ -16,12 +20,13 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: redirect-service-hpa
+  annotations:
+    # management-service-hpa 와 같은 이유
+    argocd.argoproj.io/sync-wave: "3"
 spec:
-  # 카나리 배포라 Deployment 대신 Rollout 의 파드 수를 조절한다 (Deployment 를 보면 Rollout 과 파드 수를 서로 뺏는다)
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
     kind: Rollout
     name: redirect-service
-  # 카나리 50% 단계가 의미 있으려면 파드가 2개 이상이어야 한다 (1개면 0% 아니면 100%)
   minReplicas: 2
   maxReplicas: 2
