@@ -46,12 +46,7 @@ class FaultInjectionFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         if (ThreadLocalRandom.current().nextDouble() < errorRate) {
-            // sendError 는 /error 로 에러 디스패치되고, 보안 필터가 그 요청에도 다시 걸려 로그인 없는 요청은 401 로 바뀐다.
-            // 그러면 k6 가 401(정상)로 보고 롤백하지 않으므로, 상태와 본문을 직접 써서 디스패치를 거치지 않는다.
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.setContentType("application/json");
-            response.setCharacterEncoding("UTF-8");
-            response.getWriter().write("{\"error\":\"fault injection\"}");
+            response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "fault injection");
             return;
         }
         chain.doFilter(request, response);

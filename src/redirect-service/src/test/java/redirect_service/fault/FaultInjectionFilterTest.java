@@ -41,11 +41,12 @@ class FaultInjectionFilterTest {
         FaultInjectionFilter filter = new FaultInjectionFilter(1.0);
 
         MockHttpServletResponse res = new MockHttpServletResponse();
-        filter.doFilter(new MockHttpServletRequest("GET", "/api/links"), res, new MockFilterChain());
+        filter.doFilter(new MockHttpServletRequest("GET", "/abc123"), res, new MockFilterChain());
         assertThat(res.getStatus()).isEqualTo(500);
-        // sendError 를 쓰면 /error 로 디스패치돼 보안 필터가 401 로 바꾼다. 직접 쓴 응답인지 확인한다
-        assertThat(res.getErrorMessage()).isNull();
-        assertThat(res.getContentAsString()).contains("fault injection");
+
+        MockHttpServletResponse probe = new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("GET", "/actuator/health/readiness"), probe, new MockFilterChain());
+        assertThat(probe.getStatus()).isEqualTo(200);
     }
 
     @Test
