@@ -222,6 +222,15 @@ resource "aws_glue_catalog_table" "click_events" {
       name = "is_bot"
       type = "boolean"
     }
+    # 스키마 2부터 (#207). CloudFront 위치 헤더 기준이고, 1 이하 이벤트는 값이 없다(NULL)
+    columns {
+      name = "country"
+      type = "string"
+    }
+    columns {
+      name = "region"
+      type = "string"
+    }
   }
 
   # 날짜별 파티션 (Firehose의 S3 prefix 구조와 일치)

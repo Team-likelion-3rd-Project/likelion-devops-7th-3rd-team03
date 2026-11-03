@@ -11,6 +11,8 @@ public record RedirectRequest(
         String forwardedFor,
         String userAgent,
         String referrer,
-        String acceptLanguage
+        String acceptLanguage,
+        String viewerCountry,
+        String viewerRegion
 ) {
 }

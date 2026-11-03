@@ -34,7 +34,10 @@ public class RedirectController {
                 request.getHeader("X-Forwarded-For"),
                 request.getHeader("User-Agent"),
                 request.getHeader("Referer"),
-                request.getHeader("Accept-Language")
+                request.getHeader("Accept-Language"),
+                // CloudFront 가 채우는 위치 헤더. 온프렘에는 없다 (#207)
+                request.getHeader("CloudFront-Viewer-Country"),
+                request.getHeader("CloudFront-Viewer-Country-Region")
         );
         RedirectTarget redirectTarget = redirectService.redirect(redirectRequest);
 
