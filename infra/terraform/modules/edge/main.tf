@@ -268,12 +268,11 @@ resource "aws_cloudfront_distribution" "main" {
     target_origin_id       = "alb-origin"
     viewer_protocol_policy = "redirect-to-https"
 
+    # CloudFront-Viewer-Country(-Region): IP 를 저장하지 않고 클릭의 국가·지역(시·도)을 얻는다 (#207).
+    # CloudFront 가 요청자 위치로 값을 채워 ALB 로 넘긴다. TTL 이 0 이라 캐시 키가 늘어도 영향 없다.
     forwarded_values {
       query_string = true
-      # CloudFront-Viewer-Country(-Region): IP 를 저장하지 않고 클릭의 국가·지역(시·도)을 얻는다 (#207).
-      # CloudFront 가 요청자 위치로 값을 채워 ALB 로 넘긴다. TTL 이 0 이라 캐시 키가 늘어도 영향 없다.
-      headers = ["Authorization", "Origin", "Referer", "Host", "User-Agent", "Accept-Language",
-        "CloudFront-Viewer-Country", "CloudFront-Viewer-Country-Region"]
+      headers      = ["Authorization", "Origin", "Referer", "Host", "User-Agent", "Accept-Language", "CloudFront-Viewer-Country", "CloudFront-Viewer-Country-Region"]
       cookies {
         forward = "all"
       }
