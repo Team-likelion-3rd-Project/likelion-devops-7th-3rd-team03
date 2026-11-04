@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -65,12 +66,12 @@ public class StatsController {
     public DimensionBreakdownResponse getBreakdown(
             @CurrentUser Long userId,
             @PathVariable String linkId,
-            @RequestParam String type,   // DEVICE / REGION
+            @RequestParam String type,   // REFERRER / DEVICE / REGION / COUNTRY / OS / BROWSER / HOUR
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
         LinkDailyDimensionStat.DimensionType dimensionType =
-                LinkDailyDimensionStat.DimensionType.valueOf(type.toUpperCase());  // ← 여기서 String → enum 변환
+                LinkDailyDimensionStat.DimensionType.valueOf(type.toUpperCase(Locale.ROOT));  // ← 여기서 String → enum 변환
         return statsService.getBreakdown(userId, linkId, dimensionType, from, to);
     }
 

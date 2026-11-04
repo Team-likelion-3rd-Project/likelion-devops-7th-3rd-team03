@@ -82,14 +82,18 @@ final class AthenaQueries implements ClickStatsQueries {
     }
 
     /**
-     * REGION은 client_ip 제거 이후 정식 컬럼이 없어 language의 국가 서브태그를
-     * 임시 프록시로 쓴다 (예: "ko-KR" -> "KR"). 정교한 GeoIP 매핑은 우선순위에서 미룬 상태.
+     * COUNTRY 는 CloudFront 위치 헤더(#207)를 쓰고, 없으면(스키마 1 이벤트) 언어 태그의 국가 서브태그로 대체한다.
+     * REGION 은 #208 부터 CloudFront 시·도 코드다 (그 전엔 언어 태그 국가를 프록시로 썼다).
      */
     private static String dimensionColumn(String dimensionType) {
         return switch (dimensionType) {
             case "REFERRER" -> "referrer_category";
             case "DEVICE" -> "device_type";
-            case "REGION" -> "split_part(language, '-', 2)";
+            case "OS" -> "operating_system";
+            case "BROWSER" -> "browser";
+            case "HOUR" -> "lpad(CAST(hour(from_iso8601_timestamp(clicked_at) AT TIME ZONE 'Asia/Seoul') AS varchar), 2, '0')";
+            case "COUNTRY" -> "COALESCE(NULLIF(country, ''), NULLIF(upper(split_part(language, '-', 2)), ''))";
+            case "REGION" -> "NULLIF(region, '')";
             default -> throw new IllegalArgumentException("unknown dimensionType: " + dimensionType);
         };
     }
