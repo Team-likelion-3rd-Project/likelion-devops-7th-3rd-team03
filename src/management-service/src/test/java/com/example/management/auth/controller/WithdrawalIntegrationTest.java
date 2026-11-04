@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
@@ -195,6 +196,27 @@ class WithdrawalIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].personal").value(true));
+    }
+
+    @Test
+    @DisplayName("탈퇴하면 닉네임은 \"탈퇴한 사용자\", 이메일은 빈 문자열, 프로필 이미지는 null로 파기된다")
+    void personalInfo_anonymized() throws Exception {
+        User user = userRegistrar.register(User.builder()
+                .provider(SocialProvider.KAKAO)
+                .socialId("it-withdraw-" + UUID.randomUUID())
+                .nickname("탈퇴자")
+                .email("withdraw@test.com")
+                .profileImageUrl("https://example.com/me.png")
+                .build());
+        createdUserIds.add(user.getId());
+
+        withdraw(tokenOf(user)).andExpect(status().isNoContent());
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT nickname, email, profile_image_url FROM users WHERE id = ?", user.getId());
+        assertThat(row.get("nickname")).isEqualTo(User.WITHDRAWN_NICKNAME);
+        assertThat(row.get("email")).isEqualTo("");
+        assertThat(row.get("profile_image_url")).isNull();
     }
 
     private User newUser(String nickname) {
