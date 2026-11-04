@@ -9,10 +9,13 @@ import com.example.management.stats.repository.LinkDailyDimensionStatRepository;
 import com.example.management.stats.repository.LinkDailyStatRepository;
 import com.example.management.workspace.service.WorkspaceAccessChecker;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.RedisCallback;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -30,10 +33,13 @@ import java.util.stream.Collectors;
  *   - 분포의 percentage 는 클릭을 먼저 합한 뒤 다시 계산한다
  *   - 실시간 uniqueVisitorCount 는 링크별 HyperLogLog 를 합쳐서(PFCOUNT 여러 키) 근사해 중복이 없다
  * 오늘(KST)이 기간에 들어가면 daily 의 오늘 값은 Redis 실시간 값으로 채운다. 분포는 배치 집계만 쓴다.
+ *
+ *  트랜잭션을 걸지 않는다. 쓰기가 없고 조회는 저장소 호출마다 커넥션을 빌렸다 돌려준다.
+ *  트랜잭션을 걸면 Redis 를 읽는 동안에도 DB 커넥션을 붙잡아, Redis 장애 때 커넥션 풀(파드당 8개)이 마른다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class WorkspaceStatsService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
@@ -182,14 +188,40 @@ public class WorkspaceStatsService {
         return groups.stream().flatMap(g -> g.linkIds().stream()).collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    /**
+     * 오늘 값을 Redis 에서 한 번에 읽는다. 클릭은 MGET 한 번, 방문자는 PFCOUNT 를 파이프라인 한 번으로 묶는다.
+     * 링크마다 차례로 호출하면 Redis 장애 때 호출 수 × 타임아웃만큼 걸린다 (링크 100개면 100초).
+     * Redis 가 응답하지 않으면 오늘 값은 0으로 두고 나머지 날짜는 그대로 응답한다.
+     */
     private Map<Long, long[]> readToday(Collection<Long> linkIds, LocalDate today) {
-        Map<Long, long[]> result = new HashMap<>();
-        for (Long id : linkIds) {
-            String clicks = redisTemplate.opsForValue().get(CLICKS_KEY.formatted(today, id));
-            Long visitors = redisTemplate.opsForHyperLogLog().size(UV_KEY.formatted(today, id));
-            result.put(id, new long[]{clicks == null ? 0 : Long.parseLong(clicks), visitors == null ? 0 : visitors});
+        if (linkIds.isEmpty()) {
+            return Map.of();
         }
-        return result;
+        List<Long> ids = List.copyOf(linkIds);
+        try {
+            List<String> clicks = redisTemplate.opsForValue()
+                    .multiGet(ids.stream().map(id -> CLICKS_KEY.formatted(today, id)).toList());
+            List<Object> visitors = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (Long id : ids) {
+                    connection.hyperLogLogCommands().pfCount(UV_KEY.formatted(today, id).getBytes(StandardCharsets.UTF_8));
+                }
+                return null;
+            });
+
+            Map<Long, long[]> result = new HashMap<>();
+            for (int i = 0; i < ids.size(); i++) {
+                String click = clicks == null ? null : clicks.get(i);
+                Object visitor = visitors.get(i);
+                result.put(ids.get(i), new long[]{
+                        click == null ? 0 : Long.parseLong(click),
+                        visitor instanceof Long v ? v : 0
+                });
+            }
+            return result;
+        } catch (DataAccessException e) {
+            log.warn("오늘 통계를 Redis 에서 읽지 못해 0으로 응답합니다. links={}", ids.size(), e);
+            return Map.of();
+        }
     }
 
     private static Summary summarize(List<DailyPoint> daily) {

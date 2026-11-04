@@ -10,12 +10,14 @@ import com.example.management.workspace.domain.Workspace;
 import com.example.management.workspace.domain.WorkspaceMember;
 import com.example.management.workspace.service.WorkspaceAccess;
 import com.example.management.workspace.service.WorkspaceAccessChecker;
+import org.springframework.dao.QueryTimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.HyperLogLogOperations;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -52,6 +54,8 @@ class WorkspaceStatsServiceTest {
     private Link linkB;
 
     private WorkspaceStatsService service;
+
+    private static final LocalDate TODAY = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
 
     @BeforeEach
     void setUp() {
@@ -155,6 +159,31 @@ class WorkspaceStatsServiceTest {
 
         assertThat(group.daily()).extracting("clickCount").containsExactly(0L, 0L);
         verifyNoInteractions(dailyRepo);   // 빈 IN 절 쿼리를 보내지 않는다
+    }
+
+    @Test
+    void 오늘_값은_링크_수와_상관없이_Redis_왕복_두_번으로_읽는다() {
+        when(dailyRepo.findDailyRows(any(), eq(TODAY), eq(TODAY))).thenReturn(List.of());
+        when(values.multiGet(anyList())).thenReturn(List.of("7", "3"));
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of(5L, 2L));
+
+        var group = service.getDaily(99L, WS, null, null, TODAY, TODAY).groups().get(0);
+
+        assertThat(group.daily()).extracting("clickCount").containsExactly(10L);
+        assertThat(group.daily()).extracting("visitorCount").containsExactly(7L);
+        verify(values, times(1)).multiGet(anyList());                     // 링크마다 GET 하지 않는다
+        verify(redis, times(1)).executePipelined(any(RedisCallback.class));
+    }
+
+    @Test
+    void Redis가_응답하지_않아도_일별_통계는_오늘을_0으로_응답한다() {
+        when(dailyRepo.findDailyRows(any(), eq(TODAY.minusDays(1)), eq(TODAY)))
+                .thenReturn(List.of(daily(1L, TODAY.minusDays(1), 4, 3)));
+        when(values.multiGet(anyList())).thenThrow(new QueryTimeoutException("redis down"));
+
+        var group = service.getDaily(99L, WS, null, null, TODAY.minusDays(1), TODAY).groups().get(0);
+
+        assertThat(group.daily()).extracting("clickCount").containsExactly(4L, 0L);
     }
 
     private static Link link(long id, String uuid) {
