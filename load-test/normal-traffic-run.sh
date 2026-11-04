@@ -71,6 +71,12 @@ run_sql() {
 
 echo ">> [$CONTEXT] 기존 user id 조회"
 USER_ID=$(run_sql "SELECT id FROM users ORDER BY id LIMIT 1;" | tr -d '\r' | head -n1)
+# 링크는 워크스페이스 소유다(links.workspace_id NOT NULL, #206). 그 사용자의 개인 워크스페이스에 만든다
+WORKSPACE_ID=$(run_sql "SELECT id FROM workspaces WHERE personal_owner_id = ${USER_ID:-0};" | tr -d '\r' | head -n1)
+if [[ -z "$WORKSPACE_ID" ]]; then
+  echo "user_id=${USER_ID:-없음}의 개인 워크스페이스가 없음 — 마이그레이션(V10~V12)이 적용됐는지 확인" >&2
+  exit 1
+fi
 if [[ -z "$USER_ID" ]]; then
   echo "!! users 테이블이 비어있음 — 카카오 로그인을 한 번이라도 한 계정이 있어야 합니다." >&2
   exit 1
@@ -92,13 +98,13 @@ trap cleanup EXIT
 echo ">> [$CONTEXT] 링크 ${NUM_LINKS}개 (prefix=$SLUG_PREFIX) INSERT"
 run_sql "
   SET SESSION cte_max_recursion_depth = $((NUM_LINKS + 10));
-  INSERT INTO links (link_id, user_id, slug, original_url, is_visible, expires_at)
+  INSERT INTO links (link_id, user_id, workspace_id, slug, original_url, is_visible, expires_at)
   WITH RECURSIVE seq AS (
     SELECT 1 AS n
     UNION ALL
     SELECT n + 1 FROM seq WHERE n < ${NUM_LINKS}
   )
-  SELECT UUID(), ${USER_ID}, CONCAT('${SLUG_PREFIX}', n), 'https://example.com/normal-traffic-test', TRUE, NULL
+  SELECT UUID(), ${USER_ID}, ${WORKSPACE_ID}, CONCAT('${SLUG_PREFIX}', n), 'https://example.com/normal-traffic-test', TRUE, NULL
   FROM seq;
 "
 

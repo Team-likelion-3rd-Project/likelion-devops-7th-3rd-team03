@@ -73,8 +73,8 @@ public class Link {
     @Column(name = "user_id", nullable = false, updatable = false)
     private Long userId;
 
-    /** 소유 워크스페이스 (workspaces.id). NOT NULL 전환 전까지 이전 버전 앱이 만든 링크는 null일 수 있다 */
-    @Column(name = "workspace_id")
+    /** 소유 워크스페이스 (workspaces.id) */
+    @Column(name = "workspace_id", nullable = false)
     private Long workspaceId;
 
     /** 리다이렉트 경로. 대소문자를 구분한다 */

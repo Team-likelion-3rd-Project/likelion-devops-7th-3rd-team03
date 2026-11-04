@@ -111,6 +111,9 @@ host=$DB_HOST
 port=$DB_PORT
 user=$2
 password=$3
+# V*.sql의 한글 문자열("내 워크스페이스" 등)을 그대로 보내기 위해 고정한다.
+# 지정하지 않으면 클라이언트가 OS 로캘을 따른다(한국어 Windows는 euckr) → Incorrect string value로 실패
+default-character-set=utf8mb4
 EOF
     chmod 600 "$1"
 }
