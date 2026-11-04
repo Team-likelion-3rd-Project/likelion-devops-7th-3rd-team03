@@ -1,6 +1,7 @@
 package com.example.management.auth.argument;
 
 import com.example.management.auth.repository.UserRepository;
+import com.example.management.auth.domain.User;
 import com.example.management.common.exception.AuthenticationRequiredException;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
@@ -37,9 +38,11 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication != null && authentication.getPrincipal() instanceof String externalUserId) {
-        return userRepository.findByUserId(externalUserId)
-                .map(user -> user.getId())
-                .orElseThrow(AuthenticationRequiredException::new);
+            return userRepository.findByUserId(externalUserId)
+                    // 탈퇴한 회원의 access token은 만료 전이라도 거부한다(401)
+                    .filter(User::isActive)
+                    .map(User::getId)
+                    .orElseThrow(AuthenticationRequiredException::new);
         }
 
         throw new AuthenticationRequiredException();

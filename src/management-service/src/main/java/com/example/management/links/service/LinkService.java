@@ -219,7 +219,7 @@ public class LinkService {
                 link.getTitle(),
                 shortUrl(link.getSlug()),
                 link.getOriginalUrl(),
-                creator == null ? null
+                creator == null || !creator.isActive() ? null
                         : new LinkCreatorResponse(creator.getUserId(), creator.getNickname(), creator.getProfileImageUrl()),
                 toUtcOffsetDateTime(link.getCreatedAt()),
                 toUtcOffsetDateTime(link.getExpiresAt())
