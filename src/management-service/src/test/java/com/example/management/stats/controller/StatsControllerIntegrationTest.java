@@ -52,11 +52,19 @@ class StatsControllerIntegrationTest {
                 ON DUPLICATE KEY UPDATE id = id
                 """, TEST_USER_ID, TEST_USER_UUID, "999999", "테스트유저", "test-user@example.com");
 
+        // 링크는 워크스페이스 소유라(links.workspace_id NOT NULL) 테스트 사용자의 개인 워크스페이스를 만든다
+        jdbcTemplate.update("""
+                INSERT INTO workspaces (workspace_id, name, is_personal, personal_owner_id, status)
+                SELECT UUID(), '내 워크스페이스', TRUE, ?, 'ACTIVE'
+                 WHERE NOT EXISTS (SELECT 1 FROM workspaces WHERE personal_owner_id = ?)
+                """, TEST_USER_ID, TEST_USER_ID);
+
         linkUuid = UUID.randomUUID().toString();
         jdbcTemplate.update("""
-                INSERT INTO links (link_id, user_id, slug, original_url, is_visible, created_at, updated_at)
-                VALUES (?, ?, ?, 'https://example.com', TRUE, NOW(), NOW())
-                """, linkUuid, TEST_USER_ID, "test-" + UUID.randomUUID().toString().substring(0, 8));
+                INSERT INTO links (link_id, user_id, workspace_id, slug, original_url, is_visible, created_at, updated_at)
+                SELECT ?, ?, w.id, ?, 'https://example.com', TRUE, NOW(), NOW()
+                  FROM workspaces w WHERE w.personal_owner_id = ?
+                """, linkUuid, TEST_USER_ID, "test-" + UUID.randomUUID().toString().substring(0, 8), TEST_USER_ID);
         internalLinkId = jdbcTemplate.queryForObject(
                 "SELECT id FROM links WHERE link_id = ?", Long.class, linkUuid);
 

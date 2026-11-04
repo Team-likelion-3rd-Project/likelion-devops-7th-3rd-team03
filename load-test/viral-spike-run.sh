@@ -72,11 +72,20 @@ run_sql() {
 }
 
 echo ">> [$CONTEXT] 기존 user id 조회"
-USER_ID=$(run_sql "SELECT id FROM users ORDER BY id LIMIT 1;" | tr -d '\r' | head -n1)
+# 탈퇴한 회원(#202)은 개인 워크스페이스가 DELETED라 활성 회원만 고른다
+USER_ID=$(run_sql "SELECT id FROM users WHERE status = 'ACTIVE' ORDER BY id LIMIT 1;" | tr -d '\r' | head -n1)
 if [[ -z "$USER_ID" ]]; then
-  echo "users 테이블이 비어있음 — 카카오 로그인을 한 번이라도 한 계정이 있어야 함" >&2
+  echo "활성 회원이 없음 — 소셜 로그인으로 가입한 계정이 하나 이상 있어야 함" >&2
   exit 1
 fi
+
+# 링크는 워크스페이스 소유다(links.workspace_id NOT NULL, #206). 그 사용자의 개인 워크스페이스에 만든다
+WORKSPACE_ID=$(run_sql "SELECT id FROM workspaces WHERE personal_owner_id = ${USER_ID} AND status = 'ACTIVE';" | tr -d '\r' | head -n1)
+if [[ -z "$WORKSPACE_ID" ]]; then
+  echo "!! user_id=${USER_ID}의 개인 워크스페이스가 없음 — 마이그레이션(V10~V12)이 적용됐는지 확인하세요." >&2
+  exit 1
+fi
+
 echo "   user_id=$USER_ID"
 
 TS=$(date +%s)
@@ -89,10 +98,10 @@ done
 SLUG_CSV=$(IFS=,; echo "${SLUGS[*]}")
 
 echo ">> [$CONTEXT] 콜드 링크 ${NUM_SLUGS}개 INSERT ($SLUG_CSV)"
-INSERT_SQL="INSERT INTO links (link_id, user_id, slug, original_url, is_visible, expires_at) VALUES "
+INSERT_SQL="INSERT INTO links (link_id, user_id, workspace_id, slug, original_url, is_visible, expires_at) VALUES "
 VALUES=()
 for slug in "${SLUGS[@]}"; do
-  VALUES+=("(UUID(), ${USER_ID}, '${slug}', 'https://example.com/viral-spike-test', TRUE, NULL)")
+  VALUES+=("(UUID(), ${USER_ID}, ${WORKSPACE_ID}, '${slug}', 'https://example.com/viral-spike-test', TRUE, NULL)")
 done
 INSERT_SQL+=$(IFS=,; echo "${VALUES[*]}")
 INSERT_SQL+=";"
