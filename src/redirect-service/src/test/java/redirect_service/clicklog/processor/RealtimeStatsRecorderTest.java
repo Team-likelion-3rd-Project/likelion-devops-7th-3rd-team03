@@ -51,6 +51,6 @@ class RealtimeStatsRecorderTest {
 
     private static ClickEvent click() {
         return new ClickEvent(UUID.randomUUID(), 1, 1L, LocalDateTime.now(), "visitor-1",
-                "ko-KR", "Mozilla/5.0", "DESKTOP", "Windows", "Chrome", null, "DIRECT", false);
+                "ko-KR", "Mozilla/5.0", "DESKTOP", "Windows", "Chrome", null, "DIRECT", false, null, null);
     }
 }
