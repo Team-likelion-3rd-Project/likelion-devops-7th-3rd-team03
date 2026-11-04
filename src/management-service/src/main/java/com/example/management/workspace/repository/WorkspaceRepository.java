@@ -30,5 +30,10 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, Long> {
     Optional<Workspace> findByInviteCodeAndStatusForUpdate(@Param("inviteCode") String inviteCode,
                                                            @Param("status") WorkspaceStatus status);
 
+    /** 회원 탈퇴 처리에서 내부 ID로 잠그고 찾는다 */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT w FROM Workspace w WHERE w.id = :id AND w.status = :status")
+    Optional<Workspace> findByIdAndStatusForUpdate(@Param("id") Long id, @Param("status") WorkspaceStatus status);
+
     boolean existsByInviteCode(String inviteCode);
 }

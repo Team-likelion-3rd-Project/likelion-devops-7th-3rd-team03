@@ -20,6 +20,20 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
 
     long countByWorkspaceIdAndRole(Long workspaceId, WorkspaceRole role);
 
+    /** 관리자를 넘겨받을 사람: 본인을 뺀 멤버 중 가장 먼저 합류한 사람 */
+    Optional<WorkspaceMember> findFirstByWorkspaceIdAndUserIdNotOrderByJoinedAtAscIdAsc(Long workspaceId, Long userId);
+
+    /**
+     * 사용자가 속한 워크스페이스의 내부 ID. 회원 탈퇴 처리는 이 순서(id 오름차순)대로 잠가
+     * 동시에 실행되는 다른 탈퇴와 잠금 순서가 엇갈리지 않게 한다.
+     */
+    @Query("""
+            SELECT w.id FROM WorkspaceMember m JOIN Workspace w ON w.id = m.workspaceId
+             WHERE m.userId = :userId AND w.status = :status
+             ORDER BY w.id ASC
+            """)
+    List<Long> findWorkspaceIdsOf(@Param("userId") Long userId, @Param("status") WorkspaceStatus status);
+
     /**
      * 사용자가 속한 워크스페이스와 그 안에서의 역할. 엔티티끼리 연관관계가 없어 내부 ID로 조인한다.
      * 개인 워크스페이스를 맨 위에, 나머지는 합류한 순서로 정렬한다.
