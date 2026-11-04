@@ -1,6 +1,7 @@
 package com.example.management.alerts.service;
 
 import com.example.management.alerts.dto.AlertResponses.*;
+import com.example.management.links.config.ShortUrlProperties;
 import com.example.management.links.domain.Link;
 import com.example.management.links.repository.LinkRepository;
 import com.example.management.stats.repository.LinkDailyStatRepository;
@@ -46,7 +47,8 @@ class AlertServiceTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW_UTC.toInstant(ZoneOffset.UTC), AlertService.KST);
-        service = new AlertService(accessChecker, linkRepository, dailyRepo, redis, "https://s.short.ly", 10, clock);
+        service = new AlertService(accessChecker, linkRepository, dailyRepo, redis,
+                new ShortUrlProperties("https://s.short.ly"), 10, clock);
         when(workspace.getId()).thenReturn(10L);
         when(accessChecker.requireMember(WS, 99L)).thenReturn(new WorkspaceAccess(workspace, member));
         lenient().when(redis.opsForValue()).thenReturn(values);

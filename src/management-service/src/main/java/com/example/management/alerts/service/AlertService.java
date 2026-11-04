@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import com.example.management.links.config.ShortUrlProperties;
 
 import java.time.*;
 import java.time.temporal.ChronoUnit;
@@ -39,30 +40,30 @@ public class AlertService {
     private final LinkRepository linkRepository;
     private final LinkDailyStatRepository dailyStatRepository;
     private final StringRedisTemplate redisTemplate;
-    private final String shortUrlBase;
     private final double spikeMinAvgDailyClicks;
     private final Clock clock;
+    private final ShortUrlProperties shortUrlProperties;
 
     @Autowired
     public AlertService(WorkspaceAccessChecker accessChecker,
                         LinkRepository linkRepository,
                         LinkDailyStatRepository dailyStatRepository,
                         StringRedisTemplate redisTemplate,
-                        @Value("${short-url.base-url}") String shortUrlBase,
+                        ShortUrlProperties shortUrlProperties,
                         @Value("${app.alerts.spike-min-avg-daily-clicks:10}") double spikeMinAvgDailyClicks) {
         this(accessChecker, linkRepository, dailyStatRepository, redisTemplate,
-                shortUrlBase, spikeMinAvgDailyClicks, Clock.system(KST));
+                shortUrlProperties, spikeMinAvgDailyClicks, Clock.system(KST));
     }
 
     /** 테스트용: 시각을 고정한다 */
     AlertService(WorkspaceAccessChecker accessChecker, LinkRepository linkRepository,
                  LinkDailyStatRepository dailyStatRepository, StringRedisTemplate redisTemplate,
-                 String shortUrlBase, double spikeMinAvgDailyClicks, Clock clock) {
+                 ShortUrlProperties shortUrlProperties, double spikeMinAvgDailyClicks, Clock clock) {
         this.accessChecker = accessChecker;
         this.linkRepository = linkRepository;
         this.dailyStatRepository = dailyStatRepository;
         this.redisTemplate = redisTemplate;
-        this.shortUrlBase = shortUrlBase.endsWith("/") ? shortUrlBase.substring(0, shortUrlBase.length() - 1) : shortUrlBase;
+        this.shortUrlProperties = shortUrlProperties;
         this.spikeMinAvgDailyClicks = spikeMinAvgDailyClicks;
         this.clock = clock;
     }
@@ -136,13 +137,21 @@ public class AlertService {
         return result;
     }
 
+    /** 단축 주소 기본값은 LinkService 와 같은 설정(SHORT_URL_BASE_URL)을 쓴다. 기동 때가 아니라 쓸 때 확인한다 */
     private AlertLink toLink(Link link) {
-        return new AlertLink(link.getLinkId(), link.getTitle(), shortUrlBase + "/" + link.getSlug());
+        String base = shortUrlProperties.baseUrl();
+        if (base == null || base.isBlank()) {
+            throw new IllegalStateException("SHORT_URL_BASE_URL 설정이 필요합니다.");
+        }
+        String trimmed = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return new AlertLink(link.getLinkId(), link.getTitle(), trimmed + "/" + link.getSlug());
     }
 
     private static double round1(double value) {
         return Math.round(value * 10.0) / 10.0;
     }
+
+
 
     /** ACTION 먼저. 같은 단계 안에서는 만료 임박(만료 빠른 순) → 방문자 급증(비율 큰 순) */
     private static final Comparator<Alert> ORDER = Comparator
