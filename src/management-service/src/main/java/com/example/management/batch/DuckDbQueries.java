@@ -134,8 +134,9 @@ final class DuckDbQueries implements ClickStatsQueries {
             case "HOUR" -> "lpad(CAST(hour(CAST(left(clicked_at, 26) AS TIMESTAMP) + INTERVAL 9 HOUR) AS VARCHAR), 2, '0')";
             // CloudFront 위치 헤더(#207) → 없으면(온프렘, 스키마 1) 언어 태그의 국가 서브태그 (ko-KR -> KR)
             case "COUNTRY" -> "COALESCE(NULLIF(country, ''), NULLIF(upper(split_part(language, '-', 2)), ''))";
-            // CloudFront 시·도 코드(#207). 온프렘에는 없어 UNKNOWN 이 된다
-            case "REGION" -> "NULLIF(region, '')";
+            // CloudFront 시·도 코드(#207)는 국가 안에서만 의미가 있어(예: 11 = 한국 서울) 국가를 붙인다 → KR-11.
+            // 온프렘에는 없어 UNKNOWN 이 된다
+            case "REGION" -> "CASE WHEN NULLIF(region, '') IS NULL THEN NULL ELSE country || '-' || region END";
             default -> throw new IllegalArgumentException("unknown dimensionType: " + dimensionType);
         };
     }

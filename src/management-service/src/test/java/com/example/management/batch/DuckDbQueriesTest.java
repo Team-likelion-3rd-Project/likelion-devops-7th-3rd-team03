@@ -117,11 +117,11 @@ class DuckDbQueriesTest {
     }
 
     @Test
-    void 지역은_CloudFront_시도_코드만_쓰고_없으면_UNKNOWN() {
-        // 스키마 1 이벤트와 온프렘은 region 이 없다
+    void 지역은_국가를_붙인_CloudFront_시도_코드이고_없으면_UNKNOWN() {
+        // 시·도 코드는 국가 안에서만 의미가 있어 KR-11 처럼 저장한다. 스키마 1 이벤트와 온프렘은 region 이 없다
         assertThat(run(queries().dimensionStats(TARGET, "REGION"))).containsExactly(
                 List.of("1", "2026-10-13", "UNKNOWN", "3"),
-                List.of("2", "2026-10-13", "11", "1"));
+                List.of("2", "2026-10-13", "KR-11", "1"));
     }
 
     private DuckDbQueries queries() {

@@ -93,7 +93,7 @@ final class AthenaQueries implements ClickStatsQueries {
             case "BROWSER" -> "browser";
             case "HOUR" -> "lpad(CAST(hour(from_iso8601_timestamp(clicked_at) AT TIME ZONE 'Asia/Seoul') AS varchar), 2, '0')";
             case "COUNTRY" -> "COALESCE(NULLIF(country, ''), NULLIF(upper(split_part(language, '-', 2)), ''))";
-            case "REGION" -> "NULLIF(region, '')";
+            case "REGION" -> "CASE WHEN NULLIF(region, '') IS NULL THEN NULL ELSE concat(country, '-', region) END";
             default -> throw new IllegalArgumentException("unknown dimensionType: " + dimensionType);
         };
     }
