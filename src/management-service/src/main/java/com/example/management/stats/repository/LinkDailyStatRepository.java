@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -85,10 +86,23 @@ public interface LinkDailyStatRepository extends JpaRepository<LinkDailyStat, Lo
         Integer getPeakDailyClicks();
     }
 
-
-
-
     /** 특정 날짜 단건 조회 (일별 증감률 계산용) */
     Optional<LinkDailyStat> findByLinkIdAndStatDate(Long linkId, LocalDate statDate);
+
+    /** 알림(방문자 급증)용. 링크별 기간 클릭 합계를 한 번에 읽는다 */
+    @Query(value = """
+        SELECT s.link_id AS linkId, SUM(s.click_count) AS clickCount
+        FROM link_daily_stats s
+        WHERE s.link_id IN (:linkIds) AND s.stat_date BETWEEN :from AND :to
+        GROUP BY s.link_id
+        """, nativeQuery = true)
+    List<LinkClickSumRow> sumClicksByLink(@Param("linkIds") Collection<Long> linkIds,
+                                          @Param("from") LocalDate from,
+                                          @Param("to") LocalDate to);
+
+    interface LinkClickSumRow {
+        Long getLinkId();
+        Long getClickCount();
+    }
 }
 
