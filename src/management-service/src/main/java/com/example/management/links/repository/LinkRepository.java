@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,4 +30,7 @@ public interface LinkRepository extends JpaRepository<Link, Long> {
 
     /** 워크스페이스를 삭제할 때 비활성화할 링크 */
     List<Link> findByWorkspaceIdAndIsVisibleTrue(Long workspaceId);
+
+    /** 통계 대상 링크 확인. 다른 워크스페이스·soft-delete 된 링크는 찾지 못한다 */
+    List<Link> findByLinkIdInAndWorkspaceIdAndIsVisibleTrue(Collection<String> linkIds, Long workspaceId);
 }
