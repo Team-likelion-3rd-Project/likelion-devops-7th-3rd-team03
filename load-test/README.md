@@ -53,8 +53,7 @@ kubectl --context <context> port-forward -n monitoring svc/kube-prometheus-grafa
   ```bash
   kubectl --context <context> delete job k6-load-test configmap k6-load-test-script
   ```
-- `viral-spike-run.sh`로 만든 콜드 링크는 테스트 종료 시 자동 DELETE됨 (`trap cleanup EXIT` — 중간에 실패해도 실행됨). 클릭 로그(`link_daily_stats`, S3/Athena)는 자동 정리되지 않음.
-
+- 세 스크립트(`normal-traffic-run.sh`, `breakpoint-run.sh`, `viral-spike-run.sh`)가 만든 테스트 링크는 테스트 종료 시 자동으로 soft delete(`is_visible = FALSE`)된다 (`trap cleanup EXIT` — 중간에 실패해도 실행됨, #251). 링크 행과 클릭 로그(`link_daily_stats`, S3/Athena)는 남는다. 실제로 지우려면 아래 "테스트 링크 정리 (dev)".
 ## 테스트 링크 정리 (dev)
 
 스크립트는 끝날 때 테스트 링크를 soft delete(`is_visible = FALSE`)만 한다 (#251).
