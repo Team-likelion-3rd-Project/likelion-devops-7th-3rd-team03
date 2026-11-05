@@ -259,6 +259,19 @@ MySQL은 DDL(`CREATE`, `ALTER`, `DROP`)마다 바로 커밋되고 되돌릴 수 
 `run-migration.sh`가 적용 이력에 체크섬을 저장한다. 이미 적용된 파일을 고치면 체크섬이 달라져 실패한다.
 잘못된 마이그레이션은 **새 V 파일로 바로잡는다.**
 
+**예외: 어떤 환경에서는 실패하는 파일.** 그 버전 자체가 실패해서 새 V 파일로 바로잡을 수 없으면 그 파일을 고친다 (예: V12, #249).
+
+- 실패로 기록된 환경(`success=0`)은 `run-migration.sh`가 고친 파일로 다시 시도한다.
+- 이미 성공한 환경은 체크섬이 달라 다음 실행부터 멈춘다. 그 환경의 DB에서 체크섬을 새 파일 값으로 바꾼다.
+
+```sql
+-- 체크섬 = 그 환경이 실행하는 파일의 sha256 (클러스터는 이미지 안의 LF 파일, 로컬은 checkout한 파일)
+UPDATE schema_history SET checksum = '<sha256>' WHERE version = 'V12' AND success = 1;
+```
+
+V12의 이미지 기준 체크섬은 `6d9dfca59329aecd55daa2543ef352884956cd0b43f1e7745e4ab0a7f310b933`이다.
+로컬(Windows, CRLF)은 `sha256sum src/db/V12__links_workspace_id_not_null.sql`로 직접 구한다.
+
 ### 4. 커밋하지 않은 V 파일로 이미지를 빌드하지 않는다
 
 마이그레이션 이미지(`src/db/Dockerfile`)는 `V*.sql`을 통째로 복사한다.

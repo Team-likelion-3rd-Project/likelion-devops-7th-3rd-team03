@@ -259,16 +259,22 @@ for script in "${MIGRATIONS[@]}"; do
         prev_success="${prev%%:*}"
         prev_checksum="${prev##*:}"
 
-        if [ "$prev_checksum" != "$checksum" ]; then
-            echo "[ERROR] $script 이(가) 적용 후 수정됐습니다 (체크섬 불일치)."
-            echo "        이미 적용된 마이그레이션은 고치지 말고 새 버전(V$(( ${version#V} + 1 )))을 추가하세요."
-            exit 1
-        fi
         if [ "$prev_success" = "1" ]; then
+            if [ "$prev_checksum" != "$checksum" ]; then
+                echo "[ERROR] $script 이(가) 적용 후 수정됐습니다 (체크섬 불일치)."
+                echo "        이미 적용된 마이그레이션은 고치지 말고 새 버전(V$(( ${version#V} + 1 )))을 추가하세요."
+                exit 1
+            fi
             echo "==> $script  [건너뜀 - 이미 적용됨]"
             continue
         fi
-        echo "==> $script  [재시도 - 이전 실행 실패]"
+        # 실패로 기록된 버전은 고친 파일로 다시 돌릴 수 있게 체크섬이 달라도 재시도한다.
+        # 한 파일에 DDL이 여러 개면 앞부분만 적용됐을 수 있다 (작성 규칙 2: DDL은 파일 하나에 하나).
+        if [ "$prev_checksum" != "$checksum" ]; then
+            echo "==> $script  [재시도 - 이전 실행 실패, 파일 수정됨]"
+        else
+            echo "==> $script  [재시도 - 이전 실행 실패]"
+        fi
         mig_q "DELETE FROM schema_history WHERE version = '$version';" > /dev/null
     else
         echo "==> $script"
