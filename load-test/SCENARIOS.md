@@ -94,7 +94,7 @@ herd 크기는 "첫 DB 조회+캐시 write-back 왕복시간" 동안 도착하�
 - 프로파일: 0 → 800 TPS를 10초 만에 램프업(바이럴의 "갑자기 몰림" 표현) → 4분 30초 유지 → 20초 램프다운. 총 5분
 - 대상: 사전 캐싱되지 않은 콜드 링크. herd를 더 크고 뚜렷하게 보고 싶으면 콤마로 여러 개(3~5개) 동시 지정 가능
 - 대상 URL: 클러스터 내부 Service DNS(`http://redirect-service:8080`, 기본값). 공개 도메인은 WAF geo-match(KR만 허용) 때문에 클러스터(ap-southeast-1) 안에서 치면 CloudFront가 403으로 막는다 — 실제로 겪은 문제. 이 테스트 대상은 애초에 CDN이 아니라 redirect-service 백엔드라서 내부 DNS가 더 맞기도 함
-- 실행(원스톱): `load-test/viral-spike-run.sh <context> [base-url] [num-slugs]`
+- 실행(원스톱): `load-test/viral-spike-run.sh <context> [base-url] [num-slugs] [spike-tps]` (spike-tps를 비우면 기본값 1600)
 
 ### 콜드 링크는 어떻게 만드나
 
