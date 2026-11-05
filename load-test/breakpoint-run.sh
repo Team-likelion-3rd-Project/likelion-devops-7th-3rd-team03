@@ -103,7 +103,8 @@ fi
 TS=$(date +%s)
 SLUG_PREFIX="bp${TS: -6}"
 
-# 스크립트 비정상 종료(Ctrl+C, Error 등) 시에도 테스트 링크를 반드시 삭제하도록 trap 설정
+# 앱의 링크 삭제와 같은 soft delete. 실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
+# SQL 로 바로 바꿔서 리다이렉트 캐시(Redis)는 지우지 않는다. 캐시에 남은 slug 는 TTL(기본 10분) 동안 계속 리다이렉트된다
 cleanup() {
   echo ">> [$CONTEXT] 테스트 링크 정리 (prefix=${SLUG_PREFIX}*)"
   # 앱의 링크 삭제와 같은 soft delete. 실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
