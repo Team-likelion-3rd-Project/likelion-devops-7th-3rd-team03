@@ -50,7 +50,8 @@ public class AthenaBatchRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        LocalDate targetDate = args.length > 0
+        LocalDate targetDate = resolveTargetDate(args, LocalDate.now(KST));
+        targetDate = args.length > 0
                 ? LocalDate.parse(args[0])
                 : LocalDate.now(KST).minusDays(1);
 
@@ -130,5 +131,19 @@ public class AthenaBatchRunner implements CommandLineRunner {
                     Integer.parseInt(values.get(3))
             );
         }
+    }
+
+    /**
+     * 집계 날짜(KST). 인자 없음 = 어제(일별 확정), "today" = 오늘(지금까지, 1시간 배치), 그 밖에는 yyyy-MM-dd.
+     * UPSERT 라 같은 날짜를 여러 번 돌려도 덮어쓴다.
+     */
+    static LocalDate resolveTargetDate(String[] args, LocalDate todayKst) {
+        if (args.length == 0) {
+            return todayKst.minusDays(1);
+        }
+        if ("today".equalsIgnoreCase(args[0])) {
+            return todayKst;
+        }
+        return LocalDate.parse(args[0]);
     }
 }
