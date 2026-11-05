@@ -86,6 +86,15 @@ function StatsView() {
       toast('시작일과 종료일을 확인해주세요.', 'error')
       return
     }
+    // 서버 제한(WorkspaceStatsService): 기간은 90일 미만, 비교 대상은 20개까지. 넘으면 400이라 미리 알려 준다.
+    if ((Date.parse(to) - Date.parse(from)) / 86_400_000 >= 90) {
+      toast('조회 기간은 90일 미만으로 선택해주세요.', 'error')
+      return
+    }
+    if (compareIds.length > 20) {
+      toast('비교할 링크는 20개까지 고를 수 있습니다.', 'error')
+      return
+    }
     setLoading(true)
     try {
       const [dailyRes, referrerRes] = await Promise.all([

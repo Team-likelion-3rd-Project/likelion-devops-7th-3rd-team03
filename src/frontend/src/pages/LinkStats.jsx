@@ -15,14 +15,14 @@ import {
   getReferrerStats,
   getDailyChange,
   getBreakdown,
-  getRealtimeCount
+  getRealtimeCount,
+  kstDay
 } from '../api/stats'
 import { ApiError } from '../api/http'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { RequireWorkspace } from '../components/RequireWorkspace'
 import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
 import { countryName } from '../statsLabels'
-import { kstDay } from '../api/stats'
 
 const RANGE_OPTIONS = [
   { id: '7', text: '7일' },
