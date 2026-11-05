@@ -4,7 +4,7 @@ import {
   changeOf,
   compareLinks,
   getBreakdown,
-  getDailyChange,
+  dailyChangeOf,
   getDailyStats,
   getRealtimeCount,
   getReferrerStats
@@ -30,7 +30,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
-  vi.unstubAllEnvs()
 })
 
 describe('워크스페이스 통계 호출', () => {
@@ -89,21 +88,29 @@ describe('전일 대비 계산 (서버 MetricChange.of와 같은 규칙)', () =>
   })
 })
 
-describe('getDailyChange', () => {
-  it('KST 기준 어제와 그제 값으로 계산하고, 값이 없는 날은 0으로 본다', async () => {
+describe('dailyChangeOf', () => {
+  it('KST 기준 어제와 그제 값으로 계산하고, 값이 없는 날은 0으로 본다', () => {
     // UTC로는 11-04 16:00이지만 KST로는 11-05 01:00이다. 어제는 11-04, 그제는 11-03이어야 한다
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-04T16:00:00Z'))
-    groups = [
-      {
-        linkId: 'L1',
-        daily: [{ date: '2026-11-04', clickCount: 145, visitorCount: 110 }],
-        summary: {}
-      }
+    const daily = [
+      { date: '2026-11-02', clickCount: 999, visitorCount: 999 },
+      { date: '2026-11-04', clickCount: 145, visitorCount: 110 },
+      { date: '2026-11-05', clickCount: 7, visitorCount: 5 }
     ]
-    const res = await getDailyChange(ws, 'L1')
-    expect(calls[0]).toContain('from=2026-11-03&to=2026-11-04')
+    const res = dailyChangeOf(daily)
     expect(res.clicks).toEqual({ base: 145, previous: 0, changeRate: 100 })
     expect(res.visitors).toEqual({ base: 110, previous: 0, changeRate: 100 })
+  })
+
+  it('어제·그제가 둘 다 있으면 증감률을 소수 첫째 자리까지 계산한다', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-04T16:00:00Z'))
+    const daily = [
+      { date: '2026-11-03', clickCount: 200, visitorCount: 100 },
+      { date: '2026-11-04', clickCount: 150, visitorCount: 100 }
+    ]
+    expect(dailyChangeOf(daily).clicks.changeRate).toBe(-25)
+    expect(dailyChangeOf(daily).visitors.changeRate).toBe(0)
   })
 })

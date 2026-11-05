@@ -13,7 +13,7 @@ import { listLinks } from '../api/links'
 import {
   getDailyStats,
   getReferrerStats,
-  getDailyChange,
+  dailyChangeOf,
   getBreakdown,
   getRealtimeCount,
   kstDay
@@ -79,17 +79,17 @@ function LinkStatsView() {
 
   const loadStats = useCallback(async () => {
     try {
-      const [dailyRes, referrerRes, changeRes, deviceRes, countryRes] = await Promise.all([
+      const [dailyRes, referrerRes, deviceRes, countryRes] = await Promise.all([
         getDailyStats(current, linkId, from, to),
         getReferrerStats(current, linkId, from, to),
-        getDailyChange(current, linkId),
         getBreakdown(current, linkId, 'DEVICE', from, to),
         // REGION은 이제 시·도 코드이고 온프렘에는 값이 없다(항상 UNKNOWN). 국가 단위 분포는 COUNTRY다(#208).
         getBreakdown(current, linkId, 'COUNTRY', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
-      setChange(changeRes)
+      // 기간(7일 이상)에 어제·그제가 들어 있어서 받은 일별 값으로 계산한다
+      setChange(dailyChangeOf(dailyRes.daily))
       setDeviceBreakdown(deviceRes)
       setCountryBreakdown(countryRes)
       setState('ready')

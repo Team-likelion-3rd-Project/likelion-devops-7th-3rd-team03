@@ -123,7 +123,7 @@ function StatsView() {
   const withLinkInfo = (rows) =>
     rows.map((r) => {
       const link = links.find((l) => l.linkId === r.linkId)
-      return { ...r, slug: link?.shortUrl.split('/').pop() ?? '', title: link?.title }
+      return { ...r, slug: link?.shortUrl?.split('/').pop() ?? '', title: link?.title }
     })
 
   const options = links.map(linkOption)

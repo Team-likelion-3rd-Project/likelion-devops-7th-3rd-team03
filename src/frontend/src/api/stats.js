@@ -53,10 +53,10 @@ export function changeOf(base, previous) {
 export const kstDay = (n) =>
   new Date(Date.now() + 9 * 3_600_000 - n * 86_400_000).toISOString().slice(0, 10)
 
-// 새 API에는 전일 대비가 없어서 어제와 그제의 일별 값으로 계산한다. 오늘은 배치 전이라 뺀다.
-export async function getDailyChange(ws, linkId) {
+// 새 API에는 전일 대비가 없어서 이미 받은 일별 값에서 어제와 그제를 골라 계산한다. 오늘은 배치 전이라 뺀다.
+// daily는 어제·그제를 포함하는 기간(링크 통계 화면은 7일 이상)이어야 한다. 없는 날은 0으로 본다.
+export function dailyChangeOf(daily) {
   const [base, previous] = [kstDay(1), kstDay(2)]
-  const { daily } = await getDailyStats(ws, linkId, previous, base)
   const at = (date, key) => daily.find((d) => d.date === date)?.[key] ?? 0
   return {
     clicks: changeOf(at(base, 'clickCount'), at(previous, 'clickCount')),
