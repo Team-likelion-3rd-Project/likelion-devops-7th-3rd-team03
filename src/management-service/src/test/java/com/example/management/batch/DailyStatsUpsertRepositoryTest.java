@@ -181,6 +181,36 @@ class DailyStatsUpsertRepositoryTest {
         assertThat(attemptedLinkIds).doesNotContain(5L, 6L); // 청크3(id: 5,6)은 시도조차 안 됨
     }
 
+
+    @Test
+    void links_확인이_일시적으로_끊겨도_재시도로_복구된다() {
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenThrow(new DataAccessResourceFailureException("일시적 커넥션 오류"))
+                .thenReturn(List.of(1L, 2L, 3L, 4L));
+        stubAlwaysSucceed();
+
+        repository.upsertAll(rows(1, 4));   // 예외 없이 끝나야 함
+
+        verify(jdbcTemplate, times(2)).queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class));
+        verify(jdbcTemplate, times(1)).batchUpdate(anyString(), any(SqlParameterSource[].class));
+    }
+
+    @Test
+    void links_확인이_계속_실패하면_다음_청크로_넘어가고_연속이면_서킷브레이커가_중단시킨다() {
+        repository = newRepository(/*chunkSize*/ 2, /*maxRetry*/ 2, /*bisectFloor*/ 1, /*circuitBreakerThreshold*/ 2);
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenThrow(new DataAccessResourceFailureException("DB Connection 장애 시뮬레이션"));
+
+        // 청크 3개(2, 2, 2): 1·2번 청크가 연속으로 실패하면 서킷 브레이커가 배치를 중단한다
+        assertThatThrownBy(() -> repository.upsertAll(rows(1, 6)))
+                .isInstanceOf(BatchCircuitBreakerException.class)
+                .hasMessageContaining("연속");
+
+        // 청크 2개 × maxRetry 2번 = 4번 시도, 3번째 청크는 시도하지 않음. upsert 는 한 번도 안 함
+        verify(jdbcTemplate, times(4)).queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class));
+        verify(jdbcTemplate, never()).batchUpdate(anyString(), any(SqlParameterSource[].class));
+    }
+
     // ---- 헬퍼 ----
 
     private void stubAlwaysSucceed() {

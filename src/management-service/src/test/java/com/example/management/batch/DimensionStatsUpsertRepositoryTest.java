@@ -197,6 +197,19 @@ class DimensionStatsUpsertRepositoryTest {
         assertThat(attemptedValues).doesNotContain("Value-5", "Value-6"); // 청크3은 시도조차 안 됨
     }
 
+    @Test
+    void links_확인이_일시적으로_끊겨도_재시도로_복구된다() {
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenThrow(new DataAccessResourceFailureException("일시적 커넥션 오류"))
+                .thenReturn(List.of(1L));
+        stubAlwaysSucceed();
+
+        repository.upsertAll(createDimensionRows(1L, "DEVICE", 4));
+
+        verify(jdbcTemplate, times(2)).queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class));
+        verify(jdbcTemplate, times(1)).batchUpdate(anyString(), any(SqlParameterSource[].class));
+    }
+
     // ---- 헬퍼 ----
 
     private void stubAlwaysSucceed() {

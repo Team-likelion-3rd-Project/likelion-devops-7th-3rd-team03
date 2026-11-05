@@ -108,31 +108,19 @@ public class DailyStatsUpsertRepository {
             chunkIndex++;
             List<AthenaBatchRunner.DailyStatRow> chunk = rows.subList(i, Math.min(i + chunkSize, rows.size()));
 
-            // links 에 없는 링크(실제로 삭제됨)의 행은 외래키(1452)에 걸리므로 미리 건너뛴다 (#253).
-            // 청크는 최대 chunkSize 행이라 IN 도 최대 chunkSize 개다.
-            Set<Long> chunkLinkIds = chunk.stream()
-                    .map(AthenaBatchRunner.DailyStatRow::linkId)
-                    .collect(Collectors.toSet());
-            Set<Long> existing = ExistingLinks.of(jdbcTemplate, chunkLinkIds);
-            if (existing.size() < chunkLinkIds.size()) {
-                Set<Long> missing = new TreeSet<>(chunkLinkIds);
-                missing.removeAll(existing);
-                List<AthenaBatchRunner.DailyStatRow> kept = chunk.stream()
-                        .filter(r -> existing.contains(r.linkId()))
-                        .toList();
+            try {
+                // links 확인도 재시도·서킷 브레이커 안에서 한다. 여기서 연결이 끊겨도 배치 전체가 바로 끝나지 않는다
+                List<AthenaBatchRunner.DailyStatRow> kept = dropMissingLinks(chunk, chunkIndex, totalChunks);
                 skippedRowCount += chunk.size() - kept.size();
-                log.warn("[daily-stats-upsert] chunk {}/{} links 에 없는 링크의 행 {}건을 건너뜁니다. link_id 샘플={}",
-                        chunkIndex, totalChunks, chunk.size() - kept.size(), ExistingLinks.sample(missing));
                 chunk = kept;
                 if (chunk.isEmpty()) {
+                    consecutiveSystemFailures = 0;
                     continue;
                 }
-            }
 
-            log.info("[daily-stats-upsert] chunk {}/{} 시작. size={}", chunkIndex, totalChunks, chunk.size());
-            long startedAt = System.currentTimeMillis();
+                log.info("[daily-stats-upsert] chunk {}/{} 시작. size={}", chunkIndex, totalChunks, chunk.size());
+                long startedAt = System.currentTimeMillis();
 
-            try {
                 List<AthenaBatchRunner.DailyStatRow> deadLetters = upsertWithRetryAndBisect(chunk, chunkIndex, 1);
                 long elapsedMs = System.currentTimeMillis() - startedAt;
                 // 부분 실패(일부 dead-letter 격리)라도 청크 처리가 완료되었으면 시스템 장애 카운트는 리셋
@@ -166,6 +154,54 @@ public class DailyStatsUpsertRepository {
                 rows.size(), chunkSize, failedRowCount, skippedRowCount);
     }
 
+    /**
+     * links 에 없는 링크(실제로 삭제됨)의 행은 외래키(1452)에 걸리므로 미리 건너뛴다 (#253).
+     * 청크는 최대 chunkSize 행이라 IN 도 최대 chunkSize 개다.
+     */
+    private List<AthenaBatchRunner.DailyStatRow> dropMissingLinks(
+            List<AthenaBatchRunner.DailyStatRow> chunk, int chunkIndex, int totalChunks) {
+        Set<Long> chunkLinkIds = chunk.stream()
+                .map(AthenaBatchRunner.DailyStatRow::linkId)
+                .collect(Collectors.toSet());
+        Set<Long> existing = existingLinksWithRetry(chunkLinkIds, chunkIndex);
+        if (existing.size() == chunkLinkIds.size()) {
+            return chunk;
+        }
+        Set<Long> missing = new TreeSet<>(chunkLinkIds);
+        missing.removeAll(existing);
+        List<AthenaBatchRunner.DailyStatRow> kept = chunk.stream()
+                .filter(r -> existing.contains(r.linkId()))
+                .toList();
+        log.warn("[daily-stats-upsert] chunk {}/{} links 에 없는 링크의 행 {}건을 건너뜁니다. link_id 샘플={}",
+                chunkIndex, totalChunks, chunk.size() - kept.size(), ExistingLinks.sample(missing));
+        return kept;
+    }
+
+    /**
+     * links 확인 쿼리도 upsert 와 같은 규칙으로 시스템 오류만 재시도한다.
+     * 재시도를 다 써도 실패하면 SystemLevelBatchException 으로 올려 서킷 브레이커가 판단하게 한다.
+     * 시스템 오류가 아닌 오류(SQL 문법 등)는 코드 문제라 그대로 던진다.
+     */
+    private Set<Long> existingLinksWithRetry(Set<Long> linkIds, int chunkIndex) {
+        DataAccessException lastException = null;
+        for (int attempt = 1; attempt <= maxRetry; attempt++) {
+            try {
+                return ExistingLinks.of(jdbcTemplate, linkIds);
+            } catch (DataAccessException e) {
+                if (!isSystemLevelException(e)) {
+                    throw e;
+                }
+                lastException = e;
+                log.warn("[daily-stats-upsert] chunk {} links 확인 {}번째 시도 실패. cause={}",
+                        chunkIndex, attempt, e.getMessage());
+                if (attempt < maxRetry) {
+                    sleepBackoff(attempt);
+                }
+            }
+        }
+        throw new SystemLevelBatchException("links 확인 중 DB 시스템 장애로 인한 처리 불가", lastException);
+    }
+    
     private List<AthenaBatchRunner.DailyStatRow> upsertWithRetryAndBisect(
             List<AthenaBatchRunner.DailyStatRow> chunk, int chunkIndex, int depth) {
 

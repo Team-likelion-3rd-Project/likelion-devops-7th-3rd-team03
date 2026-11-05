@@ -119,32 +119,20 @@ public class DimensionStatsUpsertRepository {
             List<AthenaBatchRunner.DimensionStatRow> chunk =
                     effectiveRows.subList(i, Math.min(i + chunkSize, effectiveRows.size()));
 
-            // links 에 없는 링크(실제로 삭제됨)의 행은 외래키(1452)에 걸리므로 미리 건너뛴다 (#253).
-            // 청크는 최대 chunkSize 행이라 IN 도 최대 chunkSize 개다.
-            Set<Long> chunkLinkIds = chunk.stream()
-                    .map(AthenaBatchRunner.DimensionStatRow::linkId)
-                    .collect(Collectors.toSet());
-            Set<Long> existing = ExistingLinks.of(jdbcTemplate, chunkLinkIds);
-            if (existing.size() < chunkLinkIds.size()) {
-                Set<Long> missing = new TreeSet<>(chunkLinkIds);
-                missing.removeAll(existing);
-                List<AthenaBatchRunner.DimensionStatRow> kept = chunk.stream()
-                        .filter(r -> existing.contains(r.linkId()))
-                        .toList();
+            try {
+                // links 확인도 재시도·서킷 브레이커 안에서 한다
+                List<AthenaBatchRunner.DimensionStatRow> kept =
+                        dropMissingLinks(chunk, chunkIndex, totalChunks, rows.get(0).dimensionType());
                 skippedRowCount += chunk.size() - kept.size();
-                log.warn("[dimension-upsert] chunk {}/{} dimensionType={} links 에 없는 링크의 행 {}건을 건너뜁니다. link_id 샘플={}",
-                        chunkIndex, totalChunks, rows.get(0).dimensionType(), chunk.size() - kept.size(),
-                        ExistingLinks.sample(missing));
                 chunk = kept;
                 if (chunk.isEmpty()) {
+                    consecutiveSystemFailures = 0;
                     continue;
                 }
-            }
 
-            log.info("[dimension-upsert] chunk {}/{} 시작. size={}", chunkIndex, totalChunks, chunk.size());
-            long startedAt = System.currentTimeMillis();
+                log.info("[dimension-upsert] chunk {}/{} 시작. size={}", chunkIndex, totalChunks, chunk.size());
+                long startedAt = System.currentTimeMillis();
 
-            try {
                 List<AthenaBatchRunner.DimensionStatRow> deadLetters = upsertWithRetryAndBisect(chunk, chunkIndex, 1);
                 long elapsedMs = System.currentTimeMillis() - startedAt;
 
@@ -314,6 +302,47 @@ public class DimensionStatsUpsertRepository {
             }
         }
         return result;
+    }
+
+    /** links 에 없는 링크(실제로 삭제됨)의 행은 외래키(1452)에 걸리므로 미리 건너뛴다 (#253) */
+    private List<AthenaBatchRunner.DimensionStatRow> dropMissingLinks(
+            List<AthenaBatchRunner.DimensionStatRow> chunk, int chunkIndex, int totalChunks, String dimensionType) {
+        Set<Long> chunkLinkIds = chunk.stream()
+                .map(AthenaBatchRunner.DimensionStatRow::linkId)
+                .collect(Collectors.toSet());
+        Set<Long> existing = existingLinksWithRetry(chunkLinkIds, chunkIndex);
+        if (existing.size() == chunkLinkIds.size()) {
+            return chunk;
+        }
+        Set<Long> missing = new TreeSet<>(chunkLinkIds);
+        missing.removeAll(existing);
+        List<AthenaBatchRunner.DimensionStatRow> kept = chunk.stream()
+                .filter(r -> existing.contains(r.linkId()))
+                .toList();
+        log.warn("[dimension-upsert] chunk {}/{} dimensionType={} links 에 없는 링크의 행 {}건을 건너뜁니다. link_id 샘플={}",
+                chunkIndex, totalChunks, dimensionType, chunk.size() - kept.size(), ExistingLinks.sample(missing));
+        return kept;
+    }
+
+    /** links 확인도 시스템 오류만 재시도하고, 다 실패하면 SystemLevelBatchException 으로 서킷 브레이커에 맡긴다 */
+    private Set<Long> existingLinksWithRetry(Set<Long> linkIds, int chunkIndex) {
+        DataAccessException lastException = null;
+        for (int attempt = 1; attempt <= maxRetry; attempt++) {
+            try {
+                return ExistingLinks.of(jdbcTemplate, linkIds);
+            } catch (DataAccessException e) {
+                if (!isSystemLevelException(e)) {
+                    throw e;
+                }
+                lastException = e;
+                log.warn("[dimension-upsert] chunk {} links 확인 {}번째 시도 실패. cause={}",
+                        chunkIndex, attempt, e.getMessage());
+                if (attempt < maxRetry) {
+                    sleepBackoff(attempt);
+                }
+            }
+        }
+        throw new SystemLevelBatchException("links 확인 중 DB 시스템 장애로 인한 처리 불가", lastException);
     }
 
     public static class SystemLevelBatchException extends RuntimeException {
