@@ -13,6 +13,7 @@ import Input from '@cloudscape-design/components/input'
 import Link from '@cloudscape-design/components/link'
 import SpaceBetween from '@cloudscape-design/components/space-between'
 import { useAuth } from '../context/AuthContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { createLink } from '../api/links'
 import { ApiError } from '../api/http'
 import { ExpiryInput } from '../components/ExpiryInput'
@@ -22,6 +23,7 @@ const TITLE_MAX = 100
 
 export function Home() {
   const { user } = useAuth()
+  const { current, refreshLinkCount } = useWorkspace()
   const navigate = useNavigate()
 
   const [originalUrl, setOriginalUrl] = useState('')
@@ -49,12 +51,13 @@ export function Home() {
 
     setSubmitting(true)
     try {
-      const link = await createLink({
+      const link = await createLink(current, {
         originalUrl: originalUrl.trim(),
         title: title.trim() || undefined,
         expiresAt: new Date(expiresAt).toISOString()
       })
       setResult(link)
+      refreshLinkCount()
       toast('단축 링크가 생성되었습니다.', 'success')
     } catch (err) {
       const message = err instanceof ApiError ? err.message : '알 수 없는 오류가 발생했습니다.'
@@ -83,12 +86,30 @@ export function Home() {
           <Form
             errorText={serverError}
             actions={
-              <Button variant="primary" formAction="submit" loading={submitting}>
+              <Button
+                variant="primary"
+                formAction="submit"
+                loading={submitting}
+                disabled={Boolean(user) && !current}
+              >
                 단축 링크 만들기
               </Button>
             }
           >
-            <Container header={<Header variant="h2">새 링크</Header>}>
+            <Container
+              header={
+                <Header
+                  variant="h2"
+                  description={
+                    current && !current.personal
+                      ? `${current.name}에 만들어요. 팀원 모두 이 링크를 볼 수 있어요.`
+                      : undefined
+                  }
+                >
+                  새 링크
+                </Header>
+              }
+            >
               <SpaceBetween size="l">
                 <FormField label="원본 URL" errorText={errors.originalUrl}>
                   <Input
@@ -108,6 +129,12 @@ export function Home() {
                 <FormField label="만료일" constraintText="필수" errorText={errors.expiresAt}>
                   <ExpiryInput value={expiresAt} onChange={setExpiresAt} />
                 </FormField>
+                {user && !current && (
+                  <Box color="text-body-secondary" fontSize="body-s">
+                    워크스페이스를 불러온 뒤에 만들 수 있어요. 계속 안 되면 상단바의 “팀 목록 다시
+                    불러오기”를 눌러 주세요.
+                  </Box>
+                )}
                 {!user && (
                   <Box color="text-body-secondary" fontSize="body-s">
                     로그인하지 않아도 입력은 가능하지만, 발급 시 로그인 화면으로 이동합니다.

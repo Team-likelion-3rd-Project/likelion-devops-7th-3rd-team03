@@ -18,7 +18,10 @@ import {
   getRealtimeCount
 } from '../api/stats'
 import { ApiError } from '../api/http'
+import { useWorkspace } from '../context/WorkspaceContext'
+import { RequireWorkspace } from '../components/RequireWorkspace'
 import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
+import { countryName } from '../statsLabels'
 
 const RANGE_OPTIONS = [
   { id: '7', text: '7일' },
@@ -32,9 +35,19 @@ function daysAgoIso(n) {
   return d.toISOString().slice(0, 10)
 }
 
+// 팀을 바꾸면 RequireWorkspace가 이 화면을 새로 시작하고, 새 팀의 링크 안에서 다시 찾는다.
 export function LinkStats() {
+  return (
+    <RequireWorkspace>
+      <LinkStatsView />
+    </RequireWorkspace>
+  )
+}
+
+function LinkStatsView() {
   const { id: linkId } = useParams()
   const navigate = useNavigate()
+  const { current } = useWorkspace()
 
   const [link, setLink] = useState(null)
   const [state, setState] = useState('loading') // loading | ready | notfound | error
@@ -44,21 +57,23 @@ export function LinkStats() {
   const [referrers, setReferrers] = useState(null)
   const [change, setChange] = useState(null)
   const [deviceBreakdown, setDeviceBreakdown] = useState(null)
-  const [regionBreakdown, setRegionBreakdown] = useState(null)
+  const [countryBreakdown, setCountryBreakdown] = useState(null)
   const [realtime, setRealtime] = useState(null)
   const [realtimeVisitors, setRealtimeVisitors] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  // ponytail: 링크 단건 조회 API가 없어 목록에서 찾는다. 사용자당 링크가 100개를 넘으면 못 찾을 수 있음 — 그때 GET /api/links/{id} 추가.
+  // 링크 단건 조회 API가 없어 목록에서 찾는다. 팀당 링크는 100개로 제한되므로(#204) 100개를 불러오면 그 팀의 링크가 모두 들어온다.
+  // 지금 선택한 워크스페이스의 링크 안에서만 찾는다. 다른 팀 링크는 여기에 없으므로 안내 화면이 뜬다.
   const loadLink = useCallback(() => {
-    listLinks(0, 100)
+    if (!current) return
+    listLinks(current, 0, 100)
       .then((res) => {
         const found = res.links.find((l) => l.linkId === linkId)
-        if (!found) setState('notfound')
+        if (!found) setState('forbidden')
         else setLink(found)
       })
-      .catch(() => setState('error'))
-  }, [linkId])
+      .catch((err) => setState(err?.status === 403 ? 'forbidden' : 'error'))
+  }, [linkId, current])
 
   useEffect(() => {
     loadLink()
@@ -69,21 +84,29 @@ export function LinkStats() {
 
   const loadStats = useCallback(async () => {
     try {
-      const [dailyRes, referrerRes, changeRes, deviceRes, regionRes] = await Promise.all([
+      const [dailyRes, referrerRes, changeRes, deviceRes, countryRes] = await Promise.all([
         getDailyStats(linkId, from, to),
         getReferrerStats(linkId, from, to),
         getDailyChange(linkId),
         getBreakdown(linkId, 'DEVICE', from, to),
-        getBreakdown(linkId, 'REGION', from, to)
+        // REGION은 이제 시·도 코드이고 온프렘에는 값이 없다(항상 UNKNOWN). 국가 단위 분포는 COUNTRY다(#208).
+        getBreakdown(linkId, 'COUNTRY', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
       setChange(changeRes)
       setDeviceBreakdown(deviceRes)
-      setRegionBreakdown(regionRes)
+      setCountryBreakdown(countryRes)
       setState('ready')
     } catch (err) {
-      setState(err instanceof ApiError ? 'notfound' : 'error')
+      // 링크 조회에서 이미 "이 팀의 링크가 아님"으로 판단했다면 통계 오류가 그 안내를 덮어쓰지 않게 한다
+      setState((prev) =>
+        prev === 'forbidden' || err?.status === 403
+          ? 'forbidden'
+          : err instanceof ApiError
+            ? 'notfound'
+            : 'error'
+      )
     }
   }, [linkId, from, to])
 
@@ -125,6 +148,20 @@ export function LinkStats() {
       clearInterval(timer)
     }
   }, [linkId])
+
+  if (state === 'forbidden') {
+    return (
+      <ContentLayout header={<Header variant="h1">볼 수 없는 링크예요</Header>}>
+        <Alert
+          type="warning"
+          action={<Button onClick={() => navigate('/dashboard')}>링크 목록으로</Button>}
+        >
+          이 링크는 {current?.name ?? '지금 워크스페이스'}에 없어요. 다른 팀의 링크이거나 삭제된
+          링크일 수 있어요. 워크스페이스를 바꾸거나 목록에서 다시 골라 주세요.
+        </Alert>
+      </ContentLayout>
+    )
+  }
 
   if (state === 'notfound') {
     return (
@@ -218,7 +255,11 @@ export function LinkStats() {
 
         <BreakdownTable title="유입 경로" rows={referrers} nameKey="referrerCategory" />
         <BreakdownTable title="디바이스 분포" rows={deviceBreakdown?.breakdown} nameKey="value" />
-        <BreakdownTable title="접속 지역 분포" rows={regionBreakdown?.breakdown} nameKey="value" />
+        <BreakdownTable
+          title="접속 국가 분포"
+          rows={countryBreakdown?.breakdown.map((r) => ({ ...r, value: countryName(r.value) }))}
+          nameKey="value"
+        />
       </SpaceBetween>
     </ContentLayout>
   )

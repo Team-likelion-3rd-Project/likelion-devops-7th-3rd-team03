@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Mode, applyMode } from '@cloudscape-design/global-styles'
 import Alert from '@cloudscape-design/components/alert'
 import AppLayout from '@cloudscape-design/components/app-layout'
+import Badge from '@cloudscape-design/components/badge'
 import Box from '@cloudscape-design/components/box'
 import BreadcrumbGroup from '@cloudscape-design/components/breadcrumb-group'
 import Button from '@cloudscape-design/components/button'
@@ -39,7 +40,7 @@ function sectionOf(path) {
 }
 
 export function AppShell() {
-  const { workspaces, current, can } = useWorkspace()
+  const { workspaces, current, can, linkCount } = useWorkspace()
   const flashes = useFlashes()
   const location = useLocation()
   const navigate = useNavigate()
@@ -88,7 +89,14 @@ export function AppShell() {
             activeHref={active}
             onFollow={follow}
             items={[
-              ...PAGES.map((p) => ({ type: 'link', text: p.text, href: p.href })),
+              ...PAGES.map((p) => ({
+                type: 'link',
+                text: p.text,
+                href: p.href,
+                info: p.href === '/dashboard' && linkCount !== null && (
+                  <Badge color="blue">{linkCount}</Badge>
+                )
+              })),
               ...(manage.length
                 ? [
                     { type: 'divider' },

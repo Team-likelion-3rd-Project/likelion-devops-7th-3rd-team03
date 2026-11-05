@@ -324,6 +324,13 @@ const mock = {
 
 const api = USE_MOCK ? mock : real
 
+// 링크 mock(api/links.js)이 같은 사용자·팀 데이터를 쓰도록 내보낸다
+export const MOCK_TEAMS = USE_MOCK
+export const mockMe = () => ({ userId: meId(), name: state().users[meId()]?.nickname ?? '나' })
+export const mockAssertMember = (workspaceId) => {
+  asMember(workspaceId)
+}
+
 export const listWorkspaces = () => api.list()
 export const createWorkspace = (name) => api.create(name)
 export const renameWorkspace = (id, name) => api.rename(id, name)

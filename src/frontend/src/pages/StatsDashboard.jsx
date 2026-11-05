@@ -16,6 +16,8 @@ import Table from '@cloudscape-design/components/table'
 import { getDailyStats, compareLinks, getReferrerStats } from '../api/stats'
 import { listLinks } from '../api/links'
 import { ApiError } from '../api/http'
+import { useWorkspace } from '../context/WorkspaceContext'
+import { RequireWorkspace } from '../components/RequireWorkspace'
 import { StatGrid, TrendChart } from '../components/StatsParts'
 import { toast } from '../components/Toast'
 
@@ -46,6 +48,15 @@ const dateProps = {
 // 백엔드(StatsController)에 실제로 붙는 통계 대시보드. 단건 통계는 링크 화면의
 // '통계' 버튼(/links/:id/stats)을 쓰고, 여기는 여러 링크를 골라 직접 비교할 때 쓴다.
 export function StatsDashboard() {
+  return (
+    <RequireWorkspace>
+      <StatsView />
+    </RequireWorkspace>
+  )
+}
+
+function StatsView() {
+  const { current } = useWorkspace()
   const [links, setLinks] = useState([])
   const [linksState, setLinksState] = useState('loading') // loading | ready | error
   const [linkId, setLinkId] = useState('')
@@ -58,10 +69,10 @@ export function StatsDashboard() {
   const [compareRows, setCompareRows] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  // ponytail: 목록 API가 페이지네이션이라 최근 100개만 불러옴. 그 이상이면 페이지 넘김 UI 추가 필요.
+  // 팀당 링크는 100개로 제한되므로(#204) 한 번에 100개를 불러오면 그 팀의 링크가 모두 들어온다.
   const loadLinks = useCallback(() => {
     setLinksState('loading')
-    listLinks(0, 100)
+    listLinks(current, 0, 100)
       .then((res) => {
         setLinks(res.links)
         setLinksState('ready')
@@ -70,7 +81,7 @@ export function StatsDashboard() {
         setLinksState('error')
         toast('링크 목록을 불러오지 못했습니다.', 'error')
       })
-  }, [])
+  }, [current])
 
   useEffect(() => {
     loadLinks()
