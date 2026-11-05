@@ -47,7 +47,7 @@ export function AuthCallback() {
           navigate('/signup/profile', { replace: true })
           return
         }
-        const redirectTo = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY) || '/dashboard'
+        const redirectTo = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY) || '/'
         sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY)
         toast('로그인되었습니다.', 'success')
         navigate(redirectTo, { replace: true })

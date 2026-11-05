@@ -23,7 +23,7 @@ export function Login() {
 
   function handleLogin(provider) {
     // 인증 페이지로 벗어났다 돌아오므로 라우터 state가 아니라 sessionStorage로 목적지를 넘긴다.
-    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, location.state?.from || '/dashboard')
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, location.state?.from || '/')
     window.location.href = buildAuthorizeUrl(provider, createState(provider.id))
   }
 
