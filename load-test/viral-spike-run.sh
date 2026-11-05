@@ -7,11 +7,14 @@
 # 카카오 로그인도 필요해서 자동화하기 번거로움.
 #
 # 사용법:
-#   load-test/viral-spike-run.sh <kubectl-context> [base-url] [num-slugs]
+#   load-test/viral-spike-run.sh <kubectl-context> [base-url] [num-slugs] [spike-tps]
 #
 # 예시:
 #   load-test/viral-spike-run.sh snipy                    # 기본값: 내부 Service DNS
 #   load-test/viral-spike-run.sh snipy http://redirect-service:8080 3
+#   load-test/viral-spike-run.sh snipy http://redirect-service:8080 3 800   # 목표 TPS 지정
+#
+# spike-tps를 비우면 viral-spike.js의 기본값(SPIKE_TPS 1600)을 쓴다.
 #
 # base-url 기본값이 공개 도메인이 아니라 내부 DNS인 이유는 load-test/README.md 참고
 # (WAF geo-match 때문에 클러스터 안에서 공개 도메인 치면 403).
@@ -19,9 +22,11 @@
 # 전제: kubectl context가 MFA 인증된 상태, aws secretsmanager 읽기 권한.
 set -euo pipefail
 
-CONTEXT="${1:?사용법: viral-spike-run.sh <kubectl-context> [base-url] [num-slugs]}"
+CONTEXT="${1:?사용법: viral-spike-run.sh <kubectl-context> [base-url] [num-slugs] [spike-tps]}"
 BASE_URL="${2:-http://redirect-service:8080}"
 NUM_SLUGS="${3:-3}"
+# 비우면 run-smoke.sh·템플릿을 거쳐 빈 값이 넘어가고 viral-spike.js가 기본값을 쓴다
+export SPIKE_TPS="${4:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -120,5 +125,5 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo ">> [$CONTEXT] k6 viral-spike 실행"
+echo ">> [$CONTEXT] k6 viral-spike 실행 (SPIKE_TPS=${SPIKE_TPS:-기본값 1600})"
 "$SCRIPT_DIR/run-smoke.sh" "$CONTEXT" viral-spike.js "$BASE_URL" "$SLUG_CSV"

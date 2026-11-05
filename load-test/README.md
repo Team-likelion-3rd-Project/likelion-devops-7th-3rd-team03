@@ -26,6 +26,9 @@ load-test/run-smoke.sh snipy redirect-smoke.js http://redirect-service:8080 test
 # 바이럴 스파이크 시나리오 — 콜드 링크 생성부터 실행/정리까지 원스톱 (base-url 기본값이 이미 내부 DNS)
 load-test/viral-spike-run.sh snipy
 
+# 목표 TPS 지정 (비우면 viral-spike.js 기본값 1600)
+load-test/viral-spike-run.sh snipy http://redirect-service:8080 3 800
+
 # Load/Stress (PEAK_TPS만 다름) — 링크 30만 개 생성부터 실행/정리까지 원스톱
 load-test/normal-traffic-run.sh snipy
 
