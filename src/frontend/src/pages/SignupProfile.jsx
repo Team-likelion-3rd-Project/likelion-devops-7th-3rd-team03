@@ -89,7 +89,7 @@ export function SignupProfile() {
     finished.current = true
     try {
       await signup({ ...values, profileImageUrl: values.profileImageUrl || null })
-      const redirectTo = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY) || '/dashboard'
+      const redirectTo = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY) || '/'
       sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY)
       toast('가입이 완료되었습니다.', 'success')
       navigate(redirectTo, { replace: true })
