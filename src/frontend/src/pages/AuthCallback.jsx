@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import Box from '@cloudscape-design/components/box'
+import StatusIndicator from '@cloudscape-design/components/status-indicator'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../components/Toast'
 import { getProvider, consumeState } from '../auth/providers'
@@ -51,5 +53,9 @@ export function AuthCallback() {
       )
   }, [providerId, params, loginWithSocial, navigate])
 
-  return <div className="page">로그인 처리 중...</div>
+  return (
+    <Box padding="xxl" textAlign="center">
+      <StatusIndicator type="loading">로그인 처리 중...</StatusIndicator>
+    </Box>
+  )
 }

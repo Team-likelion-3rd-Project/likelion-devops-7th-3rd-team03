@@ -12,6 +12,8 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@cloudscape-design/components": "^3.0.1407",
+    "@cloudscape-design/global-styles": "^1.0.71",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",

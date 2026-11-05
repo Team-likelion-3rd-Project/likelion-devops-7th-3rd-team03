@@ -59,6 +59,14 @@ export async function logout() {
   )
 }
 
+// 회원 탈퇴. 성공하면 서버가 워크스페이스를 정리하고 refresh token을 지운다(204, 본문 없음).
+// 호출한 쪽이 이어서 토큰을 지우고 로그인 화면으로 보낸다.
+export async function withdraw() {
+  // 개발용 테스트 계정(auth/devLogin.js)의 토큰은 백엔드가 받지 않으니 화면 흐름만 확인할 수 있게 넘어간다.
+  if (import.meta.env.DEV && getRefreshToken() === 'dev') return
+  await apiFetch('/users/me', { method: 'DELETE' })
+}
+
 export async function reissue() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) throw new Error('저장된 refresh token이 없습니다.')

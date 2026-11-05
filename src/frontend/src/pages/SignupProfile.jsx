@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Alert from '@cloudscape-design/components/alert'
+import Box from '@cloudscape-design/components/box'
+import Button from '@cloudscape-design/components/button'
+import Container from '@cloudscape-design/components/container'
+import ContentLayout from '@cloudscape-design/components/content-layout'
+import Form from '@cloudscape-design/components/form'
+import FormField from '@cloudscape-design/components/form-field'
+import Header from '@cloudscape-design/components/header'
+import Input from '@cloudscape-design/components/input'
+import SpaceBetween from '@cloudscape-design/components/space-between'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../components/Toast'
 import { Avatar } from '../components/Avatar'
@@ -57,11 +67,13 @@ export function SignupProfile() {
 
   if (!pendingSignup) return null
 
-  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  const update =
+    (key) =>
+    ({ detail }) =>
+      setForm((f) => ({ ...f, [key]: detail.value }))
   const imageUrl = form.profileImageUrl.trim()
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+  async function handleSubmit() {
     setServerError('')
 
     const values = {
@@ -100,68 +112,77 @@ export function SignupProfile() {
   }
 
   return (
-    <div className="page page--narrow">
-      <div className="card login-card">
-        <h1>추가 정보 입력</h1>
-        <p className="hero__sub">서비스를 시작하려면 아래 정보를 확인해주세요.</p>
+    <ContentLayout
+      header={
+        <Header variant="h1" description="서비스를 시작하려면 아래 정보를 확인해주세요.">
+          추가 정보 입력
+        </Header>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleSubmit()
+        }}
+        noValidate
+      >
+        <Form
+          actions={
+            <Button variant="primary" formAction="submit" loading={submitting}>
+              가입 완료
+            </Button>
+          }
+        >
+          <Container>
+            <SpaceBetween size="l">
+              <Box textAlign="center">
+                {/* 주소가 비었거나 https가 아니면 src 없이 넘겨 기본 아이콘을 보여준다. 불러오지 못하면 Avatar가 기본 아이콘으로 바꾼다. */}
+                <Avatar
+                  src={isAllowedImageUrl(imageUrl) ? imageUrl : ''}
+                  size={88}
+                  alt="프로필 이미지 미리보기"
+                />
+              </Box>
 
-        <form className="login-form" onSubmit={handleSubmit} noValidate>
-          <div className="signup-avatar">
-            {/* 주소가 비었거나 https가 아니면 src 없이 넘겨 기본 아이콘을 보여준다. 불러오지 못하면 Avatar가 기본 아이콘으로 바꾼다. */}
-            <Avatar
-              src={isAllowedImageUrl(imageUrl) ? imageUrl : ''}
-              size={88}
-              alt="프로필 이미지 미리보기"
-            />
-          </div>
+              <FormField label="닉네임" constraintText="필수" errorText={errors.nickname}>
+                <Input
+                  value={form.nickname}
+                  onChange={update('nickname')}
+                  autoComplete="nickname"
+                />
+              </FormField>
 
-          <label className="field">
-            <span>닉네임 (필수)</span>
-            <input
-              value={form.nickname}
-              onChange={update('nickname')}
-              maxLength={NICKNAME_MAX + 20}
-              autoComplete="nickname"
-            />
-          </label>
-          {errors.nickname && <p className="form-error">{errors.nickname}</p>}
+              <FormField label="이메일" constraintText="필수" errorText={errors.email}>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={update('email')}
+                  autoComplete="email"
+                />
+              </FormField>
 
-          <label className="field">
-            <span>이메일 (필수)</span>
-            <input
-              type="email"
-              value={form.email}
-              onChange={update('email')}
-              autoComplete="email"
-            />
-          </label>
-          {errors.email && <p className="form-error">{errors.email}</p>}
+              <FormField
+                label="프로필 이미지 주소"
+                constraintText="선택"
+                errorText={errors.profileImageUrl}
+              >
+                <Input
+                  type="url"
+                  value={form.profileImageUrl}
+                  onChange={update('profileImageUrl')}
+                  placeholder="https://"
+                />
+              </FormField>
 
-          <label className="field">
-            <span>프로필 이미지 주소 (선택)</span>
-            <input
-              type="url"
-              value={form.profileImageUrl}
-              onChange={update('profileImageUrl')}
-              placeholder="https://"
-            />
-          </label>
-          {errors.profileImageUrl && <p className="form-error">{errors.profileImageUrl}</p>}
+              {serverError && <Alert type="error">{serverError}</Alert>}
 
-          {serverError && (
-            <p className="form-error" role="alert">
-              {serverError}
-            </p>
-          )}
-
-          <button className="btn btn--primary btn--block" type="submit" disabled={submitting}>
-            {submitting ? '가입 중...' : '가입 완료'}
-          </button>
-          <p className="form-hint">
-            15분 안에 완료해주세요. 시간이 지나면 처음부터 다시 로그인해야 합니다.
-          </p>
-        </form>
-      </div>
-    </div>
+              <Box color="text-body-secondary" fontSize="body-s">
+                15분 안에 완료해주세요. 시간이 지나면 처음부터 다시 로그인해야 합니다.
+              </Box>
+            </SpaceBetween>
+          </Container>
+        </Form>
+      </form>
+    </ContentLayout>
   )
 }

@@ -1,0 +1,130 @@
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useAuth } from './AuthContext'
+import { listMembers, listWorkspaces } from '../api/workspaces'
+import { hasPermission } from '../permissions'
+
+const WorkspaceContext = createContext(null)
+const SELECTED_KEY = 'linkshortener_workspace_id'
+
+// 선택한 팀은 새로고침해도 유지한다. 계정을 바꿔도(또는 탭마다 다른 계정이어도) 섞이지 않도록 사용자별로 저장한다.
+// 저장소를 못 써도 화면은 동작해야 한다.
+function loadSelected(userId) {
+  try {
+    return localStorage.getItem(`${SELECTED_KEY}:${userId}`)
+  } catch {
+    return null
+  }
+}
+
+function saveSelected(id, userId) {
+  try {
+    localStorage.setItem(`${SELECTED_KEY}:${userId}`, id)
+  } catch {
+    /* 저장하지 못해도 현재 화면에는 영향이 없다 */
+  }
+}
+
+export function WorkspaceProvider({ children }) {
+  const { user } = useAuth()
+  const userId = user?.userId
+  const [workspaces, setWorkspaces] = useState([])
+  const [selectedId, setSelectedId] = useState(() => loadSelected(userId))
+  // idle(로그인 전) | loading | ready | error
+  const [status, setStatus] = useState('idle')
+  // 상단바에 보여 줄 내 닉네임. 로그인 응답에는 프로필이 없어서 멤버 목록의 me 항목에서 가져온다.
+  const [nickname, setNickname] = useState(null)
+
+  // preferId 가 있으면 그 팀을 선택한다 (방금 만들거나 합류한 팀). 목록에 없으면 첫 팀으로 되돌린다.
+  // 이미 목록이 떠 있을 때는 화면을 '불러오는 중'으로 되돌리지 않고 조용히 갱신한다.
+  const refresh = useCallback(
+    async (preferId) => {
+      setStatus((s) => (s === 'ready' ? s : 'loading'))
+      try {
+        const list = await listWorkspaces()
+        setWorkspaces(list)
+        setSelectedId((prev) => {
+          const want = preferId ?? loadSelected(userId) ?? prev
+          const id = list.some((w) => w.workspaceId === want)
+            ? want
+            : (list[0]?.workspaceId ?? null)
+          if (id) saveSelected(id, userId)
+          return id
+        })
+        setStatus('ready')
+      } catch {
+        setStatus('error')
+      }
+    },
+    [userId]
+  )
+
+  useEffect(() => {
+    setNickname(null) // 다른 계정으로 바뀌면 이전 계정의 닉네임을 남기지 않는다
+    if (userId) {
+      refresh()
+    } else {
+      setWorkspaces([])
+      setStatus('idle')
+    }
+  }, [userId, refresh])
+
+  // 다른 탭에서 멤버가 바뀌었을 수 있으니 이 창으로 돌아오면 다시 불러온다
+  useEffect(() => {
+    if (!userId) return
+    const onFocus = () => refresh()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [userId, refresh])
+
+  const select = useCallback(
+    (id) => {
+      setSelectedId(id)
+      saveSelected(id, userId)
+    },
+    [userId]
+  )
+
+  const current = workspaces.find((w) => w.workspaceId === selectedId) ?? null
+  const role = current?.role ?? null
+  const currentId = current?.workspaceId
+
+  // 닉네임은 한 번 알면 팀을 바꿔도 같다. 이미 알고 있으면 다시 묻지 않는다.
+  useEffect(() => {
+    if (!currentId || nickname) return
+    let alive = true
+    listMembers(currentId)
+      .then((list) => {
+        const me = list.find((m) => m.me)
+        if (alive && me) setNickname(me.name)
+      })
+      .catch(() => {
+        /* 이름을 못 가져와도 상단바는 기본 이름으로 동작한다 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [currentId, nickname])
+
+  return (
+    <WorkspaceContext.Provider
+      value={{
+        workspaces,
+        current,
+        role,
+        nickname,
+        can: (permission) => hasPermission(role, permission),
+        status,
+        select,
+        refresh
+      }}
+    >
+      {children}
+    </WorkspaceContext.Provider>
+  )
+}
+
+export function useWorkspace() {
+  const ctx = useContext(WorkspaceContext)
+  if (!ctx) throw new Error('useWorkspace must be used within WorkspaceProvider')
+  return ctx
+}
