@@ -201,7 +201,7 @@ aws iam delete-access-key --user-name snipy-onprem-backup --access-key-id <이�
 |---|---|
 | Use workflow from | `develop`(릴리스 전 검증) 또는 `main` |
 | action | `apply` |
-| spec | `test-lite`(축소 사양: NAT 1, t3.medium 3대, RDS 단일 AZ, Redis 1노드, 삭제 보호 끔) 또는 `prod` |
+| spec | `test-lite`(부하 테스트 시작 사양: NAT 1, t3.medium 3~5대, RDS db.t4g.medium 단일 AZ, Redis 1노드, 삭제 보호 끔) 또는 `prod` |
 | argocd_revision | `develop`(릴리스 전 검증) 또는 `main` |
 
 1. **Plan job**(승인 없음, 1~2분)이 끝나면 실행 화면의 **Summary**에서 plan을 확인한다. 빈 상태에서 test-lite는 `154 to add`, 운영 사양은 `158 to add`다.

@@ -1,0 +1,29 @@
+# infra/k8s 를 바꾼 PR 에서 두 환경(dev, prod) overlay 가 렌더되는지 확인한다.
+# 렌더가 깨지면 Argo CD 가 sync 하지 못하므로 머지 전에 잡는다. 클러스터 없이 kustomize 만 쓴다.
+# paths 필터가 있어서 infra/k8s 를 건드리지 않은 PR 에서는 이 체크가 보고되지 않는다.
+# 그래서 브랜치 보호의 필수 검사로 지정하지 않는다 (지정하려면 paths 를 빼고 모든 PR 에서 돌린다).
+name: K8s Render
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'infra/k8s/**'
+      - '.github/workflows/k8s-render.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    name: Render overlays
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 하나라도 렌더에 실패하면 종료 코드가 0이 아니라서 잡이 실패한다
+      - name: Render dev and prod
+        run: |
+          for env in dev prod; do
+            kubectl kustomize "infra/k8s/overlays/$env" > "$RUNNER_TEMP/$env.yaml"
+            echo "$env: $(grep -c '^kind:' "$RUNNER_TEMP/$env.yaml") resources"
+          done
