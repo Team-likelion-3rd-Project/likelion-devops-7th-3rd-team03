@@ -6,6 +6,8 @@ import {
   getTeamBreakdown,
   getTeamDaily,
   isActiveLink,
+  loadTopLinks,
+  periodRange,
   topLinks,
   compareLinks,
   getBreakdown,
@@ -177,5 +179,62 @@ describe('홈 화면용 팀 통계 (#210)', () => {
     expect(isActiveLink({ expiresAt: null })).toBe(true)
     expect(isActiveLink({ expiresAt: '2026-11-05T00:00:01Z' })).toBe(true)
     expect(isActiveLink({ expiresAt: '2026-11-05T00:00:00Z' })).toBe(false)
+  })
+})
+
+describe('periodRange', () => {
+  it('지표는 오늘을 포함하고 분포는 어제까지로 KST 날짜를 만든다', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-05T03:00:00Z')) // KST 11월 5일 낮
+    expect(periodRange(7)).toEqual({
+      from: '2026-10-30',
+      to: '2026-11-05',
+      distFrom: '2026-10-29',
+      distTo: '2026-11-04'
+    })
+    expect(periodRange(1)).toMatchObject({ from: '2026-11-05', to: '2026-11-05' })
+  })
+
+  it('UTC로는 아직 전날이어도 KST 날짜를 쓴다', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-04T16:00:00Z')) // KST 11월 5일 01시
+    expect(periodRange(1).to).toBe('2026-11-05')
+  })
+})
+
+describe('loadTopLinks', () => {
+  const link = (linkId, title) => ({ linkId, title, shortUrl: `https://s/${linkId}` })
+
+  it('삭제된 링크로 404가 오면 목록을 다시 받아 한 번만 다시 시도한다', async () => {
+    fetch.mockImplementationOnce(async () => new Response('{"message":"없음"}', { status: 404 }))
+    groups = [{ linkId: 'L2', summary: { totalClicks: 7, sumOfDailyVisitors: 3, peakClicks: 7 } }]
+    const refetch = vi.fn(async () => [link('L2', 'B')])
+    const top = await loadTopLinks(
+      ws,
+      [link('L1', 'A'), link('L2', 'B')],
+      '2026-11-01',
+      '2026-11-05',
+      refetch
+    )
+    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(top.map((l) => l.linkId)).toEqual(['L2'])
+  })
+
+  it('404가 아니면 다시 시도하지 않고 그대로 던진다', async () => {
+    fetch.mockImplementationOnce(async () => new Response('{"message":"오류"}', { status: 500 }))
+    const refetch = vi.fn()
+    await expect(
+      loadTopLinks(ws, [link('L1', 'A')], '2026-11-01', '2026-11-05', refetch)
+    ).rejects.toThrow()
+    expect(refetch).not.toHaveBeenCalled()
+  })
+
+  it('다시 시도해도 404면 두 번째 오류를 던진다', async () => {
+    fetch.mockImplementation(async () => new Response('{"message":"없음"}', { status: 404 }))
+    const refetch = vi.fn(async () => [link('L1', 'A')])
+    await expect(
+      loadTopLinks(ws, [link('L1', 'A')], '2026-11-01', '2026-11-05', refetch)
+    ).rejects.toThrow()
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 })

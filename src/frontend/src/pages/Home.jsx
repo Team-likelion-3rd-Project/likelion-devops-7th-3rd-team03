@@ -75,9 +75,9 @@ export function Home() {
   }
 
   // 로그인해서 워크스페이스가 정해졌으면 운영 현황(왼쪽)과 할 일(오른쪽)을 같이 보여 준다.
-  // 팀 활동 요약은 이슈 13·14가 끝난 뒤 오른쪽 열 아래에 붙인다.
-  // 개발 서버 기본 모드(mock 워크스페이스)에는 통계·알림 API가 없어서 예전 홈을 보여 준다. VITE_WORKSPACE_API=real 이면 현황이 보인다.
-  const showOverview = Boolean(user && current && !MOCK_TEAMS)
+  // 팀 활동 요약은 이 화면에 넣지 않는다. 팀 활동 이슈(미등록)가 끝난 뒤 따로 붙인다.
+  // 개발 서버 기본 모드(mock 워크스페이스)에는 통계·알림 API가 없어서 영역마다 안내만 보인다. VITE_WORKSPACE_API=real 이면 현황이 보인다.
+  const showOverview = Boolean(user && current)
 
   const main = (
     <SpaceBetween size="l">
@@ -177,7 +177,12 @@ export function Home() {
           </SpaceBetween>
         </Alert>
       )}
-      {showOverview && <AlertsPanel key={current.workspaceId} ws={current} reloadKey={created} />}
+      {showOverview &&
+        (MOCK_TEAMS ? (
+          <MockNote title="확인 필요" />
+        ) : (
+          <AlertsPanel key={current.workspaceId} ws={current} reloadKey={created} />
+        ))}
     </SpaceBetween>
   )
 
@@ -207,7 +212,11 @@ export function Home() {
         <Grid
           gridDefinition={[{ colspan: { default: 12, m: 8 } }, { colspan: { default: 12, m: 4 } }]}
         >
-          <TeamOverview key={current.workspaceId} ws={current} reloadKey={created} />
+          {MOCK_TEAMS ? (
+            <MockNote title="운영 현황" />
+          ) : (
+            <TeamOverview key={current.workspaceId} ws={current} reloadKey={created} />
+          )}
           {main}
         </Grid>
       ) : (
@@ -219,4 +228,15 @@ export function Home() {
 
 function truncate(str, n) {
   return str.length > n ? str.slice(0, n) + '…' : str
+}
+
+// 개발 서버 기본 모드(mock 워크스페이스)에는 통계·알림 API가 없다.
+function MockNote({ title }) {
+  return (
+    <Container header={<Header variant="h2">{title}</Header>}>
+      <Box color="text-body-secondary">
+        개발 mock 모드에는 통계가 없어요. VITE_WORKSPACE_API=real 로 실행하면 보여요.
+      </Box>
+    </Container>
+  )
 }

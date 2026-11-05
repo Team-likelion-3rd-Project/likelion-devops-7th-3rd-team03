@@ -1,5 +1,6 @@
-// 홈 오른쪽 "확인 필요": 만료 임박·방문자 급증 알림 (#210, 서버 #209). 급한 것부터 서버가 정렬해 준다.
-import { useCallback, useEffect, useRef, useState } from 'react'
+// 홈 오른쪽 "확인 필요": 만료 임박·방문자 급증 알림 (#210, 서버 #209). 서버가 급한 것부터 정렬해 준다.
+// 급한 정도(level)로 묶어서 보여 준다: ACTION은 "지금 확인", WATCH는 "지켜보기".
+import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Alert from '@cloudscape-design/components/alert'
 import Box from '@cloudscape-design/components/box'
@@ -10,68 +11,72 @@ import Link from '@cloudscape-design/components/link'
 import SpaceBetween from '@cloudscape-design/components/space-between'
 import StatusIndicator from '@cloudscape-design/components/status-indicator'
 import { alertMessage, getAlerts } from '../api/alerts'
+import { useLoad } from '../hooks/useLoad'
+
+const GROUPS = [
+  { level: 'ACTION', label: '지금 확인', indicator: 'error' },
+  { level: 'WATCH', label: '지켜보기', indicator: 'warning' }
+]
 
 export function AlertsPanel({ ws, reloadKey }) {
   const navigate = useNavigate()
-  const [state, setState] = useState('loading') // loading | ready | error
-  const [alerts, setAlerts] = useState([])
-  const latest = useRef(0)
-
-  const load = useCallback(() => {
-    const request = ++latest.current
-    setState('loading')
-    getAlerts(ws)
-      .then((res) => {
-        if (request !== latest.current) return
-        setAlerts(res)
-        setState('ready')
-      })
-      .catch(() => request === latest.current && setState('error'))
-  }, [ws])
-
-  useEffect(() => {
-    load()
-  }, [load, reloadKey]) // reloadKey: 홈에서 링크를 만들면 다시 불러온다
+  const load = useCallback(() => getAlerts(ws), [ws])
+  const { state, data, reload } = useLoad(load, reloadKey)
+  const alerts = state === 'error' ? null : data
 
   return (
     <Container
       header={
-        <Header variant="h2" counter={state === 'ready' ? `(${alerts.length})` : undefined}>
+        <Header variant="h2" counter={alerts ? `(${alerts.length})` : undefined}>
           확인 필요
         </Header>
       }
     >
-      {state === 'loading' && <StatusIndicator type="loading">불러오는 중</StatusIndicator>}
       {state === 'error' && (
         <Alert
           type="error"
           header="알림을 불러오지 못했어요"
-          action={<Button onClick={load}>다시 시도</Button>}
+          action={<Button onClick={reload}>다시 시도</Button>}
         />
       )}
-      {state === 'ready' && alerts.length === 0 && (
-        <Box color="text-body-secondary">지금 확인할 링크가 없어요.</Box>
+      {!alerts && state === 'loading' && (
+        <StatusIndicator type="loading">불러오는 중</StatusIndicator>
       )}
-      {state === 'ready' && alerts.length > 0 && (
-        <SpaceBetween size="m">
-          {alerts.map((a) => (
-            <div key={`${a.type}-${a.link.linkId}`}>
-              <StatusIndicator type={a.level === 'ACTION' ? 'warning' : 'info'}>
-                <Link
-                  href={`/links/${a.link.linkId}/stats`}
-                  onFollow={(e) => {
-                    e.preventDefault()
-                    navigate(`/links/${a.link.linkId}/stats`)
-                  }}
-                >
-                  {a.link.title || a.link.shortUrl}
-                </Link>
-              </StatusIndicator>
-              <Box color="text-body-secondary" fontSize="body-s">
-                {alertMessage(a)}
-              </Box>
-            </div>
-          ))}
+      {alerts && alerts.length === 0 && (
+        <Box color="text-body-secondary">확인할 링크가 없어요.</Box>
+      )}
+      {alerts && alerts.length > 0 && (
+        <SpaceBetween size="l">
+          {GROUPS.map((group) => {
+            // ACTION이 아니면 모두 지켜보기로 본다(서버가 모르는 level을 줘도 알림이 사라지지 않게)
+            const items = alerts.filter(
+              (a) => (a.level === 'ACTION') === (group.level === 'ACTION')
+            )
+            if (items.length === 0) return null
+            return (
+              <SpaceBetween size="s" key={group.level}>
+                <Box fontWeight="bold">
+                  <StatusIndicator type={group.indicator}>{group.label}</StatusIndicator>
+                </Box>
+                {items.map((a) => (
+                  <div key={`${a.type}-${a.link.linkId}`}>
+                    <Link
+                      href={`/links/${a.link.linkId}/stats`}
+                      onFollow={(e) => {
+                        e.preventDefault()
+                        navigate(`/links/${a.link.linkId}/stats`)
+                      }}
+                    >
+                      {a.link.title || a.link.shortUrl}
+                    </Link>
+                    <Box color="text-body-secondary" fontSize="body-s">
+                      {alertMessage(a)}
+                    </Box>
+                  </div>
+                ))}
+              </SpaceBetween>
+            )
+          })}
         </SpaceBetween>
       )}
     </Container>

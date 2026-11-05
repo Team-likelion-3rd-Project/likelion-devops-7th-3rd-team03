@@ -27,15 +27,13 @@ describe('팀 알림', () => {
   })
 
   it('만료 임박은 남은 일수로, 0일이면 오늘 만료로 적는다', () => {
-    expect(alertMessage({ type: 'EXPIRING_SOON', detail: { daysLeft: 3 } })).toBe('3일 뒤 만료돼요')
-    expect(alertMessage({ type: 'EXPIRING_SOON', detail: { daysLeft: 0 } })).toBe('오늘 만료돼요')
+    expect(alertMessage({ type: 'EXPIRING_SOON', detail: { daysLeft: 3 } })).toBe('3일 후 만료')
+    expect(alertMessage({ type: 'EXPIRING_SOON', detail: { daysLeft: 0 } })).toBe('오늘 만료')
   })
 
   it('방문자 급증은 오늘 클릭과 평균 대비 배수를 적는다', () => {
     const detail = { todayClicks: 1200, avgDailyClicks: 300, ratio: 4 }
-    expect(alertMessage({ type: 'TRAFFIC_SPIKE', detail })).toBe(
-      '오늘 클릭 1,200회, 최근 7일 평균의 4배'
-    )
+    expect(alertMessage({ type: 'TRAFFIC_SPIKE', detail })).toBe('오늘 1,200회 · 평소의 4배')
   })
 
   it('모르는 종류는 빈 문자열이다', () => {
