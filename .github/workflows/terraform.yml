@@ -33,7 +33,7 @@ on:
         options: [plan, apply, destroy]
         default: plan
       spec:
-        description: 사양 (test-lite = 동작 확인용 축소 사양)
+        description: 사양 (test-lite = 부하 테스트 시작 사양)
         type: choice
         options: [test-lite, prod]
         default: test-lite
