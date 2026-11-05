@@ -75,11 +75,12 @@ AWS 전용. 온프렘에는 넣지 않는다.
 
 ## 렌더 확인
 
-바꾼 뒤에는 두 환경 모두 렌더가 되는지 확인한다.
+`infra/k8s/`를 바꾼 PR은 CI(`K8s Render`, `.github/workflows/k8s-render.yml`)가 두 환경 overlay를 모두 렌더해 확인한다.
+렌더가 깨지면 Argo CD가 sync하지 못하므로, 머지 전에 이 검사가 통과해야 한다.
+
+로컬에서 먼저 보려면 같은 명령을 쓴다.
 
 ```bash
 kubectl kustomize infra/k8s/overlays/dev > /dev/null && echo dev OK
 kubectl kustomize infra/k8s/overlays/prod > /dev/null && echo prod OK
 ```
-
-2026-11-03 `develop` 기준으로 dev는 35개, prod는 21개 리소스가 오류 없이 렌더된다.
