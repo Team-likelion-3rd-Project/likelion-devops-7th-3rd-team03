@@ -121,10 +121,25 @@ class MySqlRedirectControllerIntegrationTest {
                 userExternalId
         );
 
+        // 링크는 워크스페이스 소유라(links.workspace_id NOT NULL) 사용자의 개인 워크스페이스를 먼저 만든다
         jdbcTemplate.update(
-                "insert into links (link_id, user_id, slug, original_url, is_visible, expires_at) values (?, ?, ?, ?, ?, ?)",
+                "insert into workspaces (workspace_id, name, is_personal, personal_owner_id, status) "
+                        + "values (?, '내 워크스페이스', true, ?, 'ACTIVE')",
+                UUID.randomUUID().toString(),
+                userId
+        );
+        Long workspaceId = jdbcTemplate.queryForObject(
+                "select id from workspaces where personal_owner_id = ?",
+                Long.class,
+                userId
+        );
+
+        jdbcTemplate.update(
+                "insert into links (link_id, user_id, workspace_id, slug, original_url, is_visible, expires_at) "
+                        + "values (?, ?, ?, ?, ?, ?, ?)",
                 UUID.randomUUID().toString(),
                 userId,
+                workspaceId,
                 slug,
                 originalUrl,
                 isVisible,

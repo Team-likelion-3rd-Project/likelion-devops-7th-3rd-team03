@@ -61,7 +61,10 @@ class RedirectServiceTest {
     void publishesSnapshotAfterSuccessfulRedirect() {
         RedirectRequest request = new RedirectRequest(
                 "valid", "visitor-id", LocalDateTime.parse("2026-08-12T15:00:00"), "203.0.113.10", null,
-                "Mozilla/5.0", "https://google.com/search", null);
+                "Mozilla/5.0", "https://google.com/search", null,
+                null,   // viewerCountry
+                null    // viewerRegion
+        );
         when(redirectCache.get("valid")).thenReturn(Optional.of(
                 new RedirectCacheEntry(1L, "https://example.com", true, null)));
         RedirectTarget result = redirectService.redirect(request);

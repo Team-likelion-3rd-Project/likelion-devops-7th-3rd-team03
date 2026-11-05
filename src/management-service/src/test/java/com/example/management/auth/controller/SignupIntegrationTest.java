@@ -42,6 +42,15 @@ class SignupIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        // 가입하면 개인 워크스페이스가 생기므로 users의 FK를 가진 행부터 지운다
+        jdbcTemplate.update("""
+                DELETE FROM workspace_members WHERE user_id IN (SELECT id FROM (
+                    SELECT id FROM users WHERE social_id LIKE ?) t)
+                """, SOCIAL_ID_PREFIX + "%");
+        jdbcTemplate.update("""
+                DELETE FROM workspaces WHERE personal_owner_id IN (SELECT id FROM (
+                    SELECT id FROM users WHERE social_id LIKE ?) t)
+                """, SOCIAL_ID_PREFIX + "%");
         jdbcTemplate.update("""
                 DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM (
                     SELECT id FROM users WHERE social_id LIKE ?) t)
@@ -63,6 +72,7 @@ class SignupIntegrationTest {
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty());
 
         assertThat(countUsers(socialId)).isEqualTo(1);
+        assertThat(countPersonalWorkspaceAdmins(socialId)).isEqualTo(1);
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -142,6 +152,16 @@ class SignupIntegrationTest {
     private Integer countUsers(String socialId) {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM users WHERE provider = 'KAKAO' AND social_id = ?", Integer.class, socialId);
+    }
+
+    /** 개인 워크스페이스가 정확히 1개 있고 주인이 그 관리자인지 */
+    private Integer countPersonalWorkspaceAdmins(String socialId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM users u
+                  JOIN workspaces w ON w.personal_owner_id = u.id AND w.is_personal = TRUE AND w.status = 'ACTIVE'
+                  JOIN workspace_members m ON m.workspace_id = w.id AND m.user_id = u.id AND m.role = 'ADMIN'
+                 WHERE u.provider = 'KAKAO' AND u.social_id = ?
+                """, Integer.class, socialId);
     }
 
     private static String signupBody(String signupToken, String nickname, String email) {

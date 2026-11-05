@@ -21,6 +21,9 @@ public record ClickEvent(
         String browser,
         String referrer,
         String referrerCategory,
-        boolean isBot
+        boolean isBot,
+        // 스키마 2부터 (#207). 국가: ISO 3166-1, 지역: ISO 3166-2 하위 코드 (예: 11 서울)
+        String country,
+        String region
 ) {
 }

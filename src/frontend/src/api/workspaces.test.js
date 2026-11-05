@@ -114,7 +114,8 @@ describe('멤버 관리', () => {
     await expect(changeMemberRole(w.workspaceId, 'dev-admin', 'MEMBER')).rejects.toMatchObject({
       status: 409
     })
-    await expect(removeMember(w.workspaceId, 'dev-admin')).rejects.toMatchObject({ status: 409 })
+    // 자기 자신은 내보내기가 아니라 나가기로만 뺄 수 있어서 400이다
+    await expect(removeMember(w.workspaceId, 'dev-admin')).rejects.toMatchObject({ status: 400 })
     await expect(leaveWorkspace(w.workspaceId)).rejects.toMatchObject({ status: 409 })
   })
 

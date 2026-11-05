@@ -23,6 +23,8 @@ public class LocalSampleDataConfig {
                     "select id from users where user_id = ?", Long.class, SAMPLE_USER_ID
             );
 
+            createPersonalWorkspaceIfAbsent(jdbcTemplate, userId);
+
             insertLinkIfAbsent(jdbcTemplate, userId, "demo", "https://example.com", true, null);
             insertLinkIfAbsent(jdbcTemplate, userId, "hidden", "https://example.com/hidden", false, null);
             insertLinkIfAbsent(
@@ -44,6 +46,22 @@ public class LocalSampleDataConfig {
         );
     }
 
+    /** 링크는 워크스페이스 소유라(links.workspace_id NOT NULL) 가입 때처럼 개인 워크스페이스와 관리자 멤버십을 만든다 */
+    private void createPersonalWorkspaceIfAbsent(JdbcTemplate jdbcTemplate, Long userId) {
+        jdbcTemplate.update(
+                "insert into workspaces (workspace_id, name, is_personal, personal_owner_id, status) "
+                        + "select uuid(), '내 워크스페이스', true, ?, 'ACTIVE' "
+                        + "where not exists (select 1 from workspaces where personal_owner_id = ?)",
+                userId, userId
+        );
+        jdbcTemplate.update(
+                "insert into workspace_members (workspace_id, user_id, role) "
+                        + "select w.id, ?, 'ADMIN' from workspaces w where w.personal_owner_id = ? "
+                        + "and not exists (select 1 from workspace_members m where m.workspace_id = w.id and m.user_id = ?)",
+                userId, userId, userId
+        );
+    }
+
     private void insertLinkIfAbsent(
             JdbcTemplate jdbcTemplate,
             Long userId,
@@ -53,8 +71,9 @@ public class LocalSampleDataConfig {
             LocalDateTime expiresAt
     ) {
         jdbcTemplate.update(
-                "insert into links (link_id, user_id, slug, title, original_url, is_visible, expires_at) "
-                        + "select ?, ?, ?, ?, ?, ?, ? where not exists (select 1 from links where slug = ?)",
+                "insert into links (link_id, user_id, workspace_id, slug, title, original_url, is_visible, expires_at) "
+                        + "select ?, ?, w.id, ?, ?, ?, ?, ? from workspaces w where w.personal_owner_id = ? "
+                        + "and not exists (select 1 from links where slug = ?)",
                 "local-" + slug,
                 userId,
                 slug,
@@ -62,6 +81,7 @@ public class LocalSampleDataConfig {
                 originalUrl,
                 isVisible,
                 expiresAt,
+                userId,
                 slug
         );
     }

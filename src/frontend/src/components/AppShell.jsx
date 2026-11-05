@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Mode, applyMode } from '@cloudscape-design/global-styles'
+import Alert from '@cloudscape-design/components/alert'
 import AppLayout from '@cloudscape-design/components/app-layout'
 import Badge from '@cloudscape-design/components/badge'
 import Box from '@cloudscape-design/components/box'
@@ -12,13 +13,13 @@ import Input from '@cloudscape-design/components/input'
 import Modal from '@cloudscape-design/components/modal'
 import SideNavigation from '@cloudscape-design/components/side-navigation'
 import SpaceBetween from '@cloudscape-design/components/space-between'
+import StatusIndicator from '@cloudscape-design/components/status-indicator'
 import TopNavigation from '@cloudscape-design/components/top-navigation'
 import { useAuth } from '../context/AuthContext'
 import { useWorkspace } from '../context/WorkspaceContext'
-import { createWorkspace, joinWorkspace } from '../api/workspaces'
+import { createWorkspace, joinWorkspace, leaveWorkspace, listMembers } from '../api/workspaces'
 import { roleLabel } from '../permissions'
 import { toast, useFlashes } from './Toast'
-import { displayName } from '../auth/devLogin'
 import Flashbar from '@cloudscape-design/components/flashbar'
 
 const LOGO =
@@ -39,12 +40,12 @@ function sectionOf(path) {
 }
 
 export function AppShell() {
-  const { current, can, linkCount } = useWorkspace()
+  const { workspaces, current, can, linkCount } = useWorkspace()
   const flashes = useFlashes()
   const location = useLocation()
   const navigate = useNavigate()
   const [navOpen, setNavOpen] = useState(true)
-  const [modal, setModal] = useState(null) // 'create' | 'join' | null
+  const [modal, setModal] = useState(null) // 'create' | 'join' | 'leave' | 'withdraw' | null
   const active = sectionOf(location.pathname)
 
   const manage = [
@@ -71,7 +72,12 @@ export function AppShell() {
   return (
     <>
       <div id="top-nav" style={{ position: 'sticky', top: 0, zIndex: 1002 }}>
-        <TopBar onCreate={() => setModal('create')} onJoin={() => setModal('join')} />
+        <TopBar
+          onCreate={() => setModal('create')}
+          onJoin={() => setModal('join')}
+          onLeave={() => setModal('leave')}
+          onWithdraw={() => setModal('withdraw')}
+        />
       </div>
       <AppLayout
         headerSelector="#top-nav"
@@ -121,6 +127,12 @@ export function AppShell() {
       />
       {modal === 'create' && <CreateWorkspaceModal onDismiss={() => setModal(null)} />}
       {modal === 'join' && <JoinWorkspaceModal onDismiss={() => setModal(null)} />}
+      {modal === 'leave' && current && (
+        <LeaveWorkspaceModal workspace={current} onDismiss={() => setModal(null)} />
+      )}
+      {modal === 'withdraw' && (
+        <WithdrawModal workspaces={workspaces} onDismiss={() => setModal(null)} />
+      )}
     </>
   )
 }
@@ -205,9 +217,9 @@ export function GuestShell() {
   )
 }
 
-function TopBar({ onCreate, onJoin }) {
-  const { user, logout } = useAuth()
-  const { workspaces, current, status, select, refresh } = useWorkspace()
+function TopBar({ onCreate, onJoin, onLeave, onWithdraw }) {
+  const { logout } = useAuth()
+  const { workspaces, current, nickname, status, select, refresh } = useWorkspace()
   const navigate = useNavigate()
   const [dark, setDark] = useColorMode()
 
@@ -236,11 +248,15 @@ function TopBar({ onCreate, onJoin }) {
               }))
             },
             { id: 'new', text: '새 워크스페이스', iconName: 'add-plus' },
-            { id: 'join', text: '초대 코드로 합류', iconName: 'key' }
+            { id: 'join', text: '초대 코드로 합류', iconName: 'key' },
+            ...(current
+              ? [{ id: 'leave', text: `'${current.name}'에서 나가기`, iconName: 'close' }]
+              : [])
           ],
           onItemClick: ({ detail }) => {
             if (detail.id === 'new') onCreate()
             else if (detail.id === 'join') onJoin()
+            else if (detail.id === 'leave') onLeave()
             else select(detail.id.slice(3))
           }
         }
@@ -262,10 +278,14 @@ function TopBar({ onCreate, onJoin }) {
         colorModeButton(dark, setDark),
         {
           type: 'menu-dropdown',
-          text: displayName(user.userId),
+          text: nickname ?? '내 계정',
           iconName: 'user-profile',
-          items: [{ id: 'signout', text: '로그아웃' }],
-          onItemClick: async () => {
+          items: [
+            { id: 'signout', text: '로그아웃' },
+            { id: 'withdraw', text: '회원 탈퇴' }
+          ],
+          onItemClick: async ({ detail }) => {
+            if (detail.id === 'withdraw') return onWithdraw()
             // 보호된 페이지에서 logout()이 먼저 user를 null로 바꾸면 ProtectedRoute가
             // 이 navigate보다 먼저 /login으로 보내므로, 홈으로 먼저 나간 뒤 정리한다.
             navigate('/')
@@ -362,6 +382,165 @@ const CreateWorkspaceModal = ({ onDismiss }) => (
     onDismiss={onDismiss}
   />
 )
+
+// 나가기를 막는 경우(LAST_ADMIN, SOLE_MEMBER_CANNOT_LEAVE의 삭제 안내, PERSONAL_WORKSPACE_LEAVE)는
+// 서버가 사유를 메시지로 보내 주므로 그대로 보여 준다.
+function LeaveWorkspaceModal({ workspace, onDismiss }) {
+  const { refresh } = useWorkspace()
+  const navigate = useNavigate()
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  async function confirm() {
+    setBusy(true)
+    try {
+      await leaveWorkspace(workspace.workspaceId)
+      toast(`'${workspace.name}'에서 나갔어요.`, 'success')
+      onDismiss()
+      navigate('/', { replace: true })
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      visible
+      onDismiss={onDismiss}
+      header={`'${workspace.name}'에서 나갈까요?`}
+      footer={
+        <Box float="right">
+          <SpaceBetween direction="horizontal" size="xs">
+            <Button variant="link" onClick={onDismiss}>
+              취소
+            </Button>
+            <Button variant="primary" loading={busy} onClick={confirm}>
+              나가기
+            </Button>
+          </SpaceBetween>
+        </Box>
+      }
+    >
+      <SpaceBetween size="m">
+        {error && <Alert type="error">{error}</Alert>}
+        <Box>
+          나가면 이 워크스페이스에 더 이상 접근할 수 없어요. 다시 합류하려면 초대 코드가 필요해요.
+        </Box>
+      </SpaceBetween>
+    </Modal>
+  )
+}
+
+const byJoined = (a, b) => new Date(a.joinedAt) - new Date(b.joinedAt)
+
+// 탈퇴하면 서버가 팀을 이렇게 정리한다. 어떤 팀이 영향을 받는지 미리 알려 주려고 같은 규칙으로 계산한다.
+// 혼자 남은 팀은 삭제되고, 내가 유일한 관리자인 팀은 가장 먼저 합류한 멤버에게 관리자가 넘어간다(개인 워크스페이스 제외).
+async function withdrawImpact(workspaces) {
+  const owned = workspaces.filter((w) => !w.personal && w.role === 'ADMIN')
+  const lists = await Promise.all(owned.map((w) => listMembers(w.workspaceId)))
+  const removed = []
+  const handover = []
+  owned.forEach((w, i) => {
+    const members = lists[i]
+    if (members.length === 1) return removed.push(w.name)
+    if (members.filter((m) => m.role === 'ADMIN').length !== 1) return
+    const next = members.filter((m) => !m.me).sort(byJoined)[0]
+    handover.push({ team: w.name, to: next.name })
+  })
+  return { removed, handover }
+}
+
+function WithdrawModal({ workspaces, onDismiss }) {
+  const { withdraw } = useAuth()
+  const navigate = useNavigate()
+  const [impact, setImpact] = useState(null) // null: 확인 중, false: 확인하지 못함
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const hasPersonal = workspaces.some((w) => w.personal && w.role === 'ADMIN')
+
+  useEffect(() => {
+    let alive = true
+    withdrawImpact(workspaces)
+      .then((r) => alive && setImpact(r))
+      .catch(() => alive && setImpact(false))
+    return () => {
+      alive = false
+    }
+  }, [workspaces])
+
+  async function confirm() {
+    setBusy(true)
+    try {
+      await withdraw()
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      visible
+      onDismiss={onDismiss}
+      header="회원 탈퇴"
+      footer={
+        <Box float="right">
+          <SpaceBetween direction="horizontal" size="xs">
+            <Button variant="link" onClick={onDismiss}>
+              취소
+            </Button>
+            <Button variant="primary" loading={busy} onClick={confirm}>
+              탈퇴
+            </Button>
+          </SpaceBetween>
+        </Box>
+      }
+    >
+      <SpaceBetween size="m">
+        {error && <Alert type="error">{error}</Alert>}
+        <Alert type="warning">탈퇴하면 같은 계정으로 다시 로그인할 수 없어요.</Alert>
+        <Box>
+          <ul>
+            {hasPersonal && <li>내 개인 워크스페이스와 그 링크는 삭제돼요.</li>}
+            <li>혼자 남은 팀은 삭제되고, 그 팀의 링크도 비활성화돼요.</li>
+            <li>내가 유일한 관리자인 팀은 가장 먼저 합류한 멤버에게 관리자가 자동으로 넘어가요.</li>
+            <li>
+              그 밖의 팀에서는 내 멤버십만 지워져요. 내가 만든 링크는 팀에 남고, 만든 사람은
+              &apos;탈퇴한 사용자&apos;로 표시돼요.
+            </li>
+          </ul>
+        </Box>
+        {impact === null && (
+          <StatusIndicator type="loading">영향 받는 팀을 확인하는 중</StatusIndicator>
+        )}
+        {impact === false && (
+          <Alert type="info">
+            영향 받는 팀을 확인하지 못했어요. 위 안내를 기준으로 진행해 주세요.
+          </Alert>
+        )}
+        {impact && impact.removed.length > 0 && (
+          <Alert type="warning" header="삭제되는 팀">
+            {impact.removed.join(', ')}
+          </Alert>
+        )}
+        {impact && impact.handover.length > 0 && (
+          <Alert type="info" header="관리자가 넘어가는 팀">
+            <ul>
+              {impact.handover.map((h) => (
+                <li key={h.team}>
+                  {h.team} → {h.to}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+      </SpaceBetween>
+    </Modal>
+  )
+}
 
 // 이미 가입한 회원이 관리자에게 받은 초대 코드를 입력해 합류한다
 const JoinWorkspaceModal = ({ onDismiss }) => (

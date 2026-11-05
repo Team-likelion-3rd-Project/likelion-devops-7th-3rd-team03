@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
-import { listWorkspaces } from '../api/workspaces'
+import { listMembers, listWorkspaces } from '../api/workspaces'
 import { listLinks } from '../api/links'
 import { hasPermission } from '../permissions'
 
@@ -32,6 +32,8 @@ export function WorkspaceProvider({ children }) {
   const [selectedId, setSelectedId] = useState(() => loadSelected(userId))
   // idle(로그인 전) | loading | ready | error
   const [status, setStatus] = useState('idle')
+  // 상단바에 보여 줄 내 닉네임. 로그인 응답에는 프로필이 없어서 멤버 목록의 me 항목에서 가져온다.
+  const [nickname, setNickname] = useState(null)
 
   // preferId 가 있으면 그 팀을 선택한다 (방금 만들거나 합류한 팀). 목록에 없으면 첫 팀으로 되돌린다.
   // 이미 목록이 떠 있을 때는 화면을 '불러오는 중'으로 되돌리지 않고 조용히 갱신한다.
@@ -59,6 +61,7 @@ export function WorkspaceProvider({ children }) {
   )
 
   useEffect(() => {
+    setNickname(null) // 다른 계정으로 바뀌면 이전 계정의 닉네임을 남기지 않는다
     if (userId) {
       refresh()
     } else {
@@ -85,10 +88,27 @@ export function WorkspaceProvider({ children }) {
 
   const current = workspaces.find((w) => w.workspaceId === selectedId) ?? null
   const role = current?.role ?? null
+  const currentId = current?.workspaceId
+
+  // 닉네임은 한 번 알면 팀을 바꿔도 같다. 이미 알고 있으면 다시 묻지 않는다.
+  useEffect(() => {
+    if (!currentId || nickname) return
+    let alive = true
+    listMembers(currentId)
+      .then((list) => {
+        const me = list.find((m) => m.me)
+        if (alive && me) setNickname(me.name)
+      })
+      .catch(() => {
+        /* 이름을 못 가져와도 상단바는 기본 이름으로 동작한다 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [currentId, nickname])
 
   // 사이드바 "링크" 옆 개수. 못 가져오면 null로 두고 숨긴다. 링크를 만들거나 지운 화면이 refreshLinkCount로 갱신한다.
   const [linkCount, setLinkCount] = useState(null)
-  const currentId = current?.workspaceId
   const countRequest = useRef(0)
   const refreshLinkCount = useCallback(() => {
     if (!current) return
@@ -112,6 +132,7 @@ export function WorkspaceProvider({ children }) {
         workspaces,
         current,
         role,
+        nickname,
         can: (permission) => hasPermission(role, permission),
         status,
         select,

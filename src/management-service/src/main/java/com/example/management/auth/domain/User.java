@@ -61,7 +61,7 @@ public class User {
     private SocialProvider provider;
 
     /** provider 내에서 유일한 소셜 회원 식별자. 숫자 ID도 문자열로 저장한다 */
-    @Column(name = "social_id", length = 255, nullable = false, updatable = false)
+    @Column(name = "social_id", length = 255, nullable = false)
     private String socialId;
 
     @Column(name = "nickname", length = 50, nullable = false)
@@ -96,8 +96,23 @@ public class User {
         this.status = UserStatus.ACTIVE;
     }
 
+    /** 탈퇴하면 social_id를 이 접두사 + userId로 바꾼다 */
+    public static final String WITHDRAWN_SOCIAL_ID_PREFIX = "withdrawn:";
+
+    /** 탈퇴하면 닉네임을 이 값으로 바꾼다 */
+    public static final String WITHDRAWN_NICKNAME = "탈퇴한 사용자";
+
+    /**
+     * 탈퇴 처리. 개인정보는 탈퇴 시 파기한다(개인정보 보호법).
+     * - social_id: (provider, social_id) 유니크를 비워 같은 소셜 계정으로 새로 가입할 수 있게 한다
+     * - 닉네임은 "탈퇴한 사용자", 이미지는 null, 이메일은 빈 문자열(NOT NULL 컬럼이라 스키마를 바꾸지 않는다)
+     */
     public void withdraw() {
         this.status = UserStatus.WITHDRAWN;
+        this.socialId = WITHDRAWN_SOCIAL_ID_PREFIX + this.userId;
+        this.nickname = WITHDRAWN_NICKNAME;
+        this.email = "";
+        this.profileImageUrl = null;
     }
 
     public boolean isActive() {

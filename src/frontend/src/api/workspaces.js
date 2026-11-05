@@ -1,13 +1,13 @@
-// WorkspaceController(/api/workspaces/*) 연동. 백엔드(#200, #201)가 나오기 전까지는 mock으로 동작한다.
-// VITE_WORKSPACE_API=real 이면 실제 API를 쓴다. 응답 필드 이름은 아직 확정되지 않았으니,
-// 확정되면 아래 toWorkspace/toMember 만 고친다.
+// WorkspaceController(/api/workspaces/*) 연동. 개발 서버(npm run dev)에서는 mock으로 동작한다.
+// VITE_WORKSPACE_API=real 이면 실제 API를 쓴다. 응답 필드가 바뀌면 아래 toWorkspace/toMember 만 고친다.
 import { apiFetch, ApiError, getAccessToken } from './http'
 
 // mock은 개발 서버(npm run dev)에서만 쓴다. 운영 빌드에는 들어가지 않는다.
 const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_WORKSPACE_API !== 'real'
 
 // workspace = { workspaceId, name, personal, role }  role: 'ADMIN' | 'MEMBER'
-// member    = { userId, name, email, role, joinedAt }  (email 필드 제공 여부는 백엔드 확인 필요)
+// member    = { userId, name, email, role, joinedAt, me }  서버는 nickname으로 보내고 화면에서는 name으로 쓴다.
+//             me는 요청한 사용자 본인인지 여부다.
 const toWorkspace = (w) => ({
   workspaceId: w.workspaceId,
   name: w.name,
@@ -16,10 +16,11 @@ const toWorkspace = (w) => ({
 })
 const toMember = (m) => ({
   userId: m.userId,
-  name: m.name,
+  name: m.nickname ?? m.name ?? '',
   email: m.email ?? '',
   role: m.role,
-  joinedAt: m.joinedAt
+  joinedAt: m.joinedAt,
+  me: Boolean(m.me)
 })
 
 const real = {
@@ -75,16 +76,16 @@ function randomInviteCode() {
   return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
-// members 는 { userId, role, joinedAt } 만 갖고, 이름과 이메일은 users 에서 찾는다.
+// members 는 { userId, role, joinedAt } 만 갖고, 닉네임과 이메일은 users 에서 찾는다.
 function seed() {
   const m = (userId, role, days) => ({ userId, role, joinedAt: daysAgo(days) })
   return {
     users: {
-      'dev-admin': { name: '테스트 관리자', email: 'admin@snipy.test' },
-      'dev-member': { name: '테스트 멤버', email: 'member@snipy.test' },
-      u2: { name: '박서연', email: 'seoyeon@snipy.team' },
-      u3: { name: '이도윤', email: 'doyoon@snipy.team' },
-      u4: { name: '최하은', email: 'haeun@snipy.team' }
+      'dev-admin': { nickname: '테스트 관리자', email: 'admin@snipy.test' },
+      'dev-member': { nickname: '테스트 멤버', email: 'member@snipy.test' },
+      u2: { nickname: '박서연', email: 'seoyeon@snipy.team' },
+      u3: { nickname: '이도윤', email: 'doyoon@snipy.team' },
+      u4: { nickname: '최하은', email: 'haeun@snipy.team' }
     },
     workspaces: [
       {
@@ -148,7 +149,7 @@ function state() {
   // 처음 보는 사용자(실제 로그인 포함)에게는 개인 워크스페이스를 만들어 준다 (가입 시 자동 생성 규칙)
   const me = meId()
   if (!db.workspaces.some((w) => w.personal && w.members.some((x) => x.userId === me))) {
-    db.users[me] ??= { name: '나', email: '' }
+    db.users[me] ??= { nickname: '나', email: '' }
     db.workspaces.push({
       workspaceId: `ws-personal-${me}`,
       name: '내 워크스페이스',
@@ -196,7 +197,9 @@ const asAdmin = (id) => {
 }
 const adminCount = (w) => w.members.filter((m) => m.role === 'ADMIN').length
 const view = (w) => toWorkspace({ ...w, role: mine(w).role })
-const memberView = (m) => toMember({ ...m, ...state().users[m.userId] })
+const memberView = (m) => toMember({ ...m, ...state().users[m.userId], me: m.userId === meId() })
+// 개인 워크스페이스는 주인(만든 사람)의 id로 만들어진다. 주인은 강등·내보내기·나가기를 할 수 없다.
+const isPersonalOwner = (w, userId) => w.personal && w.workspaceId === `ws-personal-${userId}`
 const target = (w, userId) => {
   const m = w.members.find((x) => x.userId === userId)
   if (!m) throw new ApiError(404, '멤버를 찾을 수 없어요.')
@@ -244,8 +247,13 @@ const mock = {
   changeRole: async (id, userId, role) => {
     const w = asAdmin(id)
     const m = target(w, userId)
-    if (m.role === 'ADMIN' && role === 'MEMBER' && adminCount(w) === 1) {
-      throw new ApiError(409, '관리자가 한 명뿐이라 멤버로 바꿀 수 없어요.')
+    if (m.role === 'ADMIN' && role === 'MEMBER') {
+      if (isPersonalOwner(w, userId)) {
+        throw new ApiError(409, '개인 워크스페이스의 주인은 강등하거나 내보낼 수 없어요.')
+      }
+      if (adminCount(w) === 1) {
+        throw new ApiError(409, '관리자가 한 명뿐이라 멤버로 바꿀 수 없어요.')
+      }
     }
     m.role = role
     save()
@@ -254,17 +262,34 @@ const mock = {
   removeMember: async (id, userId) => {
     const w = asAdmin(id)
     const m = target(w, userId)
-    if (m.role === 'ADMIN' && adminCount(w) === 1) {
-      throw new ApiError(409, '마지막 관리자는 내보낼 수 없어요.')
+    if (userId === meId()) {
+      throw new ApiError(400, '자기 자신은 내보낼 수 없어요. 나가기를 이용해 주세요.')
+    }
+    if (isPersonalOwner(w, userId)) {
+      throw new ApiError(409, '개인 워크스페이스의 주인은 강등하거나 내보낼 수 없어요.')
     }
     w.members = w.members.filter((x) => x !== m)
+    // 내보낸 사람이 알고 있는 코드로 바로 다시 합류하지 못하도록 코드를 새로 발급한다 (코드가 이미 있을 때)
+    if (w.inviteCode) w.inviteCode = randomInviteCode()
     save()
   },
+  // 서버가 보내는 오류 메시지를 그대로 보여 주므로 메시지도 서버와 같은 뜻으로 맞춘다.
   leave: async (id) => {
     const w = asMember(id)
-    if (w.personal) throw new ApiError(409, '개인 팀에서는 나갈 수 없어요.')
+    if (isPersonalOwner(w, meId())) {
+      throw new ApiError(409, '개인 워크스페이스는 나갈 수 없어요.')
+    }
+    if (w.members.length === 1) {
+      throw new ApiError(
+        409,
+        '혼자 남은 워크스페이스는 나갈 수 없어요. 워크스페이스를 삭제해 주세요.'
+      )
+    }
     if (mine(w).role === 'ADMIN' && adminCount(w) === 1) {
-      throw new ApiError(409, '마지막 관리자는 나갈 수 없어요. 다른 멤버를 관리자로 지정해 주세요.')
+      throw new ApiError(
+        409,
+        '마지막 관리자는 나갈 수 없어요. 다른 멤버를 관리자로 지정한 뒤 다시 시도해 주세요.'
+      )
     }
     w.members = w.members.filter((x) => x.userId !== meId())
     save()
@@ -301,7 +326,7 @@ const api = USE_MOCK ? mock : real
 
 // 링크 mock(api/links.js)이 같은 사용자·팀 데이터를 쓰도록 내보낸다
 export const MOCK_TEAMS = USE_MOCK
-export const mockMe = () => ({ userId: meId(), name: state().users[meId()]?.name ?? '나' })
+export const mockMe = () => ({ userId: meId(), name: state().users[meId()]?.nickname ?? '나' })
 export const mockAssertMember = (workspaceId) => {
   asMember(workspaceId)
 }

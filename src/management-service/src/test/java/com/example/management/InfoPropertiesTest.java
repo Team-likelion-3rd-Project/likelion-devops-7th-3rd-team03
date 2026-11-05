@@ -14,6 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * /actuator/info 에 빌드 커밋이 나오도록 한 설정을 확인한다.
  * 앱 전체(DB·Redis)를 띄우지 않고 application.yml 만 읽어서 본다.
+ *
+ * 기본 문서(첫 번째)만 읽는다. --- 아래는 batch 프로필 전용이라 웹 앱에는 적용되지 않는다.
+ * 모든 문서를 읽으면 info 블록이 --- 아래에 있어도 통과해 버린다.
  */
 class InfoPropertiesTest {
 
@@ -44,7 +47,8 @@ class InfoPropertiesTest {
         StandardEnvironment env = new StandardEnvironment();
         new YamlPropertySourceLoader()
                 .load("application", new ClassPathResource("application.yml"))
-                .forEach(env.getPropertySources()::addLast);
+                .stream().findFirst()
+                .ifPresent(env.getPropertySources()::addLast);
         env.getPropertySources().addFirst(new MapPropertySource("test", overrides));
         return env;
     }

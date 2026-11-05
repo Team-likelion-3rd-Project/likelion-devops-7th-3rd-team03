@@ -5,13 +5,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import redirect_service.clicklog.resolver.BotResolver;
+import redirect_service.clicklog.resolver.*;
 import redirect_service.clicklog.event.ClickEvent;
 import redirect_service.clicklog.event.ClickRequestSnapshot;
 import redirect_service.clicklog.event.RedirectSucceededEvent;
-import redirect_service.clicklog.resolver.ReferrerCategoryResolver;
-import redirect_service.clicklog.resolver.UserAgentInfo;
-import redirect_service.clicklog.resolver.UserAgentResolver;
 
 import java.util.UUID;
 
@@ -20,7 +17,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClickEventAssembler {
 
-    private static final int CLICK_EVENT_SCHEMA_VERSION = 1;
+    // 2: country, region 추가 (#207)
+    private static final int CLICK_EVENT_SCHEMA_VERSION = 2;
     private static final int USER_AGENT_MAX_LENGTH = 500;
     private static final int REFERRER_MAX_LENGTH = 500;
     private static final int LANGUAGE_MAX_LENGTH = 50;
@@ -38,20 +36,24 @@ public class ClickEventAssembler {
         String referrer = truncate(request.referrer(), REFERRER_MAX_LENGTH);
         UserAgentInfo userAgentInfo = userAgentResolver.resolve(userAgent);
 
+        String language = resolveLanguage(request.acceptLanguage());
+
         eventPublisher.publishEvent(new ClickEvent(
                 UUID.randomUUID(),
                 CLICK_EVENT_SCHEMA_VERSION,
                 event.linkId(),
                 request.occurredAt(),
                 request.visitorId(),
-                resolveLanguage(request.acceptLanguage()),
+                language,
                 userAgent,
                 userAgentInfo.deviceType(),
                 userAgentInfo.operatingSystem(),
                 userAgentInfo.browser(),
                 referrer,
                 referrerCategoryResolver.resolve(referrer),
-                botResolver.isBot(userAgent)
+                botResolver.isBot(userAgent),
+                GeoResolver.country(request.viewerCountry(), language),
+                GeoResolver.region(request.viewerRegion())
         ));
     }
 

@@ -10,4 +10,7 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     void deleteByTokenHash(String tokenHash);
+
+    /** 회원 탈퇴 시 모든 기기의 refresh token을 지운다 */
+    void deleteByUserId(Long userId);
 }

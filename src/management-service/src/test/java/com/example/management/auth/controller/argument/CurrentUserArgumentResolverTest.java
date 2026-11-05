@@ -59,6 +59,18 @@ class CurrentUserArgumentResolverTest {
                 () -> resolver.resolveArgument(currentUserParameter(), null, null, null));
     }
 
+    @Test
+    void resolveArgument_throwsWhenUserWithdrew() throws Exception {
+        User user = User.builder().provider(SocialProvider.KAKAO).socialId("1").build();
+        user.withdraw();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("withdrawn-user-id", null));
+        when(userRepository.findByUserId("withdrawn-user-id")).thenReturn(Optional.of(user));
+
+        assertThrows(AuthenticationRequiredException.class,
+                () -> resolver.resolveArgument(currentUserParameter(), null, null, null));
+    }
+
     private MethodParameter currentUserParameter() throws NoSuchMethodException {
         Method method = ResolverTarget.class.getDeclaredMethod("handler", Long.class);
         return new MethodParameter(method, 0);
