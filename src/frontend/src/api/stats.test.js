@@ -17,11 +17,11 @@ let groups
 beforeEach(() => {
   calls.length = 0
   groups = []
-  vi.stubEnv('VITE_API_BASE_URL', '/api')
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url) => {
-      calls.push(decodeURIComponent(url))
+      // CI는 prod 주소(VITE_API_BASE_URL)로 빌드하므로 base는 떼고 경로만 비교한다
+      calls.push(decodeURIComponent(url).replace(/^.*?(?=\/workspaces\/)/, ''))
       return new Response(JSON.stringify({ data: { groups } }), { status: 200 })
     })
   )
@@ -38,7 +38,7 @@ describe('워크스페이스 통계 호출', () => {
     groups = [{ linkId: 'L1', daily: [], summary: { totalClicks: 3 } }]
     const res = await getDailyStats(ws, 'L1', '2026-11-01', '2026-11-05')
     expect(calls).toEqual([
-      '/api/workspaces/ws-marketing/stats/daily?linkIds=L1&from=2026-11-01&to=2026-11-05'
+      '/workspaces/ws-marketing/stats/daily?linkIds=L1&from=2026-11-01&to=2026-11-05'
     ])
     expect(res).toMatchObject({ linkId: 'L1', summary: { totalClicks: 3 } })
   })
@@ -72,7 +72,7 @@ describe('워크스페이스 통계 호출', () => {
   it('실시간은 첫 묶음의 clickCount·uniqueVisitorCount를 준다', async () => {
     groups = [{ linkId: 'L1', clickCount: 4, uniqueVisitorCount: 3 }]
     expect(await getRealtimeCount(ws, 'L1')).toMatchObject({ clickCount: 4, uniqueVisitorCount: 3 })
-    expect(calls[0]).toBe('/api/workspaces/ws-marketing/stats/realtime?linkIds=L1')
+    expect(calls[0]).toBe('/workspaces/ws-marketing/stats/realtime?linkIds=L1')
   })
 })
 
