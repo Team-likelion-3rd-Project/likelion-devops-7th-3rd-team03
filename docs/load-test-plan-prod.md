@@ -53,10 +53,10 @@
 |---|---|---|---|---|
 | 1 | Load (23 TPS) | `load-test/normal-traffic-run.sh snipy-prod http://redirect-service:8080 300000 23` | 20분 + 링크 생성 | 배포·스크립트가 정상인지, 클릭 로그가 Athena까지 가는지 |
 | 2 | Stress (230 TPS) | `load-test/normal-traffic-run.sh snipy-prod http://redirect-service:8080 300000 230` | 20분 | 평상시 목표 |
-| 3 | 바이럴 (800 TPS) | `load-test/viral-spike-run.sh snipy-prod` | 5분 | 바이럴 목표, 콜드 링크 herd, 클릭 유실(5절 Firehose) |
+| 3 | 바이럴 (800 TPS) | `load-test/viral-spike-run.sh snipy-prod` (스크립트 기본값은 1,600 TPS. 800은 `SPIKE_TPS` 기본값을 바꿔 실행) | 5분 | 바이럴 목표, 콜드 링크 herd, 클릭 유실(5절 Firehose) |
 | 4 | Breakpoint (선택) | `load-test/breakpoint-run.sh snipy-prod` | ~10분 | 파드 1개의 한계 TPS (2차 dev: 약 1,600~1,700) |
 
-- 링크 30만 개는 MySQL에 직접 INSERT하고, 끝나면 스크립트가 지운다 (`trap cleanup EXIT`).
+- 링크 30만 개는 MySQL에 직접 INSERT하고, 끝나면 스크립트가 숨김 처리한다 (soft delete, #255, `trap cleanup EXIT`).
 - 각 실행의 `testid`를 기록해 Grafana에서 실행별로 나눠 본다.
 
 ## 5. 측정 지표
@@ -89,7 +89,7 @@ SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤.
 
 | 증상 | 올릴 것 |
 |---|---|
-| 노드 CPU 포화, Pending 파드, 노드가 최대 5대까지 참 | 노드 최대 대수, 또는 m5.large (T 계열이 아니라 크레딧 영향 없음) |
+| 노드 CPU 포화, Pending 파드, 노드가 최대 5대까지 참 | 노드 최대 대수, 또는 4 vCPU 노드 (m5.large는 2 vCPU라 노드당 CPU가 같다) |
 | RDS CPU 70% 이상, 연결 오류, Hikari pending 지속 | db.t4g.large → db.m6g.large |
 | Redis CPU 70% 이상, Evictions 발생 | cache.t4g.small |
 | p99가 HPA가 파드를 늘리는 순간에만 튐 | 사양 문제가 아니다. 새 파드 콜드스타트 문제(SCENARIOS.md "Step 2 후속")라 따로 기록한다 |
@@ -111,20 +111,46 @@ SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤.
 ## 8. 주의
 
 - k6 파드도 노드 CPU를 쓴다. 노드 사용률은 k6가 뜬 노드를 빼고 보거나 그 몫을 감안한다.
-- 링크 30만 개 INSERT와 DELETE는 RDS에 쓰기 부하를 준다. 시나리오 측정 구간과 겹치지 않는다.
+- 링크 30만 개 INSERT와 UPDATE는 RDS에 쓰기 부하를 준다. 시나리오 측정 구간과 겹치지 않는다.
 - 클릭 로그가 Firehose → S3로 쌓인다. 테스트가 끝나고 destroy하면 같이 지워진다(`force_destroy`).
 - 끝나면 바로 destroy한다: dispatch `destroy`, spec `test-lite`.
 
-## 9. 결과 기록
+## 9. 결과 기록 (2026-11-05)
 
 | 단계 | 사양 (노드 / RDS / Redis) | 시나리오 | testid | p95 / p99 | 에러율 | 최대 파드·노드 수 | RDS CPU·연결 | Redis CPU·메모리 | 판정 |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | t3.medium / t4g.medium / t4g.micro | Load 23 | | | | | | | |
-| 1 | | Stress 230 | | | | | | | |
-| 1 | | 바이럴 800 | | | | | | | |
+| 1 | t3.medium 3~5 / t4g.medium / t4g.micro | Load 23 | lt861118 | 10.27 / 22.45 ms | 0% | redirect 2 / 노드 3 | - | - | 통과 |
+| 1 | 〃 | Stress 230 | lt862929 | 7.44 / 21.75 ms | 0% | redirect 2 / 노드 3 | 최대 15%·20 | 3.7%·6.7% | 통과 |
+| 1 | 〃 | 바이럴 800 | 1793870340-23052 | 99.91 ms / 최대 658 ms | 0% | redirect 6 / 노드 4 | - | - | p95 통과, p99 미통과 |
+| 1 | 〃 (노드 최소 4) | 바이럴 800 | 1793871547-12206 | 142.74 ms / 최대 1.04 s | 0% | redirect 6 / 노드 4 | - | - | p95 통과, p99 미통과 |
 
-바이럴 클릭 수: k6 `http_reqs` = , Firehose `IncomingRecords` = , `ThrottledRecords` =
+- DB 연결 수: `max_connections` = 303, `Max_used_connections` = 20 (230 TPS, 파드 4개)
+- RDS CPU 크레딧은 테스트 중에도 쌓였다 (33.9 → 41.1). Redis Evictions 0.
+- 클릭 수
+  - Stress: k6 `http_reqs` 206,980, Firehose `IncomingRecords` 206,978
+  - 바이럴 800: k6 `http_reqs` 227,105, Firehose `IncomingRecords` 157,204 = `click_count` 합계 157,204, `ThrottledRecords` 0 → 앱 전송 큐에서 69,901건(30.8%) 유실. 급증 초반 파드 2개가 유입을 다 받는 동안 큐(10,000)가 차서 버렸다.
 
-DB 연결 수: `max_connections` = , `Max_used_connections` =
+### 참고: 1,600 TPS (`viral-spike.js` 기본값)
 
-결론 (운영 사양):
+| | probe 수정 전 | probe 수정 후 (#260) |
+|---|---|---|
+| 처리량 | 424 TPS | 709 TPS |
+| p95 | 6.72 s | 1.82 s |
+| 에러율 | 7.15% | 0% |
+| liveness 재시작 | 파드 5개 | 0 |
+
+- 수정 전: 과부하에서 liveness(timeout 1초)가 실패해 파드가 연쇄 재시작됐다. 노드 하나가 파드 수 한도(t3.medium 17개)에 걸리기도 했다 (`Too many pods`).
+- 수정 후: 노드 4대 중 2대만 CPU 100%였다. redirect 파드가 몰린 노드다 (첫 실행에서는 k6도 그중 한 노드에 있었다).
+
+### 바이럴 p99 원인
+
+노드 4대로 시작해도 꼬리가 줄지 않았다. 이벤트 시각과 p99를 맞춰 보면, 처음 2분은 파드 2개로 800 TPS를 p99 100 ms 이하로 처리했다. HPA가 3 → 6으로 파드 3개를 동시에 띄운 직후(18:42:20) p99가 1.04 s까지 올랐다. 용량 부족이 아니라 새 파드의 JVM 콜드스타트 때문이다 (SCENARIOS.md "Step 2 후속"과 같은 현상).
+
+### 결론
+
+- 노드: **t3.medium 3대(최대 5)** 로 평상시·바이럴 처리량을 감당한다. 노드를 4대로 늘려도 바이럴 꼬리는 줄지 않았다.
+- RDS: **db.t4g.medium** 은 여유가 크다 (CPU 15%, 연결 20/303). db.t4g.small(max_connections 약 150)도 후보지만 이번에 측정하지 않았다.
+- Redis: **cache.t4g.micro** 로 충분하다.
+- 6절 노드 행의 m5.large를 4 vCPU 노드로 고쳤다. m5.large도 2 vCPU라 노드당 CPU가 t3.medium과 같다.
+- 사양으로 풀리지 않는 문제는 후속 이슈로 남긴다: 클릭 이벤트 유실(Firehose 배치 전송), 새 파드 콜드스타트(ALB slow start·워밍업 후 Ready·HPA 최소 파드 수), `viral-spike.js` 기본값과 `SPIKE_TPS` 전달.
+- 가용성 설정(RDS Multi-AZ, Redis 복제본, NAT 2개)은 예산 확인 후 정한다.
