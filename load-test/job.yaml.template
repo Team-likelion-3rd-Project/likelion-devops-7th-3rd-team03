@@ -8,6 +8,19 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      # k6가 redirect 파드와 같은 노드에서 CPU를 나눠 쓰면, 서버 지연과 부하 발생기 몫이 섞인다
+      # (prod 바이럴 테스트에서 k6가 뜬 노드가 CPU 100%, #262).
+      # 가능하면 redirect 파드가 없는 노드에 띄우고, 그런 노드가 없으면 그냥 뜬다(preferred).
+      # k6가 뜬 뒤 HPA가 늘린 redirect 파드가 이 노드로 오는 것은 막지 못한다.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels: { app: redirect-service }
+                namespaceSelector: {}   # k6와 redirect의 네임스페이스가 달라도 적용
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: k6
           image: grafana/k6:latest
