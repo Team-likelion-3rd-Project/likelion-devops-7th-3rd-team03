@@ -26,6 +26,8 @@ resources:
   - click-stats-batch-cronjob.yaml
   - redirect-rollout.yaml
   - redirect-canary-analysis.yaml
+  - management-rollout.yaml
+  - management-canary-analysis.yaml
 
 patches:
   - path: patch-app-resources.yaml
@@ -47,13 +49,13 @@ configMapGenerator:
 images:
   - name: snipy-frontend
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-frontend
-    newTag: 542ff1710ca2f769a4740e228dce323d155ff77b
+    newTag: deff01d4309b8d9adf9b017c2669d71e6a9279db
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
-    newTag: 769303ae276fc986ebdcd983423e12bbbd989b58
+    newTag: b52ba2c64f483468fb77dd29b0fd53a69ca44d78
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
-    newTag: 769303ae276fc986ebdcd983423e12bbbd989b58
+    newTag: b52ba2c64f483468fb77dd29b0fd53a69ca44d78
   - name: db-migration
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
-    newTag: 769303ae276fc986ebdcd983423e12bbbd989b58
+    newTag: b52ba2c64f483468fb77dd29b0fd53a69ca44d78

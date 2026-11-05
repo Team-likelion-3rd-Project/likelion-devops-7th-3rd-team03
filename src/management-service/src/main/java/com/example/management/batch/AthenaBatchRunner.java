@@ -92,7 +92,8 @@ public class AthenaBatchRunner implements CommandLineRunner {
     }
 
     private void runDimensionStats(LocalDate targetDate) {
-        for (String dimensionType : List.of("REFERRER", "DEVICE", "REGION")) {
+        // 차원마다 쿼리가 한 번씩 돈다 (파일을 차원 수만큼 다시 읽는다). 차원이 늘면 배치 시간도 늘어난다
+        for (String dimensionType : List.of("REFERRER", "DEVICE", "REGION", "COUNTRY", "OS", "BROWSER", "HOUR")) {
             String sql = queries.dimensionStats(targetDate, dimensionType);
 
             long processedRows = queryExecutor.executeStreaming(

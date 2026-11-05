@@ -222,6 +222,15 @@ resource "aws_glue_catalog_table" "click_events" {
       name = "is_bot"
       type = "boolean"
     }
+    # 스키마 2부터 (#207). CloudFront 위치 헤더 기준이고, 1 이하 이벤트는 값이 없다(NULL)
+    columns {
+      name = "country"
+      type = "string"
+    }
+    columns {
+      name = "region"
+      type = "string"
+    }
   }
 
   # 날짜별 파티션 (Firehose의 S3 prefix 구조와 일치)
@@ -243,7 +252,8 @@ resource "aws_glue_catalog_table" "click_events" {
 # Athena Workgroup — 쿼리 결과 위치 + 비용 통제
 # ══════════════════════════════════════════════════
 resource "aws_athena_workgroup" "snipy" {
-  name = "${var.cluster_name}-workgroup"
+  name          = "${var.cluster_name}-workgroup"
+  force_destroy = true # 콘솔에서 저장한 쿼리가 있어도 prod destroy가 멈추지 않게 한다
 
   configuration {
     enforce_workgroup_configuration    = true
