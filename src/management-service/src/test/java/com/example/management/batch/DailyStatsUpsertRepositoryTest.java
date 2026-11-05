@@ -15,7 +15,10 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
@@ -23,7 +26,9 @@ import java.util.stream.LongStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -31,6 +36,7 @@ import static org.mockito.Mockito.*;
  * - TransactionTemplate은 Mock/익명 클래스로 콜백을 즉시 실행(Pass-through)하도록 설정.
  * - chunkSize/maxRetry/bisectFloor/circuitBreakerThreshold를 작은 값으로 주입하고,
  *   Sleeper를 no-op으로 넣어 재시도·bisect를 대기 없이 검증.
+ * - links 존재 확인(#253)은 기본으로 "요청한 link_id 가 모두 있다"고 둔다.
  */
 @ExtendWith(MockitoExtension.class)
 class DailyStatsUpsertRepositoryTest {
@@ -46,6 +52,16 @@ class DailyStatsUpsertRepositoryTest {
     @BeforeEach
     void setUp() {
         repository = newRepository(/*chunkSize*/ 4, /*maxRetry*/ 2, /*bisectFloor*/ 1, /*circuitBreakerThreshold*/ 2);
+
+        // 기본: 요청한 link_id 가 모두 links 에 있다 (#253)
+        lenient().when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenAnswer(inv -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> params = (Map<String, Object>) inv.getArgument(1);
+                    @SuppressWarnings("unchecked")
+                    Collection<Long> ids = (Collection<Long>) params.get("ids");
+                    return new ArrayList<>(ids);
+                });
     }
 
     private DailyStatsUpsertRepository newRepository(int chunkSize, int maxRetry, int bisectFloor, int circuitBreakerThreshold) {
@@ -93,7 +109,7 @@ class DailyStatsUpsertRepositoryTest {
     }
 
     @Test
-    void 특정_row가_계속_실패하면_bisect로_격리되고_배치는_계속된다() {
+    void 데이터_오류_row는_재시도_없이_bisect로_격리되고_배치는_계속된다() {
         long poisonLinkId = 999L;
         List<AthenaBatchRunner.DailyStatRow> rows = rows(1, 7);
         rows.set(3, poisonRow(poisonLinkId)); // 첫 청크(1~4) 안에 섞어 넣음
@@ -109,12 +125,38 @@ class DailyStatsUpsertRepositoryTest {
         long poisonOnlyCalls = captor.getAllValues().stream()
                 .filter(params -> params.length == 1 && linkIdOf(params[0]) == poisonLinkId)
                 .count();
-        assertThat(poisonOnlyCalls).isGreaterThanOrEqualTo(2); // maxRetry=2회 시도 후 dead-letter 확정
+        // 데이터 오류는 재시도하지 않는다 (#252). 예전엔 maxRetry(2)번 시도한 뒤 dead-letter 였다
+        assertThat(poisonOnlyCalls).isEqualTo(1);
 
         boolean anyCleanBatchSucceeded = captor.getAllValues().stream()
                 .anyMatch(params -> params.length > 1
                         && java.util.Arrays.stream(params).noneMatch(p -> linkIdOf(p) == poisonLinkId));
         assertThat(anyCleanBatchSucceeded).isTrue();
+    }
+
+    @Test
+    void links에_없는_링크의_행은_upsert하지_않고_건너뛴다() {
+        // 1, 2 만 links 에 있고 999 는 실제로 삭제된 링크 (#253)
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class))).thenReturn(List.of(1L, 2L));
+        stubAlwaysSucceed();
+
+        List<AthenaBatchRunner.DailyStatRow> rows = rows(1, 2);
+        rows.add(poisonRow(999L));
+
+        repository.upsertAll(rows);
+
+        ArgumentCaptor<SqlParameterSource[]> captor = ArgumentCaptor.forClass(SqlParameterSource[].class);
+        verify(jdbcTemplate, times(1)).batchUpdate(anyString(), captor.capture());   // bisect·재시도 없음
+        assertThat(captor.getValue()).extracting(this::linkIdOf).containsExactly(1L, 2L);
+    }
+
+    @Test
+    void 청크의_링크가_모두_없으면_upsert를_부르지_않는다() {
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class))).thenReturn(List.of());
+
+        repository.upsertAll(rows(1, 4));
+
+        verify(jdbcTemplate, never()).batchUpdate(anyString(), any(SqlParameterSource[].class));
     }
 
     @Test
@@ -137,6 +179,36 @@ class DailyStatsUpsertRepositoryTest {
                 .collect(Collectors.toSet());
 
         assertThat(attemptedLinkIds).doesNotContain(5L, 6L); // 청크3(id: 5,6)은 시도조차 안 됨
+    }
+
+
+    @Test
+    void links_확인이_일시적으로_끊겨도_재시도로_복구된다() {
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenThrow(new DataAccessResourceFailureException("일시적 커넥션 오류"))
+                .thenReturn(List.of(1L, 2L, 3L, 4L));
+        stubAlwaysSucceed();
+
+        repository.upsertAll(rows(1, 4));   // 예외 없이 끝나야 함
+
+        verify(jdbcTemplate, times(2)).queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class));
+        verify(jdbcTemplate, times(1)).batchUpdate(anyString(), any(SqlParameterSource[].class));
+    }
+
+    @Test
+    void links_확인이_계속_실패하면_다음_청크로_넘어가고_연속이면_서킷브레이커가_중단시킨다() {
+        repository = newRepository(/*chunkSize*/ 2, /*maxRetry*/ 2, /*bisectFloor*/ 1, /*circuitBreakerThreshold*/ 2);
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenThrow(new DataAccessResourceFailureException("DB Connection 장애 시뮬레이션"));
+
+        // 청크 3개(2, 2, 2): 1·2번 청크가 연속으로 실패하면 서킷 브레이커가 배치를 중단한다
+        assertThatThrownBy(() -> repository.upsertAll(rows(1, 6)))
+                .isInstanceOf(BatchCircuitBreakerException.class)
+                .hasMessageContaining("연속");
+
+        // 청크 2개 × maxRetry 2번 = 4번 시도, 3번째 청크는 시도하지 않음. upsert 는 한 번도 안 함
+        verify(jdbcTemplate, times(4)).queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class));
+        verify(jdbcTemplate, never()).batchUpdate(anyString(), any(SqlParameterSource[].class));
     }
 
     // ---- 헬퍼 ----
@@ -178,7 +250,7 @@ class DailyStatsUpsertRepositoryTest {
     private List<AthenaBatchRunner.DailyStatRow> rows(int fromInclusive, int toInclusive) {
         return LongStream.rangeClosed(fromInclusive, toInclusive)
                 .mapToObj(linkId -> new AthenaBatchRunner.DailyStatRow(linkId, STAT_DATE, 10, 5))
-                .collect(Collectors.toCollection(java.util.ArrayList::new));
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     private AthenaBatchRunner.DailyStatRow poisonRow(long linkId) {
