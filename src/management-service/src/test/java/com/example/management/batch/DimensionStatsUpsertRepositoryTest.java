@@ -16,7 +16,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -24,7 +26,9 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -33,6 +37,7 @@ import static org.mockito.Mockito.*;
  * - chunkSize/maxRetry/bisectFloor/circuitBreakerThreshold를 작은 값으로 주입하고,
  *   Sleeper를 no-op으로 넣어 재시도·bisect를 대기 없이 빠르게 검증.
  * - REGION 차원의 Top-N + ETC 압축 로직 검증 포함.
+ * - links 존재 확인(#253)은 기본으로 "요청한 link_id 가 모두 있다"고 둔다.
  */
 @ExtendWith(MockitoExtension.class)
 class DimensionStatsUpsertRepositoryTest {
@@ -48,6 +53,16 @@ class DimensionStatsUpsertRepositoryTest {
     @BeforeEach
     void setUp() {
         repository = newRepository(/*chunkSize*/ 4, /*maxRetry*/ 2, /*bisectFloor*/ 1, /*circuitBreakerThreshold*/ 2);
+
+        // 기본: 요청한 link_id 가 모두 links 에 있다 (#253)
+        lenient().when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class)))
+                .thenAnswer(inv -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> params = (Map<String, Object>) inv.getArgument(1);
+                    @SuppressWarnings("unchecked")
+                    Collection<Long> ids = (Collection<Long>) params.get("ids");
+                    return new ArrayList<>(ids);
+                });
     }
 
     private DimensionStatsUpsertRepository newRepository(int chunkSize, int maxRetry, int bisectFloor, int circuitBreakerThreshold) {
@@ -86,7 +101,7 @@ class DimensionStatsUpsertRepositoryTest {
         // 한 linkId에 대해 15개의 REGION 데이터 생성
         List<AthenaBatchRunner.DimensionStatRow> rows = new ArrayList<>();
         for (int i = 1; i <= 15; i++) {
-            rows.add(new AthenaBatchRunner.DimensionStatRow(1L, STAT_DATE, "REGION", "City-" + i, i * 10));
+            rows.add(new AthenaBatchRunner.DimensionStatRow(1L, STAT_DATE, "REGION", "KR-" + i, i * 10));
         }
 
         stubAlwaysSucceed();
@@ -112,6 +127,7 @@ class DimensionStatsUpsertRepositoryTest {
     void 일시적_장애는_재시도로_복구된다() {
         List<AthenaBatchRunner.DimensionStatRow> rows = createDimensionRows(1L, "DEVICE", 4); // 단일 청크
 
+        // 메시지에 "Connection" 이 없어도 예외 종류(연결 실패)로 시스템 오류로 보고 재시도한다
         when(jdbcTemplate.batchUpdate(anyString(), any(SqlParameterSource[].class)))
                 .thenThrow(new DataAccessResourceFailureException("일시적 커넥션 오류"))
                 .thenReturn(new int[]{1, 1, 1, 1});
@@ -122,7 +138,7 @@ class DimensionStatsUpsertRepositoryTest {
     }
 
     @Test
-    void 특정_row_불량_시_bisect로_격리되고_정상_row는_완료된다() {
+    void 데이터_오류_row는_재시도_없이_bisect로_격리되고_정상_row는_완료된다() {
         String poisonValue = "POISON_DEVICE";
         List<AthenaBatchRunner.DimensionStatRow> rows = createDimensionRows(1L, "DEVICE", 7);
         rows.set(2, new AthenaBatchRunner.DimensionStatRow(1L, STAT_DATE, "DEVICE", poisonValue, 1));
@@ -137,7 +153,26 @@ class DimensionStatsUpsertRepositoryTest {
         long poisonCalls = captor.getAllValues().stream()
                 .filter(params -> params.length == 1 && poisonValue.equals(params[0].getValue("dimensionValue")))
                 .count();
-        assertThat(poisonCalls).isGreaterThanOrEqualTo(2); // maxRetry=2회 재시도 후 dead-letter 확정
+        // 데이터 오류는 재시도하지 않는다 (#252). 예전엔 maxRetry(2)번 시도한 뒤 dead-letter 였다
+        assertThat(poisonCalls).isEqualTo(1);
+    }
+
+    @Test
+    void links에_없는_링크의_행은_upsert하지_않고_건너뛴다() {
+        // 1 만 links 에 있고 999 는 실제로 삭제된 링크 (#253)
+        when(jdbcTemplate.queryForList(eq(ExistingLinks.SQL), anyMap(), eq(Long.class))).thenReturn(List.of(1L));
+        stubAlwaysSucceed();
+
+        List<AthenaBatchRunner.DimensionStatRow> rows = createDimensionRows(1L, "OS", 2);
+        rows.add(new AthenaBatchRunner.DimensionStatRow(999L, STAT_DATE, "OS", "Android", 3));
+
+        repository.upsertAll(rows);
+
+        ArgumentCaptor<SqlParameterSource[]> captor = ArgumentCaptor.forClass(SqlParameterSource[].class);
+        verify(jdbcTemplate, times(1)).batchUpdate(anyString(), captor.capture());   // bisect·재시도 없음
+        assertThat(captor.getValue())
+                .extracting(p -> (Long) p.getValue("linkId"))
+                .containsExactly(1L, 1L);
     }
 
     @Test
