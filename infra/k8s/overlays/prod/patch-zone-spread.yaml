@@ -1,0 +1,34 @@
+# 앱 파드를 두 AZ에 나눠 놓는다. AZ 하나가 죽어도 서비스마다 파드가 남게 하려는 것이다.
+# NAT 2개, RDS Multi-AZ, Redis 복제본과 짝을 이룬다 (#262).
+# topologySpreadConstraints는 topologyKey 기준으로 합쳐져서, redirect에는
+# base의 hostname 조건(DoNotSchedule)이 그대로 남는다.
+# ScheduleAnyway: AZ에 자리가 없을 때 Pending을 만들지 않는다 (#170, #269).
+# 스케줄링할 때만 적용되므로, 장애 AZ가 복구된 뒤에는 다음 배포 때 다시 나뉜다.
+# 온프렘(dev)은 노드에 zone 라벨이 없어 prod에만 둔다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redirect-service
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: redirect-service }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: management-service }
