@@ -26,9 +26,13 @@ spec:
           livenessProbe:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             periodSeconds: 10
+            # redirect-service와 같은 이유 (#260). 1분 동안 계속 응답이 없을 때만 재시작한다.
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             httpGet: { path: /actuator/health/readiness, port: 8080 }
             periodSeconds: 10
+            timeoutSeconds: 3
           resources:
             requests: { cpu: 250m, memory: 512Mi }
             limits:   { cpu: 500m, memory: 1Gi }
