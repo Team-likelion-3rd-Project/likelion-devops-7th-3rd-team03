@@ -126,7 +126,12 @@ public class AlertService {
 
         List<Alert> result = new ArrayList<>();
         for (Link link : links) {
-            double avg = weekSums.getOrDefault(link.getId(), 0L) / (double) AVG_DAYS;
+            // 7일 안에 만든 링크는 없던 날까지 0으로 치면 평균이 낮아진다. 7과 존재한 날 중 작은 값으로 나눈다
+            long daysExisted = daysExistedBeforeToday(link, todayKst);
+            if (daysExisted == 0) {
+                continue;   // 오늘 만든 링크는 비교할 과거가 없다
+            }
+            double avg = weekSums.getOrDefault(link.getId(), 0L) / (double) Math.min(AVG_DAYS, daysExisted);
             long today = todayClicks.getOrDefault(link.getId(), 0L);
             if (avg < spikeMinAvgDailyClicks || today < avg * SPIKE_MULTIPLIER) {
                 continue;   // 평균이 너무 작으면 3배가 의미 없다. 정확히 3배는 포함한다
@@ -151,7 +156,17 @@ public class AlertService {
         return Math.round(value * 10.0) / 10.0;
     }
 
-
+    /**
+     * 생성일(KST)부터 어제까지 며칠이 있었는지. 어제 만들었으면 1, 오늘 만들었으면 0.
+     * created_at 은 UTC 로 저장된다. 생성일은 하루 전체가 아니어도 하루로 센다.
+     */
+    private static long daysExistedBeforeToday(Link link, LocalDate todayKst) {
+        if (link.getCreatedAt() == null) {
+            return AVG_DAYS;
+        }
+        LocalDate createdKst = link.getCreatedAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(KST).toLocalDate();
+        return Math.max(0, ChronoUnit.DAYS.between(createdKst, todayKst));
+    }
 
     /** ACTION 먼저. 같은 단계 안에서는 만료 임박(만료 빠른 순) → 방문자 급증(비율 큰 순) */
     private static final Comparator<Alert> ORDER = Comparator

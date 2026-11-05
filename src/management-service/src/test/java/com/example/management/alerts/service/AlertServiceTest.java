@@ -138,13 +138,41 @@ class AlertServiceTest {
         when(dailyRepo.sumClicksByLink(anyCollection(), eq(WEEK_FROM), eq(WEEK_TO))).thenReturn(List.of(rows));
     }
 
+    @Test
+    void 일주일_안에_만든_링크는_존재한_날로_나눠_평균을_구한다() {
+        // 2일 전 생성, 하루 20번 → 합계 40. 7로 나누면 5.7(기준 미만 제외), 2로 나누면 20
+        givenLinks(link(1, null, NOW_UTC.minusDays(2)));
+        givenToday("60");
+        givenWeek(sum(1, 40));
+
+        List<Alert> alerts = service.getAlerts(99L, WS).alerts();
+
+        SpikeDetail detail = (SpikeDetail) alerts.get(0).detail();
+        assertThat(detail.avgDailyClicks()).isEqualTo(20.0);
+        assertThat(detail.ratio()).isEqualTo(3.0);
+    }
+
+    @Test
+    void 오늘_만든_링크는_비교할_과거가_없어_급증을_판단하지_않는다() {
+        givenLinks(link(1, null, NOW_UTC.minusHours(1)));
+        givenToday("500");
+        givenWeek();
+
+        assertThat(service.getAlerts(99L, WS).alerts()).isEmpty();
+    }
+
     private Link link(long id, LocalDateTime expiresAt) {
+        return link(id, expiresAt, NOW_UTC.minusDays(30));   // 기본: 충분히 오래된 링크
+    }
+
+    private Link link(long id, LocalDateTime expiresAt, LocalDateTime createdAt) {
         Link link = mock(Link.class);
         lenient().when(link.getId()).thenReturn(id);
         lenient().when(link.getLinkId()).thenReturn("l" + id);
         lenient().when(link.getTitle()).thenReturn("title" + id);
         lenient().when(link.getSlug()).thenReturn("s" + id);
         lenient().when(link.getExpiresAt()).thenReturn(expiresAt);
+        lenient().when(link.getCreatedAt()).thenReturn(createdAt);
         return link;
     }
 
