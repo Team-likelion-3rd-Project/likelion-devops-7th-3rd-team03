@@ -13,23 +13,13 @@ import Multiselect from '@cloudscape-design/components/multiselect'
 import Select from '@cloudscape-design/components/select'
 import SpaceBetween from '@cloudscape-design/components/space-between'
 import Table from '@cloudscape-design/components/table'
-import { getDailyStats, compareLinks, getReferrerStats } from '../api/stats'
+import { getDailyStats, compareLinks, getReferrerStats, kstDay } from '../api/stats'
 import { listLinks } from '../api/links'
 import { ApiError } from '../api/http'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { RequireWorkspace } from '../components/RequireWorkspace'
 import { StatGrid, TrendChart } from '../components/StatsParts'
 import { toast } from '../components/Toast'
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function daysAgoIso(n) {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
-}
 
 const linkOption = (l) => ({
   label: l.title || l.shortUrl,
@@ -45,7 +35,7 @@ const dateProps = {
   previousMonthAriaLabel: '이전 달'
 }
 
-// 백엔드(StatsController)에 실제로 붙는 통계 대시보드. 단건 통계는 링크 화면의
+// 백엔드(워크스페이스 통계 API)에 실제로 붙는 통계 대시보드. 단건 통계는 링크 화면의
 // '통계' 버튼(/links/:id/stats)을 쓰고, 여기는 여러 링크를 골라 직접 비교할 때 쓴다.
 export function StatsDashboard() {
   return (
@@ -61,8 +51,8 @@ function StatsView() {
   const [linksState, setLinksState] = useState('loading') // loading | ready | error
   const [linkId, setLinkId] = useState('')
   const [compareIds, setCompareIds] = useState([])
-  const [from, setFrom] = useState(daysAgoIso(13))
-  const [to, setTo] = useState(todayIso())
+  const [from, setFrom] = useState(kstDay(13))
+  const [to, setTo] = useState(kstDay(0))
 
   const [daily, setDaily] = useState(null)
   const [referrers, setReferrers] = useState(null)
@@ -96,15 +86,28 @@ function StatsView() {
       toast('시작일과 종료일을 확인해주세요.', 'error')
       return
     }
+    // 서버 제한(WorkspaceStatsService): 기간은 90일 미만, 비교 대상은 20개까지. 넘으면 400이라 미리 알려 준다.
+    if ((Date.parse(to) - Date.parse(from)) / 86_400_000 >= 90) {
+      toast('조회 기간은 90일 미만으로 선택해주세요.', 'error')
+      return
+    }
+    if (compareIds.length > 20) {
+      toast('비교할 링크는 20개까지 고를 수 있습니다.', 'error')
+      return
+    }
     setLoading(true)
     try {
       const [dailyRes, referrerRes] = await Promise.all([
-        getDailyStats(linkId, from, to),
-        getReferrerStats(linkId, from, to)
+        getDailyStats(current, linkId, from, to),
+        getReferrerStats(current, linkId, from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
-      setCompareRows(compareIds.length > 0 ? await compareLinks(compareIds, from, to) : null)
+      setCompareRows(
+        compareIds.length > 0
+          ? withLinkInfo(await compareLinks(current, compareIds, from, to))
+          : null
+      )
     } catch (err) {
       const message = err instanceof ApiError ? err.message : '통계를 불러오지 못했습니다.'
       toast(message, 'error')
@@ -115,6 +118,13 @@ function StatsView() {
       setLoading(false)
     }
   }
+
+  // 비교 응답에는 슬러그·제목이 없어서 불러와 둔 링크 목록에서 붙인다
+  const withLinkInfo = (rows) =>
+    rows.map((r) => {
+      const link = links.find((l) => l.linkId === r.linkId)
+      return { ...r, slug: link?.shortUrl?.split('/').pop() ?? '', title: link?.title }
+    })
 
   const options = links.map(linkOption)
 
@@ -229,7 +239,7 @@ function StatsView() {
                   {
                     title: '클릭 수',
                     type: 'bar',
-                    data: referrers.map((r) => ({ x: r.referrerCategory, y: r.clickCount }))
+                    data: referrers.map((r) => ({ x: r.value, y: r.clickCount }))
                   }
                 ]}
                 xScaleType="categorical"
@@ -249,12 +259,12 @@ function StatsView() {
               <Table
                 variant="embedded"
                 items={referrers}
-                trackBy="referrerCategory"
+                trackBy="value"
                 columnDefinitions={[
                   {
                     id: 'name',
                     header: '유입 경로',
-                    cell: (r) => r.referrerCategory,
+                    cell: (r) => r.value,
                     isRowHeader: true
                   },
                   { id: 'clicks', header: '클릭 수', cell: (r) => r.clickCount.toLocaleString() },
