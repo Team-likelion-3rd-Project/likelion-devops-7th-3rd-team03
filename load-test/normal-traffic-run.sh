@@ -5,7 +5,7 @@
 # [동작 순서]
 # 1. MySQL 재귀 CTE를 통해 링크 대량 생성 (기본 30만 개)
 # 2. k6 normal-traffic.js 실행 (2분 상승 → 6분 유지 → 2분 하강, 총 10분)
-# 3. 테스트 완료 또는 중단(Ctrl+C, 에러) 시 trap을 통해 생성된 링크 자동 정리(DELETE)
+# 3. 테스트 완료 또는 중단(Ctrl+C, 에러) 시 trap 으로 생성된 링크 자동 정리 (soft delete, #251)
 #
 # [사용법]
 #   load-test/normal-traffic-run.sh <kubectl-context> [base-url] [num-links] [peak-tps]
