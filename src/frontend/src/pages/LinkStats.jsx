@@ -22,18 +22,13 @@ import { useWorkspace } from '../context/WorkspaceContext'
 import { RequireWorkspace } from '../components/RequireWorkspace'
 import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
 import { countryName } from '../statsLabels'
+import { kstDay } from '../api/stats'
 
 const RANGE_OPTIONS = [
   { id: '7', text: '7일' },
   { id: '14', text: '14일' },
   { id: '30', text: '30일' }
 ]
-
-function daysAgoIso(n) {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
-}
 
 // 팀을 바꾸면 RequireWorkspace가 이 화면을 새로 시작하고, 새 팀의 링크 안에서 다시 찾는다.
 export function LinkStats() {
@@ -79,18 +74,18 @@ function LinkStatsView() {
     loadLink()
   }, [loadLink])
 
-  const from = daysAgoIso(days - 1)
-  const to = daysAgoIso(0)
+  const from = kstDay(days - 1)
+  const to = kstDay(0)
 
   const loadStats = useCallback(async () => {
     try {
       const [dailyRes, referrerRes, changeRes, deviceRes, countryRes] = await Promise.all([
-        getDailyStats(linkId, from, to),
-        getReferrerStats(linkId, from, to),
-        getDailyChange(linkId),
-        getBreakdown(linkId, 'DEVICE', from, to),
+        getDailyStats(current, linkId, from, to),
+        getReferrerStats(current, linkId, from, to),
+        getDailyChange(current, linkId),
+        getBreakdown(current, linkId, 'DEVICE', from, to),
         // REGION은 이제 시·도 코드이고 온프렘에는 값이 없다(항상 UNKNOWN). 국가 단위 분포는 COUNTRY다(#208).
-        getBreakdown(linkId, 'COUNTRY', from, to)
+        getBreakdown(current, linkId, 'COUNTRY', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
@@ -108,7 +103,7 @@ function LinkStatsView() {
             : 'error'
       )
     }
-  }, [linkId, from, to])
+  }, [current, linkId, from, to])
 
   useEffect(() => {
     loadStats()
@@ -132,11 +127,11 @@ function LinkStatsView() {
   useEffect(() => {
     let cancelled = false
     function poll() {
-      getRealtimeCount(linkId)
+      getRealtimeCount(current, linkId)
         .then((res) => {
           if (!cancelled) {
-            setRealtime(res.realtimeClickCount)
-            setRealtimeVisitors(res.realtimeUniqueVisitorCount)
+            setRealtime(res.clickCount)
+            setRealtimeVisitors(res.uniqueVisitorCount)
           }
         })
         .catch(() => {})
@@ -147,7 +142,7 @@ function LinkStatsView() {
       cancelled = true
       clearInterval(timer)
     }
-  }, [linkId])
+  }, [current, linkId])
 
   if (state === 'forbidden') {
     return (
@@ -208,8 +203,8 @@ function LinkStatsView() {
           }
         ]
       : []),
-    // link_daily_stats는 배치가 어제까지만 채워서 오늘 클릭이 빠져있다. realtime(오늘, Redis)을 더해 보정한다.
-    { label: '총 클릭', value: (daily.summary.totalClicks + (realtime ?? 0)).toLocaleString() }
+    // 기간에 오늘(KST)이 들어 있으면 서버가 일별 값과 요약의 오늘 부분을 Redis 실시간 값으로 채운다(#237). realtime을 더하면 이중으로 센다.
+    { label: '총 클릭', value: daily.summary.totalClicks.toLocaleString() }
   ]
 
   return (
@@ -253,7 +248,7 @@ function LinkStatsView() {
           <TrendChart daily={daily.daily} />
         </Container>
 
-        <BreakdownTable title="유입 경로" rows={referrers} nameKey="referrerCategory" />
+        <BreakdownTable title="유입 경로" rows={referrers} nameKey="value" />
         <BreakdownTable title="디바이스 분포" rows={deviceBreakdown?.breakdown} nameKey="value" />
         <BreakdownTable
           title="접속 국가 분포"
