@@ -91,6 +91,17 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // 탈퇴가 성공하면 저장한 토큰을 지우고 로그아웃 상태로 만든다. 서버가 이미 refresh token을 지웠으니
+  // 로그아웃 API는 부르지 않고, 카카오 세션은 건드리지 않는다. 실패하면 로그인 상태를 그대로 둔다.
+  const withdraw = useCallback(async () => {
+    await authApi.withdraw()
+    clearTokens()
+    authApi.clearPendingSignup()
+    clearStoredProvider()
+    setPendingSignup(null)
+    setUser(null)
+  }, [])
+
   // access token이 없지만 refresh token은 남아있는 경우 (새로고침 등) 조용히 재발급 시도
   useEffect(() => {
     if (!getAccessToken() && getRefreshToken()) {
@@ -111,7 +122,8 @@ export function AuthProvider({ children }) {
         loginAsDev,
         signup,
         cancelSignup,
-        logout
+        logout,
+        withdraw
       }}
     >
       {children}
