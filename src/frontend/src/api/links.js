@@ -6,8 +6,10 @@
 import { apiFetch, ApiError } from './http'
 import { MOCK_TEAMS, mockAssertMember, mockMe } from './workspaces'
 
-// 목록 항목의 만든 사람은 createdBy { userId, nickname, profileImageUrl }이다(회원 정보가 없으면 null).
-const toLink = (l) => ({ ...l, creator: l.createdBy?.nickname ?? '' })
+// 목록 항목의 만든 사람은 createdBy { userId, nickname, profileImageUrl }이다.
+// 탈퇴했거나 회원 정보를 찾지 못하면 null이라서 '탈퇴한 사용자'로 보여 준다.
+const WITHDRAWN_USER = '탈퇴한 사용자'
+const toLink = (l) => ({ ...l, creator: l.createdBy?.nickname ?? WITHDRAWN_USER })
 
 const MOCK_ID = 'mlink-'
 const linkPath = (ws) => `/workspaces/${ws.workspaceId}/links`

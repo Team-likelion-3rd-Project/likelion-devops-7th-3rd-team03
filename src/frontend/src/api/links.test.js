@@ -147,11 +147,11 @@ describe('실제 API를 부르는 경우', () => {
     expect(calls.some((c) => c.url.startsWith('/api/links'))).toBe(false)
   })
 
-  it('real 모드는 만든 사람을 createdBy.nickname에서 읽고, 없으면 빈 값이다', async () => {
+  it('real 모드는 만든 사람을 createdBy.nickname에서 읽고, null이면 탈퇴한 사용자로 보여 준다', async () => {
     vi.stubEnv('VITE_WORKSPACE_API', 'real')
     vi.resetModules()
     const real = await import('./links')
     const { links } = await real.listLinks({ workspaceId: 'uuid-1', personal: false })
-    expect(links.map((l) => l.creator)).toEqual(['김철수', ''])
+    expect(links.map((l) => l.creator)).toEqual(['김철수', '탈퇴한 사용자'])
   })
 })
