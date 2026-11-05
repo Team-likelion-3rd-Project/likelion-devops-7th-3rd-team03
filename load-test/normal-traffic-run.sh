@@ -5,7 +5,7 @@
 # [동작 순서]
 # 1. MySQL 재귀 CTE를 통해 링크 대량 생성 (기본 30만 개)
 # 2. k6 normal-traffic.js 실행 (2분 상승 → 6분 유지 → 2분 하강, 총 10분)
-# 3. 테스트 완료 또는 중단(Ctrl+C, 에러) 시 trap을 통해 생성된 링크 자동 정리(DELETE)
+# 3. 테스트 완료 또는 중단(Ctrl+C, 에러) 시 trap 으로 생성된 링크 자동 정리 (soft delete, #251)
 #
 # [사용법]
 #   load-test/normal-traffic-run.sh <kubectl-context> [base-url] [num-links] [peak-tps]
@@ -88,11 +88,12 @@ echo "   user_id=$USER_ID"
 TS=$(date +%s)
 SLUG_PREFIX="lt${TS: -6}"
 
-# 스크립트 비정상 종료(Ctrl+C, Error 등) 시에도 테스트 링크를 반드시 삭제하도록 trap 설정
+# SQL 로 바로 바꿔서 리다이렉트 캐시(Redis)는 지우지 않는다. 캐시에 남은 slug 는 TTL(기본 10분) 동안 계속 리다이렉트된다
 cleanup() {
   echo ">> [$CONTEXT] 테스트 링크 정리 (prefix=${SLUG_PREFIX}*)"
-  run_sql "DELETE FROM links WHERE slug LIKE '${SLUG_PREFIX}%';" || \
-    echo "!! 자동 정리 실패 — 수동 삭제 필요: DELETE FROM links WHERE slug LIKE '${SLUG_PREFIX}%';" >&2
+  # 앱의 링크 삭제와 같은 soft delete. 실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
+  run_sql "UPDATE links SET is_visible = FALSE WHERE slug LIKE '${SLUG_PREFIX}%' AND is_visible = TRUE;" || \
+    echo "!! 자동 정리 실패 — 수동 정리 필요: UPDATE links SET is_visible = FALSE WHERE slug LIKE '${SLUG_PREFIX}%';" >&2
 }
 trap cleanup EXIT
 

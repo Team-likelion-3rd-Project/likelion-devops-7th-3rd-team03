@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # "Warmup 없는 바이럴 링크" 시나리오 원스톱 실행: 콜드 링크 DB 직접 INSERT →
-# viral-spike.js 실행 → 테스트 데이터 DELETE. load-test/SCENARIOS.md 참고.
+# viral-spike.js 실행 → 테스트 링크 soft delete. load-test/SCENARIOS.md 참고.
 #
 # management-service API 대신 MySQL에 직접 INSERT하는 이유: API로 만들면 생성 즉시
 # 캐시가 채워지고(RedirectCacheRefreshEventListener), slug도 자동생성이라 지정 불가,
@@ -107,13 +107,16 @@ INSERT_SQL+=$(IFS=,; echo "${VALUES[*]}")
 INSERT_SQL+=";"
 run_sql "$INSERT_SQL"
 
+# SQL 로 바로 바꿔서 리다이렉트 캐시(Redis)는 지우지 않는다. 캐시에 남은 slug 는 TTL(기본 10분) 동안 계속 리다이렉트된다
 cleanup() {
   echo ">> [$CONTEXT] 테스트 링크 정리 (slug IN $SLUG_CSV)"
   local in_clause
   in_clause=$(printf "'%s'," "${SLUGS[@]}")
   in_clause="${in_clause%,}"
-  run_sql "DELETE FROM links WHERE slug IN (${in_clause});" || \
-    echo "!! 자동 정리 실패 — 수동으로 지워야 함: DELETE FROM links WHERE slug IN (${in_clause});" >&2
+  # 앱의 링크 삭제와 같은 soft delete. 실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
+  # (#251)실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
+  run_sql "UPDATE links SET is_visible = FALSE WHERE slug IN (${in_clause});" || \
+    echo "!! 자동 정리 실패 — 수동 정리 필요: UPDATE links SET is_visible = FALSE WHERE slug IN (${in_clause});" >&2
 }
 trap cleanup EXIT
 
