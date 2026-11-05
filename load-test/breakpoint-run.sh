@@ -106,8 +106,9 @@ SLUG_PREFIX="bp${TS: -6}"
 # 스크립트 비정상 종료(Ctrl+C, Error 등) 시에도 테스트 링크를 반드시 삭제하도록 trap 설정
 cleanup() {
   echo ">> [$CONTEXT] 테스트 링크 정리 (prefix=${SLUG_PREFIX}*)"
-  run_sql "DELETE FROM links WHERE slug LIKE '${SLUG_PREFIX}%';" || \
-    echo "!! 자동 정리 실패 — 수동 삭제 필요: DELETE FROM links WHERE slug LIKE '${SLUG_PREFIX}%';" >&2
+  # 앱의 링크 삭제와 같은 soft delete. 실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
+  run_sql "UPDATE links SET is_visible = FALSE WHERE slug LIKE '${SLUG_PREFIX}%' AND is_visible = TRUE;" || \
+    echo "!! 자동 정리 실패 — 수동 정리 필요: UPDATE links SET is_visible = FALSE WHERE slug LIKE '${SLUG_PREFIX}%';" >&2
 }
 trap cleanup EXIT
 
