@@ -92,6 +92,7 @@ services:
     build:
       context: ./src/redirect-service
     environment:
+      REDIRECT_WARMUP_ENABLED: ${REDIRECT_WARMUP_ENABLED:-false}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       DB_HOST: mysql
       DB_PORT: 3306

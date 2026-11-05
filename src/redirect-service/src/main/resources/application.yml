@@ -71,6 +71,13 @@ app:
       attempt-timeout: ${FIREHOSE_ATTEMPT_TIMEOUT:2s}
       call-timeout: ${FIREHOSE_CALL_TIMEOUT:5s}
 
+  warmup:
+    # 기동 직후 트래픽을 받기 전에 자기 자신에게 요청을 보내 JIT를 데운다 (#264, RedirectWarmup)
+    enabled: ${REDIRECT_WARMUP_ENABLED:false}
+    requests: ${REDIRECT_WARMUP_REQUESTS:15000}
+    concurrency: ${REDIRECT_WARMUP_CONCURRENCY:8}
+    max-duration: ${REDIRECT_WARMUP_MAX_DURATION:60s}
+
   realtime-stats:
     # Redis는 당일 잠정 통계만 보관한다. 원본 클릭 이벤트가 최종 집계의 기준이다.
     ttl: ${REALTIME_STATS_TTL:3d}

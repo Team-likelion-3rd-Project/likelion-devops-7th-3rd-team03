@@ -82,6 +82,22 @@ class RedirectServiceTest {
     }
 
     @Test
+    @DisplayName("워밍업 slug는 리다이렉트하지만 클릭 이벤트를 발행하지 않는다")
+    void doesNotPublishEventForWarmupSlug() {
+        RedirectRequest request = new RedirectRequest(
+                RedirectWarmup.SLUG, "visitor-id", LocalDateTime.parse("2026-08-12T15:00:00"), "127.0.0.1", null,
+                "Java-http-client", null, null, null, null
+        );
+        when(redirectCache.get(RedirectWarmup.SLUG)).thenReturn(Optional.of(
+                new RedirectCacheEntry(0L, "https://example.com", true, null)));
+
+        RedirectTarget result = redirectService.redirect(request);
+
+        assertThat(result.originalUrl()).isEqualTo("https://example.com");
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
     @DisplayName("캐시된 링크가 유효하면 DB를 조회하지 않는다")
     void returnsCachedRedirectTargetWithoutDatabaseLookup() {
         when(redirectCache.get("cached"))
