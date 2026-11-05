@@ -169,6 +169,7 @@ curl.exe -s https://api.github.com/repos/Team-likelion-3rd-Project/likelion-devo
 
 ### 3-5. 온프렘 백업 업로드 키 (#221, #242)
 bootstrap이 온프렘 백업 버킷(`onprem_backup_bucket_name`)과 업로드 전용 IAM 사용자(`snipy-onprem-backup`)를 만든다. 이 사용자는 `onprem/snipy-dev/*`에 올리기(PutObject)만 할 수 있다. 읽기, 목록, 삭제 권한은 없다. 보관 기간은 `onprem_backup_retention_days`(기본 14일)다.
+버킷은 버저닝이 켜져 있어서, 만료되거나 덮어써진 백업도 이전 버전으로 `onprem_backup_noncurrent_days`(기본 7일) 동안 더 남는다.
 
 액세스 키는 terraform이 만들지 않는다. 만들면 비밀 키가 state에 남기 때문이다. MFA 세션 창에서 발급한다.
 ```powershell
@@ -177,6 +178,11 @@ aws iam create-access-key --user-name snipy-onprem-backup
 - `SecretAccessKey`는 발급할 때 한 번만 보인다. 파일로 남기지 말고 ON 담당자에게 1:1로 전달한다. cp1에서는 root만 읽게(0600) 둔다 (`infra/onprem/backup/README.md`).
 - 업로드는 `aws s3 cp`로 한다. `aws s3 sync`는 목록 권한이 필요해서 실패한다.
 - 복구할 파일은 cp1이 아니라 MFA 세션에서 내려받는다 (`aws s3 cp s3://<버킷>/onprem/snipy-dev/mysql/<파일> .`).
+- 업로드 키가 새서 백업이 덮어써졌다면 이전 버전을 내려받는다. MFA 세션에서 실행한다.
+```powershell
+aws s3api list-object-versions --bucket <버킷> --prefix onprem/snipy-dev/mysql/<파일>
+aws s3api get-object --bucket <버킷> --key onprem/snipy-dev/mysql/<파일> --version-id <VersionId> <저장할 파일>
+```
 
 **키 교체**(유출이 의심되거나 담당자가 바뀔 때). IAM 사용자는 키를 2개까지 가질 수 있어서, 새 키로 바꾼 뒤 이전 키를 지운다.
 ```powershell

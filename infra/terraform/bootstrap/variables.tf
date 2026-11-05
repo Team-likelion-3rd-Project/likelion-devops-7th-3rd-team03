@@ -30,3 +30,14 @@ variable "onprem_backup_retention_days" {
     error_message = "로컬 보관(7개)보다 길어야 오프사이트 백업의 의미가 있습니다."
   }
 }
+
+variable "onprem_backup_noncurrent_days" {
+  description = "덮어써지거나 만료된 온프렘 백업의 이전 버전을 보관하는 일수. 이 기간 안에는 이전 버전으로 복구할 수 있다"
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.onprem_backup_noncurrent_days >= 1
+    error_message = "1일 이상이어야 합니다."
+  }
+}

@@ -6,7 +6,9 @@
 # etcd 스냅샷에는 클러스터의 모든 Secret(Sealed Secrets 개인키 포함)이 들어 있다. 그래서 버킷은 비공개, 암호화, TLS 전용으로 둔다.
 #
 # 경로: onprem/<클러스터 이름>/etcd/, onprem/<클러스터 이름>/mysql/
-# 버저닝은 끈다. 파일 이름에 시각이 들어가서 덮어쓸 일이 없고, 보관은 아래 수명 주기가 맡는다.
+# 버저닝은 켠다. 파일 이름이 시각 기반이라 예측할 수 있어서, 업로드 키가 새면 PutObject만으로 기존 백업을 덮어쓸 수 있다.
+# 덮어써진 이전 버전은 onprem_backup_noncurrent_days 동안 남아 복구할 수 있다.
+# 업로드 사용자에게는 버전 삭제·버저닝·수명 주기 변경 권한이 없어서 키로는 이전 버전을 지울 수 없다.
 
 locals {
   onprem_backup_bucket_name = "snipy-onprem-backup-${data.aws_caller_identity.current.account_id}"
@@ -67,6 +69,15 @@ resource "aws_s3_bucket_policy" "onprem_backup_tls_only" {
   depends_on = [aws_s3_bucket_public_access_block.onprem_backup]
 }
 
+resource "aws_s3_bucket_versioning" "onprem_backup" {
+  bucket = aws_s3_bucket.onprem_backup.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+
 # 로컬(cp1)은 최근 7개를 보관하므로, 그보다 오래된 시점은 S3에서 복구한다
 resource "aws_s3_bucket_lifecycle_configuration" "onprem_backup" {
   bucket = aws_s3_bucket.onprem_backup.id
@@ -79,8 +90,15 @@ resource "aws_s3_bucket_lifecycle_configuration" "onprem_backup" {
       prefix = "onprem/"
     }
 
+    # 버저닝이 켜져 있어서 만료된 백업은 바로 지워지지 않고 이전 버전이 된다.
+    # 그래서 정상 백업은 최대 retention_days + noncurrent_days 동안 남는다
     expiration {
       days = var.onprem_backup_retention_days
+    }
+
+    # 만료됐거나 덮어써진 이전 버전을 지운다
+    noncurrent_version_expiration {
+      noncurrent_days = var.onprem_backup_noncurrent_days
     }
 
     # 업로드가 도중에 끊겨 남은 조각(multipart)은 목록에 안 보이지만 요금이 나간다
@@ -88,6 +106,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "onprem_backup" {
       days_after_initiation = 1
     }
   }
+
+  # 버저닝 설정이 먼저 적용돼야 이전 버전 규칙이 의도대로 동작한다
+  depends_on = [aws_s3_bucket_versioning.onprem_backup]
 }
 
 # ── cp1 업로드 전용 IAM 사용자 ──
