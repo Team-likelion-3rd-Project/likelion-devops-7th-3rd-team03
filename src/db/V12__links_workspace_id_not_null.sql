@@ -13,5 +13,12 @@
 -- 선행: V11__backfill_links_workspace.sql
 -- =====================================================================
 
+-- FK 컬럼의 NULL 허용 여부를 바꾸면 MySQL 버전에 따라 ERROR 1832로 막힌다(RDS에서 발생).
+-- 이 세션에서만 FK 검사를 끄고 바꾼다. V11 이후 NULL이 없으므로 FK 값은 그대로 유효하다.
+-- 같은 파일을 다시 실행해도 결과가 같다.
+SET FOREIGN_KEY_CHECKS = 0;
+
 ALTER TABLE links
     MODIFY COLUMN workspace_id BIGINT NOT NULL COMMENT '소유 워크스페이스 (workspaces.id)';
+
+SET FOREIGN_KEY_CHECKS = 1;
