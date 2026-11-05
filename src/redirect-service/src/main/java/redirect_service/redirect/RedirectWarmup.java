@@ -40,6 +40,10 @@ public class RedirectWarmup implements ApplicationRunner {
     public static final String SLUG = "_warmup";
     private static final RedirectCacheEntry ENTRY = new RedirectCacheEntry(0L, "https://example.com", true, null);
 
+    /** 첫 Redis 연결(ElastiCache TLS)은 차가운 JVM에서 연결 timeout을 넘길 수 있어 재시도한다 */
+    private static final int CACHE_PREPARE_ATTEMPTS = 10;
+    private static final Duration CACHE_PREPARE_INTERVAL = Duration.ofSeconds(1);
+
     private final RedisRedirectCache redirectCache;
     private final WarmupProperties properties;
     private final Environment environment;
@@ -55,9 +59,8 @@ public class RedirectWarmup implements ApplicationRunner {
     }
 
     private void warmUp() {
-        redirectCache.put(SLUG, ENTRY);
-        // 캐시가 없으면 매 요청이 DB 조회(없는 slug)가 되므로 건너뛴다
-        if (redirectCache.get(SLUG).isEmpty()) {
+        // 캐시가 없으면 매 요청이 DB 조회(없는 slug)가 되므로, 끝내 준비하지 못하면 건너뛴다
+        if (!prepareCacheEntry()) {
             log.warn("워밍업 캐시를 저장하지 못해 워밍업을 건너뜁니다.");
             return;
         }
@@ -106,5 +109,28 @@ public class RedirectWarmup implements ApplicationRunner {
         long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
         log.info("워밍업 완료. requests={}, failed={}, elapsedMs={}",
                 Math.min(sent.get(), target), failed.get(), elapsedMs);
+    }
+
+    /**
+     * 워밍업은 앱에서 처음 Redis를 부르는 호출이라, 연결 수립(ElastiCache는 TLS 핸드셰이크 포함)이 여기에 몰린다.
+     * prod에서 첫 연결이 실패(RedisConnectionFailureException)해 워밍업이 건너뛰어진 적이 있어, 연결될 때까지 짧게 재시도한다.
+     */
+    private boolean prepareCacheEntry() {
+        for (int attempt = 1; attempt <= CACHE_PREPARE_ATTEMPTS; attempt++) {
+            redirectCache.put(SLUG, ENTRY);
+            if (redirectCache.get(SLUG).isPresent()) {
+                if (attempt > 1) {
+                    log.info("워밍업 캐시 준비 완료. attempt={}", attempt);
+                }
+                return true;
+            }
+            try {
+                Thread.sleep(CACHE_PREPARE_INTERVAL.toMillis());
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 }
