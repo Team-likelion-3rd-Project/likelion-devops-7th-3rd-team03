@@ -116,9 +116,17 @@ public class LinkDailyDimensionStat {
         return value;
     }
 
+    /**
+     * dimension_type 컬럼은 VARCHAR(20) 이라 값만 늘리면 스키마 변경 없이 저장된다.
+     * REGION 은 #208 부터 CloudFront 시·도 코드다. 그 전 데이터는 언어 태그의 국가(KR 등)가 들어 있다.
+     */
     public enum DimensionType {
         REFERRER,
         DEVICE,
-        REGION
+        REGION,
+        COUNTRY,
+        OS,
+        BROWSER,
+        HOUR
     }
 }

@@ -27,9 +27,11 @@ final class DuckDbQueries implements ClickStatsQueries {
 
     private static final DateTimeFormatter YMD = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    /** 집계에 쓰는 필드만 읽는다. JSON의 나머지 필드는 무시된다. */
+    /** 집계에 쓰는 필드만 읽는다. JSON의 나머지 필드는 무시되고, 스키마 1 이벤트에 없는 country·region 은 NULL 이다. */
     private static final String COLUMNS = "{'link_id': 'BIGINT', 'clicked_at': 'VARCHAR', "
             + "'visitor_id': 'VARCHAR', 'language': 'VARCHAR', 'device_type': 'VARCHAR', "
+            + "'operating_system': 'VARCHAR', 'browser': 'VARCHAR', "
+            + "'country': 'VARCHAR', 'region': 'VARCHAR', "
             + "'referrer_category': 'VARCHAR', 'is_bot': 'BOOLEAN'}";
 
     private final String clickLogBase;
@@ -126,8 +128,15 @@ final class DuckDbQueries implements ClickStatsQueries {
         return switch (dimensionType) {
             case "REFERRER" -> "referrer_category";
             case "DEVICE" -> "device_type";
-            // language의 국가 서브태그를 지역 프록시로 쓴다 (예: "ko-KR" -> "KR"). AthenaQueries와 동일
-            case "REGION" -> "NULLIF(split_part(language, '-', 2), '')";
+            case "OS" -> "operating_system";
+            case "BROWSER" -> "browser";
+            // KST 시각(00~23). clicked_at 은 UTC 라 +9 시간
+            case "HOUR" -> "lpad(CAST(hour(CAST(left(clicked_at, 26) AS TIMESTAMP) + INTERVAL 9 HOUR) AS VARCHAR), 2, '0')";
+            // CloudFront 위치 헤더(#207) → 없으면(온프렘, 스키마 1) 언어 태그의 국가 서브태그 (ko-KR -> KR)
+            case "COUNTRY" -> "COALESCE(NULLIF(country, ''), NULLIF(upper(split_part(language, '-', 2)), ''))";
+            // CloudFront 시·도 코드(#207)는 국가 안에서만 의미가 있어(예: 11 = 한국 서울) 국가를 붙인다 → KR-11.
+            // 온프렘에는 없어 UNKNOWN 이 된다
+            case "REGION" -> "CASE WHEN NULLIF(region, '') IS NULL THEN NULL ELSE country || '-' || region END";
             default -> throw new IllegalArgumentException("unknown dimensionType: " + dimensionType);
         };
     }
