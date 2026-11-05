@@ -1,7 +1,7 @@
 // 워크스페이스 통계 API(/api/workspaces/{workspaceId}/stats/*, #208·#237). 권한은 그 팀의 멤버다.
 // 응답은 대상과 상관없이 data.groups 이고, 링크 하나를 요청하면 groups[0]이 그 링크다.
 // linkId는 링크의 외부 노출용 UUID(link_id 컬럼)다. ws는 선택한 워크스페이스({ workspaceId })다.
-import { apiFetch } from './http'
+import { ApiError, apiFetch } from './http'
 
 async function fetchGroups(ws, name, params) {
   const query = new URLSearchParams(params)
@@ -61,5 +61,80 @@ export function dailyChangeOf(daily) {
   return {
     clicks: changeOf(at(base, 'clickCount'), at(previous, 'clickCount')),
     visitors: changeOf(at(base, 'visitorCount'), at(previous, 'visitorCount'))
+  }
+}
+
+// ---- 홈 화면(#210)용: linkIds를 빼면 팀 전체를 한 묶음으로 합쳐 준다 ----
+
+export async function getTeamDaily(ws, from, to) {
+  const groups = await fetchGroups(ws, 'daily', { from, to })
+  return groups[0]
+}
+
+// 분포 행 [{ value, clickCount, percentage }]. 배치 집계만 쓰므로 오늘은 들어 있지 않다.
+export async function getTeamBreakdown(ws, type, from, to) {
+  const groups = await fetchGroups(ws, 'breakdown', { type, from, to })
+  return groups[0].breakdown
+}
+
+const MAX_LINK_TARGETS = 20 // 서버가 한 번에 받는 linkIds 수
+
+// 링크마다 기간 클릭을 구한다. 서버 제한(20개) 때문에 나눠 부른다.
+export async function getLinkTotals(ws, linkIds, from, to) {
+  const chunks = []
+  for (let i = 0; i < linkIds.length; i += MAX_LINK_TARGETS) {
+    chunks.push(linkIds.slice(i, i + MAX_LINK_TARGETS))
+  }
+  const rows = await Promise.all(chunks.map((ids) => compareLinks(ws, ids, from, to)))
+  return rows.flat()
+}
+
+// 클릭이 있는 링크만 클릭 많은 순으로 n개. totals = getLinkTotals 결과, links = 링크 목록
+export function topLinks(links, totals, n = 5) {
+  const byId = new Map(links.map((l) => [l.linkId, l]))
+  return totals
+    .filter((t) => t.totalClicks > 0 && byId.has(t.linkId))
+    .sort((a, b) => b.totalClicks - a.totalClicks)
+    .slice(0, n)
+    .map((t) => ({ ...byId.get(t.linkId), totalClicks: t.totalClicks }))
+}
+
+// 백엔드 Link.isExpired()와 같은 경계값(now >= expiresAt이면 만료)
+export const isActiveLink = (link) =>
+  !link.expiresAt || Date.now() < new Date(link.expiresAt).getTime()
+
+// 홈의 기간 선택(1·7·14·30일)을 날짜로 바꾼다. 지표·그래프는 오늘을 포함하고(from~to),
+// 분포는 배치 집계라 어제까지다(distFrom~distTo). 모두 KST 날짜다.
+export function periodRange(days) {
+  return { from: kstDay(days - 1), to: kstDay(0), distFrom: kstDay(days), distTo: kstDay(1) }
+}
+
+// 인기 링크: 링크 목록 전체의 기간 클릭을 합쳐 상위 n개를 고른다. 그 사이 링크가 삭제됐으면 서버가 404를 주므로,
+// 목록을 다시 받아(refetch) 한 번만 다시 시도한다. 404가 아닌 오류와 두 번째 실패는 그대로 던진다.
+export async function loadTopLinks(ws, links, from, to, refetch, n = 5) {
+  try {
+    return topLinks(
+      links,
+      await getLinkTotals(
+        ws,
+        links.map((l) => l.linkId),
+        from,
+        to
+      ),
+      n
+    )
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 404) throw err
+    const fresh = await refetch()
+    return topLinks(
+      fresh,
+      await getLinkTotals(
+        ws,
+        fresh.map((l) => l.linkId),
+        from,
+        to
+      ),
+      n
+    )
   }
 }
