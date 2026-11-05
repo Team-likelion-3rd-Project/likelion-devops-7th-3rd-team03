@@ -28,6 +28,10 @@ spec:
           image: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service:latest
           ports:
             - containerPort: 8080
+          env:
+            # 트래픽을 받기 전에 JIT를 데운다 (#264). 최대 60초 동안 readiness가 DOWN으로 유지된다
+            - name: REDIRECT_WARMUP_ENABLED
+              value: "true"
           envFrom:
             - configMapRef: { name: redirect-service-config }
             - secretRef: { name: redirect-service-secrets }

@@ -43,6 +43,10 @@ public class RedirectService {
      */
     public RedirectTarget redirect(RedirectRequest request) {
         RedirectTarget target = findRedirectTarget(request.slug(), request.occurredAt());
+        // 워밍업 요청은 클릭이 아니다. 통계·Firehose에 넣지 않는다 (#264)
+        if (RedirectWarmup.SLUG.equals(request.slug())) {
+            return target;
+        }
         ClickRequestSnapshot snapshot = ClickRequestSnapshot.from(request);
 
         try {

@@ -3,6 +3,10 @@ kind: Service
 metadata:
   name: redirect-service
   labels: { app: redirect-service }
+  annotations:
+    # 새 파드(타깃)로 가는 ALB 트래픽을 30초에 걸쳐 늘린다 (#264). 워밍업을 보완한다.
+    # AWS Load Balancer Controller만 읽는다. 온프렘에서는 무시된다.
+    alb.ingress.kubernetes.io/target-group-attributes: slow_start.duration_seconds=30
 spec:
   selector:
     app: redirect-service
