@@ -17,7 +17,6 @@ patches:
   - path: patch-athena-sa.yaml
   - path: patch-ingress.yaml
   - path: patch-athena-cronjob.yaml
-  - path: patch-athena-cronjob.yaml
   - path: patch-zone-spread.yaml
 
 # 이미지는 온프렘 CI(onprem-backend-ci)가 GHCR에 한 번 빌드·스캔해 올린 것을 dev와 같이 쓴다 (#105).
