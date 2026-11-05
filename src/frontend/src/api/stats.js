@@ -63,3 +63,42 @@ export function dailyChangeOf(daily) {
     visitors: changeOf(at(base, 'visitorCount'), at(previous, 'visitorCount'))
   }
 }
+
+// ---- 홈 화면(#210)용: linkIds를 빼면 팀 전체를 한 묶음으로 합쳐 준다 ----
+
+export async function getTeamDaily(ws, from, to) {
+  const groups = await fetchGroups(ws, 'daily', { from, to })
+  return groups[0]
+}
+
+// 분포 행 [{ value, clickCount, percentage }]. 배치 집계만 쓰므로 오늘은 들어 있지 않다.
+export async function getTeamBreakdown(ws, type, from, to) {
+  const groups = await fetchGroups(ws, 'breakdown', { type, from, to })
+  return groups[0].breakdown
+}
+
+const MAX_LINK_TARGETS = 20 // 서버가 한 번에 받는 linkIds 수
+
+// 링크마다 기간 클릭을 구한다. 서버 제한(20개) 때문에 나눠 부른다.
+export async function getLinkTotals(ws, linkIds, from, to) {
+  const chunks = []
+  for (let i = 0; i < linkIds.length; i += MAX_LINK_TARGETS) {
+    chunks.push(linkIds.slice(i, i + MAX_LINK_TARGETS))
+  }
+  const rows = await Promise.all(chunks.map((ids) => compareLinks(ws, ids, from, to)))
+  return rows.flat()
+}
+
+// 클릭이 있는 링크만 클릭 많은 순으로 n개. totals = getLinkTotals 결과, links = 링크 목록
+export function topLinks(links, totals, n = 5) {
+  const byId = new Map(links.map((l) => [l.linkId, l]))
+  return totals
+    .filter((t) => t.totalClicks > 0 && byId.has(t.linkId))
+    .sort((a, b) => b.totalClicks - a.totalClicks)
+    .slice(0, n)
+    .map((t) => ({ ...byId.get(t.linkId), totalClicks: t.totalClicks }))
+}
+
+// 백엔드 Link.isExpired()와 같은 경계값(now >= expiresAt이면 만료)
+export const isActiveLink = (link) =>
+  !link.expiresAt || Date.now() < new Date(link.expiresAt).getTime()
