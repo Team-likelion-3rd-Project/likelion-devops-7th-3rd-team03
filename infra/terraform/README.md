@@ -99,7 +99,6 @@ terraform은 호스팅 존을 **조회만** 한다. destroy해도 NS가 바뀌�
 
 ### 3-2. bootstrap (로컬)
 state 버킷, ECR, GitHub OIDC 역할(앱 CI·terraform plan·terraform apply), 소셜 로그인 OAuth 시크릿, 온프렘 백업 버킷을 만든다.
-state 버킷, ECR, GitHub OIDC 역할(앱 CI·terraform plan·terraform apply), 소셜 로그인 OAuth 시크릿을 만든다.
 **로컬 state**(`bootstrap/terraform.tfstate`, gitignore 대상)를 쓰므로 그 파일을 지우지 않는다.
 ```powershell
 cd infra/terraform/bootstrap
