@@ -112,8 +112,9 @@ cleanup() {
   local in_clause
   in_clause=$(printf "'%s'," "${SLUGS[@]}")
   in_clause="${in_clause%,}"
-  run_sql "DELETE FROM links WHERE slug IN (${in_clause});" || \
-    echo "!! 자동 정리 실패 — 수동으로 지워야 함: DELETE FROM links WHERE slug IN (${in_clause});" >&2
+  # 앱의 링크 삭제와 같은 soft delete (#251)
+  run_sql "UPDATE links SET is_visible = FALSE WHERE slug IN (${in_clause});" || \
+    echo "!! 자동 정리 실패 — 수동 정리 필요: UPDATE links SET is_visible = FALSE WHERE slug IN (${in_clause});" >&2
 }
 trap cleanup EXIT
 
