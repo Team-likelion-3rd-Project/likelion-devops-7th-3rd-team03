@@ -14,6 +14,7 @@ resources:
   - athena-batch-sa.yaml
   - athena-batch-cronjob.yaml
   - athena-batch-configmap.yaml
+  - athena-batch-today-cronjob.yaml
 
 # 배치는 management-service와 같은 이미지를 쓴다. 여기서 Deployment의 이미지를 CronJob에 복사하고,
 # overlay의 images:가 둘을 같은 이름으로 함께 바꾼다 (이미지 태그는 overlay에만 기록한다).
@@ -26,5 +27,10 @@ replacements:
       - select:
           kind: CronJob
           name: athena-batch
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=athena-batch].image
+      - select:
+          kind: CronJob
+          name: athena-batch-today
         fieldPaths:
           - spec.jobTemplate.spec.template.spec.containers.[name=athena-batch].image
