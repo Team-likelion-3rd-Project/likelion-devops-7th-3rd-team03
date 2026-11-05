@@ -26,6 +26,11 @@ replacements:
     targets:
       - select:
           kind: CronJob
+          name: athena-batch
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=athena-batch].image
+      - select:
+          kind: CronJob
           name: athena-batch-today
         fieldPaths:
           - spec.jobTemplate.spec.template.spec.containers.[name=athena-batch].image

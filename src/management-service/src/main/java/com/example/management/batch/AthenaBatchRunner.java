@@ -51,10 +51,6 @@ public class AthenaBatchRunner implements CommandLineRunner {
     @Override
     public void run(String... args) {
         LocalDate targetDate = resolveTargetDate(args, LocalDate.now(KST));
-        targetDate = args.length > 0
-                ? LocalDate.parse(args[0])
-                : LocalDate.now(KST).minusDays(1);
-
         final int exitCode = runBatch(targetDate);
 
         // 명시적 exitCode 반환으로 K8s Pod 상태 및 모니터링 알림 연동

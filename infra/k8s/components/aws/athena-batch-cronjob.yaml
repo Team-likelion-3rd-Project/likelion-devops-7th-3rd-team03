@@ -12,7 +12,6 @@ spec:
     spec:
       backoffLimit: 2
       activeDeadlineSeconds: 3000  # 50분. 쿼리 8개(일별 + 차원 7개, #208) × 최대 폴링 5분 = 최악 40분 + 여유
-      # × 쿼리당 최대 폴링 5분(150회×2초) = 최악 20분 + 여유
       template:
         metadata:
           labels: { app: athena-batch }
