@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Alert from '@cloudscape-design/components/alert'
 import Box from '@cloudscape-design/components/box'
 import Button from '@cloudscape-design/components/button'
@@ -16,7 +16,7 @@ import { toast } from '../components/Toast'
 export const POST_LOGIN_REDIRECT_KEY = 'linkshortener_post_login_redirect'
 
 export function Login() {
-  const { loading, loginAsDev } = useAuth()
+  const { user, loading, loginAsDev } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const providers = enabledProviders()
@@ -26,6 +26,9 @@ export function Login() {
     sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, location.state?.from || '/dashboard')
     window.location.href = buildAuthorizeUrl(provider, createState(provider.id))
   }
+
+  // 이미 로그인했다면 로그인 화면을 보여 줄 이유가 없어서 홈으로 보낸다(뒤로 가기·주소 직접 입력으로 올 수 있다)
+  if (user) return <Navigate to="/" replace />
 
   return (
     <ContentLayout header={<Header variant="h1">로그인</Header>}>
