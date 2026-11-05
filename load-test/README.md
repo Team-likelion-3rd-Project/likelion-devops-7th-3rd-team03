@@ -50,6 +50,8 @@ kubectl --context <context> port-forward -n monitoring svc/kube-prometheus-grafa
 # http://localhost:3000, admin / (사전 준비 2번에서 조회한 비밀번호)
 ```
 
+- k6 Job은 redirect 파드가 없는 노드에 우선 배치된다(soft anti-affinity). 노드 CPU를 볼 때는 `kubectl get pods -o wide`로 k6와 redirect 파드가 같은 노드에 있는지 먼저 확인한다. HPA가 나중에 늘린 redirect 파드는 k6 노드에 올 수 있다.
+
 ## 정리
 
 - Job/ConfigMap: 다음 실행 시 `run-smoke.sh`가 자동으로 지우고 새로 만듦. 수동 정리는:
