@@ -21,6 +21,7 @@ import { ApiError } from '../api/http'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { RequireWorkspace } from '../components/RequireWorkspace'
 import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
+import { countryName } from '../statsLabels'
 
 const RANGE_OPTIONS = [
   { id: '7', text: '7일' },
@@ -56,7 +57,7 @@ function LinkStatsView() {
   const [referrers, setReferrers] = useState(null)
   const [change, setChange] = useState(null)
   const [deviceBreakdown, setDeviceBreakdown] = useState(null)
-  const [regionBreakdown, setRegionBreakdown] = useState(null)
+  const [countryBreakdown, setCountryBreakdown] = useState(null)
   const [realtime, setRealtime] = useState(null)
   const [realtimeVisitors, setRealtimeVisitors] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -83,18 +84,19 @@ function LinkStatsView() {
 
   const loadStats = useCallback(async () => {
     try {
-      const [dailyRes, referrerRes, changeRes, deviceRes, regionRes] = await Promise.all([
+      const [dailyRes, referrerRes, changeRes, deviceRes, countryRes] = await Promise.all([
         getDailyStats(linkId, from, to),
         getReferrerStats(linkId, from, to),
         getDailyChange(linkId),
         getBreakdown(linkId, 'DEVICE', from, to),
-        getBreakdown(linkId, 'REGION', from, to)
+        // REGION은 이제 시·도 코드이고 온프렘에는 값이 없다(항상 UNKNOWN). 국가 단위 분포는 COUNTRY다(#208).
+        getBreakdown(linkId, 'COUNTRY', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
       setChange(changeRes)
       setDeviceBreakdown(deviceRes)
-      setRegionBreakdown(regionRes)
+      setCountryBreakdown(countryRes)
       setState('ready')
     } catch (err) {
       // 링크 조회에서 이미 "이 팀의 링크가 아님"으로 판단했다면 통계 오류가 그 안내를 덮어쓰지 않게 한다
@@ -253,7 +255,11 @@ function LinkStatsView() {
 
         <BreakdownTable title="유입 경로" rows={referrers} nameKey="referrerCategory" />
         <BreakdownTable title="디바이스 분포" rows={deviceBreakdown?.breakdown} nameKey="value" />
-        <BreakdownTable title="접속 지역 분포" rows={regionBreakdown?.breakdown} nameKey="value" />
+        <BreakdownTable
+          title="접속 국가 분포"
+          rows={countryBreakdown?.breakdown.map((r) => ({ ...r, value: countryName(r.value) }))}
+          nameKey="value"
+        />
       </SpaceBetween>
     </ContentLayout>
   )
