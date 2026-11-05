@@ -53,7 +53,7 @@
 |---|---|---|---|---|
 | 1 | Load (23 TPS) | `load-test/normal-traffic-run.sh snipy-prod http://redirect-service:8080 300000 23` | 20분 + 링크 생성 | 배포·스크립트가 정상인지, 클릭 로그가 Athena까지 가는지 |
 | 2 | Stress (230 TPS) | `load-test/normal-traffic-run.sh snipy-prod http://redirect-service:8080 300000 230` | 20분 | 평상시 목표 |
-| 3 | 바이럴 (800 TPS) | `load-test/viral-spike-run.sh snipy-prod` | 5분 | 바이럴 목표, 콜드 링크 herd |
+| 3 | 바이럴 (800 TPS) | `load-test/viral-spike-run.sh snipy-prod` | 5분 | 바이럴 목표, 콜드 링크 herd, 클릭 유실(5절 Firehose) |
 | 4 | Breakpoint (선택) | `load-test/breakpoint-run.sh snipy-prod` | ~10분 | 파드 1개의 한계 TPS (2차 dev: 약 1,600~1,700) |
 
 - 링크 30만 개는 MySQL에 직접 INSERT하고, 끝나면 스크립트가 지운다 (`trap cleanup EXIT`).
@@ -68,12 +68,18 @@
 | 노드 | CPU·메모리 사용률, **requests 합계(Allocated resources)**, 노드 수, Pending 파드 | `kubectl top nodes`, `kubectl describe nodes`, `kubectl get pods -A --field-selector=status.phase=Pending` |
 | RDS | CPUUtilization, DatabaseConnections, FreeableMemory, ReadIOPS, CPUCreditBalance | CloudWatch |
 | ElastiCache | EngineCPUUtilization, DatabaseMemoryUsagePercentage, Evictions, CurrConnections | CloudWatch |
+| Firehose | IncomingRecords, ThrottledRecords (바이럴 구간 합계) | CloudWatch, redirect 로그 `Failed to send click event to Firehose` |
 | DB 연결 수 | `max_connections`, `Max_used_connections` | 아래 SQL |
 
 ```sql
 SHOW VARIABLES LIKE 'max_connections';     -- 추정 ~340 (db.t4g.medium)
 SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤. 계산값 ~105와 비교
 ```
+
+클릭 로그는 302 응답과 따로 비동기로 보내져서, 유실돼도 k6 지표에는 보이지 않는다. 버려지는 곳은 두 군데다.
+
+- Firehose 한도(Direct PUT, 리전 기본 한도는 Service Quotas에서 확인): `ThrottledRecords`로 보인다.
+- redirect 앱의 전송 큐(`AsyncEventConfig`의 firehose executor, 스레드 1~2개·큐 10,000·`DiscardPolicy`): 로그 없이 버려진다. k6 `http_reqs` − `IncomingRecords` − `ThrottledRecords`로 계산한다.
 
 노드 메모리 사용률이 낮아도 노드를 바로 줄이지 않는다. HPA 최대일 때 CPU requests 합계가 먼저 찬다.
 
@@ -87,6 +93,8 @@ SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤.
 | RDS CPU 70% 이상, 연결 오류, Hikari pending 지속 | db.t4g.large → db.m6g.large |
 | Redis CPU 70% 이상, Evictions 발생 | cache.t4g.small |
 | p99가 HPA가 파드를 늘리는 순간에만 튐 | 사양 문제가 아니다. 새 파드 콜드스타트 문제(SCENARIOS.md "Step 2 후속")라 따로 기록한다 |
+| Firehose `ThrottledRecords` > 0 | 사양이 아니다. Service Quotas에서 Direct PUT 한도 증가를 요청한다 |
+| `http_reqs` − `IncomingRecords` − `ThrottledRecords` > 0 | 사양이 아니다. 앱 전송 큐에서 버려진 것이라 redirect 코드 문제로 후속 이슈를 만든다(BE) |
 
 - 노드 타입을 바꾸면 노드 그룹이 교체되어 파드가 모두 다시 뜬다.
 - t3, t4g는 Unlimited 모드라 느려지지는 않고 기준선을 넘은 만큼 요금이 붙는다. CPUCreditBalance가 계속 줄면 평소 운영에서도 크레딧을 쓴다는 뜻이라, 결과에 같이 적는다.
@@ -114,6 +122,8 @@ SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤.
 | 1 | t3.medium / t4g.medium / t4g.micro | Load 23 | | | | | | | |
 | 1 | | Stress 230 | | | | | | | |
 | 1 | | 바이럴 800 | | | | | | | |
+
+바이럴 클릭 수: k6 `http_reqs` = , Firehose `IncomingRecords` = , `ThrottledRecords` =
 
 DB 연결 수: `max_connections` = , `Max_used_connections` =
 
