@@ -70,6 +70,9 @@ app:
       # Firehose 호출 타임아웃 (한 번 시도 / 재시도 포함 전체)
       attempt-timeout: ${FIREHOSE_ATTEMPT_TIMEOUT:2s}
       call-timeout: ${FIREHOSE_CALL_TIMEOUT:5s}
+    # 클릭마다 콘솔에 JSON 로그를 남길지 (관측용). prod 는 Firehose 로 보내므로 false (#274)
+    console-log:
+      enabled: ${CLICK_EVENT_CONSOLE_LOG_ENABLED:true}
 
   warmup:
     # 기동 직후 트래픽을 받기 전에 자기 자신에게 요청을 보내 JIT를 데운다 (#264, RedirectWarmup)
