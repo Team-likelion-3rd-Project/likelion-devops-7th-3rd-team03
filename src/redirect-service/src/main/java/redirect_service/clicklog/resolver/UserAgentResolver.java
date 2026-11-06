@@ -44,4 +44,9 @@ public class UserAgentResolver {
     private String resolveValue(String value) {
         return value == null || value.isBlank() ? "UNKNOWN" : value;
     }
+
+    /** 배포 직후 첫 클릭이 몰릴 때 느리지 않게 분석기 규칙을 미리 실행해 둔다 (#273) */
+    public void preheat() {
+        analyzer.preHeat();
+    }
 }
