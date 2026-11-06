@@ -6,6 +6,8 @@ metadata:
   annotations:
     # 앱(0)이 만드는 시크릿 저장소(Grafana 비밀번호 ExternalSecret)와 gp3 StorageClass(PVC)를 쓴다
     argocd.argoproj.io/sync-wave: "1"
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
 spec:
   project: default
   source:

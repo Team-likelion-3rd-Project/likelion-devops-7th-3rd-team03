@@ -11,26 +11,30 @@ resource "helm_release" "argocd" {
   # ArgoCD는 기본적으로 하위 Application의 상태를 보지 않아, app-of-apps의 sync-wave가
   # 앞 앱이 Healthy가 될 때까지 기다리지 않는다. Application의 health를 그대로 쓰게 한다.
   # (https://argo-cd.readthedocs.io/en/stable/operator-manual/health/#argocd-app)
-  values = [yamlencode({
-    configs = {
-      cm = {
-        "resource.customizations.health.argoproj.io_Application" = <<-EOT
-          hs = {}
-          hs.status = "Progressing"
-          hs.message = ""
-          if obj.status ~= nil then
-            if obj.status.health ~= nil then
-              hs.status = obj.status.health.status
-              if obj.status.health.message ~= nil then
-                hs.message = obj.status.health.message
+  values = [
+    yamlencode({
+      configs = {
+        cm = {
+          "resource.customizations.health.argoproj.io_Application" = <<-EOT
+            hs = {}
+            hs.status = "Progressing"
+            hs.message = ""
+            if obj.status ~= nil then
+              if obj.status.health ~= nil then
+                hs.status = obj.status.health.status
+                if obj.status.health.message ~= nil then
+                  hs.message = obj.status.health.message
+                end
               end
             end
-          end
-          return hs
-        EOT
+            return hs
+          EOT
+        }
       }
-    }
-  })]
+    }),
+    # 알림(prod Slack 채널)과 배치 health. helm이 위 값과 합친다 (configs.cm 키가 서로 다르다)
+    file("${path.module}/argocd-notifications-values.yaml"),
+  ]
 }
 
 # prod 앱 묶음(infra/argocd/prod, Helm 차트)을 가리키는 root Application.
