@@ -280,9 +280,10 @@ kubectl -n argocd get applications      # 4개 Synced / Healthy. 처음 몇 분�
 ```
 
 ArgoCD 동기화 순서:
+
 | wave | 앱 / 리소스 |
 |---|---|
-| -1 | `snipy-prod-prometheus-crds` (Prometheus CRD) |
+| -1 | `snipy-prod-prometheus-crds` (Prometheus CRD), `snipy-prod-argo-rollouts` (카나리 컨트롤러) |
 | 0 | `snipy-prod` — 그 안에서 시크릿 저장소(-3) → ExternalSecret(-2) → 마이그레이션 Job(-1) → 앱(0) |
 | 1 | `snipy-prod-observability` (kube-prometheus-stack, Grafana) |
 
@@ -366,6 +367,7 @@ cd ../..
 1~2분 뒤 https://app.snipy.life 에서 `Ctrl+F5` 후 세 provider로 로그인한다.
 
 **각 개발자 콘솔 등록 값** (온프렘 `http://localhost:3000/...` 값은 지우지 않고 추가한다)
+
 | provider | 등록 위치 | 값 |
 |---|---|---|
 | 카카오 | 플랫폼 → Web 사이트 도메인 / 카카오 로그인 → Redirect URI | `https://app.snipy.life` / `https://app.snipy.life/auth/kakao/callback` |
@@ -409,7 +411,7 @@ aws route53 list-resource-record-sets --hosted-zone-id <존 ID> --query "Resourc
 ### 7-2. 로컬로 실행 (예비)
 ```powershell
 aws eks update-kubeconfig --region ap-southeast-1 --name snipy-cluster
-kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds
+kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds snipy-prod-argo-rollouts
 kubectl delete -k infra/k8s/overlays/prod       # ServiceMonitor "not found"는 무시
 kubectl delete namespace monitoring
 # ALB가 없어지고 kubectl get pv 가 비면
