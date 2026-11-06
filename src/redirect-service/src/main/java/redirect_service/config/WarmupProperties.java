@@ -21,4 +21,6 @@ public class WarmupProperties {
     private int concurrency = 8;
     /** 넘으면 남은 건수와 상관없이 끝내고 트래픽을 받는다 */
     private Duration maxDuration = Duration.ofSeconds(60);
+    /** 클릭 경로 워밍업 반복 횟수 (#273). UA 분석·직렬화를 이만큼 돌린다 */
+    private int clickPathIterations = 2_000;
 }
