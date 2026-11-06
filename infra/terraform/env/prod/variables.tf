@@ -119,6 +119,12 @@ variable "rds_multi_az" {
   default = true
 }
 
+variable "rds_backup_retention_period" {
+  description = "RDS 자동 백업 보관 일수 (PITR 가능 기간). 운영 7, 부하 테스트 1"
+  type        = number
+  default     = 7
+}
+
 variable "rds_deletion_protection" {
   description = "true면 RDS를 삭제할 수 없다 (destroy도 실패). 운영은 true"
   type        = bool

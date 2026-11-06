@@ -112,7 +112,7 @@ resource "aws_db_instance" "main" {
 
   multi_az = var.rds_multi_az # Primary(AZ-A) + Standby(AZ-B), 동기 복제, 자동 페일오버
 
-  backup_retention_period = var.rds_backup_retention_period # 최소한만 (짧은 프로젝트 기간)
+  backup_retention_period = var.rds_backup_retention_period # 운영 7일, 부하 테스트 1일 (env/prod tfvars)
   # 운영: 삭제 보호를 켜고, 삭제·교체될 때 최종 스냅샷을 남긴다.
   # 테스트(test-lite.tfvars): 둘 다 끄고 destroy로 바로 정리한다.
   # 운영을 destroy하려면 deletion_protection=false로 먼저 apply해야 한다.

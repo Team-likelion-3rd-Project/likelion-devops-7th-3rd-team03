@@ -49,6 +49,7 @@ module "database" {
   elasticache_node_type                  = var.elasticache_node_type
   rds_instance_class                     = var.rds_instance_class
   rds_multi_az                           = var.rds_multi_az
+  rds_backup_retention_period            = var.rds_backup_retention_period
   rds_deletion_protection                = var.rds_deletion_protection
   rds_skip_final_snapshot                = var.rds_skip_final_snapshot
   elasticache_num_cache_clusters         = var.elasticache_num_cache_clusters

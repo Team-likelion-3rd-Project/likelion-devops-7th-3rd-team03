@@ -17,8 +17,9 @@ node_max_size      = 5
 node_desired_size  = 3
 
 # t4g.micro(max_connections ~80)는 HPA 최대 연결 수(~105, #174)보다 작다.
-rds_instance_class = "db.t4g.medium"
-rds_multi_az       = false
+rds_instance_class          = "db.t4g.medium"
+rds_multi_az                = false
+rds_backup_retention_period = 1
 
 # 테스트 후 destroy로 바로 정리할 수 있게 삭제 보호와 최종 스냅샷을 끈다
 rds_deletion_protection = false
