@@ -49,6 +49,7 @@ module "database" {
   elasticache_node_type                  = var.elasticache_node_type
   rds_instance_class                     = var.rds_instance_class
   rds_multi_az                           = var.rds_multi_az
+  rds_backup_retention_period            = var.rds_backup_retention_period
   rds_deletion_protection                = var.rds_deletion_protection
   rds_skip_final_snapshot                = var.rds_skip_final_snapshot
   elasticache_num_cache_clusters         = var.elasticache_num_cache_clusters
@@ -157,9 +158,6 @@ resource "kubernetes_config_map" "redirect_service_config" {
     # 절대 힙 크기(MB) 기준이라 컨테이너 limit을 바꿔도 힙이 같이 흔들리면 안 됨.
     # (부하테스트로 맞춘 값. 없으면 JVM 기본값인 limit 1Gi의 25%만 힙으로 잡힌다)
     JAVA_TOOL_OPTIONS = "-Xms512m -Xmx512m"
-
-    # 클릭마다 콘솔에 JSON 로그를 남기지 않는다. prod 는 클릭을 Firehose 로 보낸다 (#274)
-    CLICK_EVENT_CONSOLE_LOG_ENABLED = "false"
   }
 
   # 클러스터 관리자 권한(access entry)이 연결된 뒤에 만든다. 없으면 apply 역할이 forbidden으로 실패한다
