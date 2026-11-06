@@ -1,0 +1,6 @@
+# argocd-cmd-params-cm 에 덧붙이는 설정. cp-argocd.sh 가 설치 뒤 merge 로 적용하고 application-controller 를 재시작한다.
+data:
+  # Argo CD 3.x 는 리소스별 건강 상태를 app.status.resources 에 저장하지 않는 게 기본이다.
+  # 알림 트리거(notifications.yaml 의 on-batch-failed)는 app.status 만 읽어서, 저장하지 않으면 CronJob 실패 표시를 볼 수 없다.
+  # 앱이 하나뿐이라 상태 크기는 문제되지 않는다.
+  controller.resource.health.persist: "true"

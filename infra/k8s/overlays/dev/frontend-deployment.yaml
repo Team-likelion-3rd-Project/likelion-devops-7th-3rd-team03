@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  # 새 파드가 준비된 뒤에 옛 파드를 내린다. 배포 중에도 접속이 끊기지 않는다.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      # 워커 두 대에 나눠 올린다. control-plane은 taint 때문에 제외된다.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: frontend
+      containers:
+        - name: nginx
+          # 이름은 kustomization.yaml의 images가 GHCR 이미지(onprem-frontend-ci.yml이 만든 것)와 태그로 바꾼다.
+          image: snipy-frontend:onprem
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          # 비root로 실행한다. 이미지(nginx-unprivileged)의 사용자가 uid 101이다.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            # nginx가 /api를 넘기는 백엔드. 같은 overlay의 management-service Service다.
+            # nginx는 시작할 때 이 주소를 확인하므로 Service가 먼저(또는 같이) 있어야 한다.
+            - name: API_UPSTREAM
+              value: "http://management-service:8080"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

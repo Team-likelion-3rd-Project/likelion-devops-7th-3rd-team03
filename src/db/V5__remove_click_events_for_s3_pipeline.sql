@@ -1,0 +1,24 @@
+-- =====================================================================
+-- V5__remove_click_events_for_s3_pipeline.sql
+-- click_events 테이블 제거 (S3 기반 클릭 로그 파이프라인으로 전환)
+--
+-- 배경:
+--   클릭 로그 저장 방식을 MySQL(click_events) 대신
+--   redirector -> Kinesis Stream -> Data Firehose -> S3 -> CronJob -> Athena
+--   -> 메인 DB(link_daily_stats, link_daily_dimension_stats) 적재 방식으로 전환하기로
+--   팀 결정. 원본 클릭 로그가 더 이상 MySQL에 저장되지 않으므로, V1~V4에서 만든
+--   click_events 테이블(파티셔닝, FK 제거, visitor_id 전환 포함)은 더 이상 필요 없다.
+--
+-- 영향:
+--   - click_events를 참조하던 배치 집계 쿼리(02-stats-queries.sql의 UPSERT 부분)는
+--     더 이상 유효하지 않으며, Athena 기반 집계 쿼리로 대체 예정.
+--   - link_daily_stats, link_daily_dimension_stats 테이블은 그대로 유지 (Athena 집계
+--     결과가 여기로 적재됨).
+--   - ClickEvent.java 엔티티는 더 이상 사용하지 않으므로 애플리케이션 코드에서도 제거 필요.
+--
+-- 선행: V1__init_schema.sql, V2__drop_click_events_fk.sql,
+--       V3__partition_click_events.sql, V4__click_events_cookie_visitor_id.sql
+-- 실행 계정: shortlink_migrator
+-- =====================================================================
+
+DROP TABLE click_events;

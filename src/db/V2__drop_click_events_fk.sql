@@ -1,0 +1,48 @@
+-- =====================================================================
+-- V2__drop_click_events_fk.sql
+-- click_events.link_id 의 FOREIGN KEY만 제거한다.
+--
+-- 배경 (팀 결정, README "서비스 경계와 외래키" 참조):
+--   - 팀이 앞으로도 스키마 변경 시 항상 함께 배포하기로 확정했으므로
+--     links<->users, link_daily_stats<->links FK는 "배포가 묶인다"는
+--     단점이 사실상 없어져서 그대로 유지한다.
+--   - 반면 click_events 파티셔닝(월별) 필요성은 배포 동기화와 무관한
+--     별개의 문제다: MySQL은 파티션된 InnoDB 테이블에 FK를 허용하지
+--     않으므로, 초당 800클릭 요구사항을 감당하려면 이 FK만은 반드시
+--     제거해야 한다.
+--   => 그래서 3개 FK 중 click_events 것만 제거한다 (전부 유지도,
+--      전부 제거도 아닌 절충안).
+--
+-- 이 마이그레이션이 끝내는 것 / 안 끝내는 것:
+--   끝내는 것: FK 제거, 대체 인덱스 확보(기존 idx_click_events_link_time
+--             이 link_id로 시작하므로 FK가 만들어줬던 조회 성능은 유지됨)
+--   안 끝내는 것: 파티셔닝 자체(PK를 (id, clicked_at)로 바꾸는 작업 포함)는
+--             아직 하지 않는다. 파티션 전략(월 단위 범위, 자동 파티션
+--             추가 방식)이 별도로 확정된 뒤 V3에서 진행한다. 지금 V2는
+--             "파티셔닝이 가능한 상태로 만드는 것"까지만 목표로 한다.
+--
+-- 선행: V1__init_schema.sql
+-- 실행 계정: shortlink_migrator
+-- =====================================================================
+
+-- FK 이름은 환경마다 달라질 수 있으므로 실행 전 확인 권장
+-- (V1에서 생성했다면 MySQL 기본 명명 규칙상 click_events_ibfk_1 이 된다):
+--   SELECT constraint_name, table_name
+--     FROM information_schema.table_constraints
+--    WHERE table_schema = DATABASE()
+--      AND table_name = 'click_events'
+--      AND constraint_type = 'FOREIGN KEY';
+
+ALTER TABLE click_events DROP FOREIGN KEY click_events_ibfk_1;
+
+-- FK가 없어졌으니 "존재하지 않는 링크의 클릭 로그"를 DB가 더 이상 막아주지
+-- 않는다. 대신 애플리케이션이 리다이렉트 시점에 Redis 캐시로 링크 존재를
+-- 이미 확인하므로 추가 비용 없이 막을 수 있다 (README 참조).
+--
+-- 삭제된 링크의 클릭 로그가 고아로 남는 것도 이제 DB가 안 막아준다.
+-- 정기적으로 아래 쿼리로 고아 데이터를 점검할 것 (정리 배치는 별도 구현 필요):
+--
+-- SELECT COUNT(*) AS orphan_clicks
+--   FROM click_events e
+--   LEFT JOIN links l ON l.id = e.link_id
+--  WHERE l.id IS NULL;

@@ -1,0 +1,7 @@
+# 로컬 접속 정보(.env)가 이미지에 들어가지 않게 한다. run-migration.sh는 .env가 있으면 읽는다.
+.env
+*.env
+README.md
+dummy.sql
+verify.sql
+02-stats-queries.sql

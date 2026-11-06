@@ -1,0 +1,153 @@
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus, info
+  # info.* 설정값을 /actuator/info 에 보여준다 (Spring Boot 기본은 꺼져 있다)
+  info:
+    env:
+      enabled: true
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState, db, redis
+
+spring:
+  application:
+    name: management-service
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:shortlink}?serverTimezone=UTC&characterEncoding=UTF-8&rewriteBatchedStatements=true
+    username: ${DB_APP_USER:shortlink_app}
+    password: ${DB_APP_PASSWORD}
+    hikari:
+      # redirect-service와 같은 이유(HPA max pod 기준 DB 커넥션 과다 오픈 방지)로 명시.
+      maximum-pool-size: ${DB_HIKARI_MAX_POOL_SIZE:8}
+      minimum-idle: ${DB_HIKARI_MIN_IDLE:2}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate    # 스키마는 run-migration.sh가 만듦. 앱은 검증만
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: false          # 마이그레이션은 run-migration.sh가 실행 (README "권장" 방식)
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      # AWS ElastiCache는 TLS + AUTH 토큰으로 접속한다. 로컬·CI·온프렘은 기본값(비밀번호 없음, TLS 끔)
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      # 명령 응답 대기. 지정하지 않으면 Lettuce 기본 60초를 기다려, Redis 가 응답하지 않을 때 요청 스레드가 묶인다.
+      # 캐시 조회는 실패하면 DB 로 넘어가므로 짧게 끊는다. 평소 응답은 수 ms 다.
+      timeout: ${REDIS_TIMEOUT:500ms}
+      # 연결 맺기 대기. ElastiCache TLS 핸드셰이크를 감안해 명령보다 길게 둔다.
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+
+  http:
+    clients:
+      # 소셜 로그인(카카오·구글·네이버) 호출 타임아웃. 지정하지 않으면 외부 API 가 응답하지 않을 때
+      # 로그인 요청이 오래 묶여 스레드가 쌓인다. Boot 4 는 주입된 RestClient.Builder 에 이 값을 적용한다.
+      connect-timeout: ${HTTP_CLIENT_CONNECT_TIMEOUT:2s}
+      read-timeout: ${HTTP_CLIENT_READ_TIMEOUT:5s}
+
+app:
+  redirect-cache:
+    # 관리 서비스와 리다이렉트 서비스가 같은 TTL을 써야 갱신 정책이 일관된다.
+    ttl: ${REDIRECT_CACHE_TTL:10m}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+kakao:
+  client-id: ${KAKAO_CLIENT_ID}
+  client-secret: ${KAKAO_CLIENT_SECRET:}
+  redirect-uri: ${KAKAO_REDIRECT_URI}
+
+signup:
+  # 미가입 소셜 사용자의 가입 대기 세션(Redis) 유효 시간
+  session-ttl: ${SIGNUP_SESSION_TTL:15m}
+  
+google:
+  client-id: ${GOOGLE_CLIENT_ID:}
+  client-secret: ${GOOGLE_CLIENT_SECRET:}
+  redirect-uri: ${GOOGLE_REDIRECT_URI:}
+
+naver:
+  client-id: ${NAVER_CLIENT_ID:}
+  client-secret: ${NAVER_CLIENT_SECRET:}
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-validity-seconds: ${JWT_ACCESS_TOKEN_VALIDITY_SECONDS:1800}
+  refresh-token-validity-seconds: ${JWT_REFRESH_TOKEN_VALIDITY_SECONDS:1209600}
+
+# 단축 URL의 공개 주소. 환경마다 다르므로 코드에서 조합할 도메인을 하드코딩하지 않는다.
+# 예: 로컬 http://localhost:8080, 운영 https://s.short.ly
+short-url:
+  base-url: ${SHORT_URL_BASE_URL}
+
+
+# /actuator/info 에 실행 중인 앱의 빌드 커밋을 보여준다.
+# APP_COMMIT 은 CI 가 이미지 빌드 때 넣는다 (Dockerfile 의 GIT_SHA 빌드 인자). 로컬 실행은 unknown.
+# 아래 --- 밑은 batch 프로필 전용이라, 이 블록은 반드시 --- 위에 둔다.
+info:
+  app:
+    name: management-service
+    commit: ${APP_COMMIT:unknown}
+
+
+---
+# batch 프로필: K8s CronJob 전용. 웹서버 안 띄우고 AthenaBatchRunner만 돌고 종료한다.
+spring:
+  config:
+    activate:
+      on-profile: batch
+  main:
+    web-application-type: none
+
+app:
+  batch:
+    engine: ${BATCH_ENGINE:athena}   # athena(AWS) | duckdb(온프렘)
+  athena:
+    workgroup: ${ATHENA_WORKGROUP}
+    database: ${ATHENA_DATABASE:snipy_click_logs}
+  # 온프렘(BATCH_ENGINE=duckdb) 전용. SeaweedFS(S3 호환)에서 클릭 로그를 읽는다.
+  duckdb:
+    # 클릭 로그 위치 (Fluent Bit이 적재하는 버킷). 이 아래에 year=/month=/day= 폴더가 있다
+    click-log-base: ${DUCKDB_CLICK_LOG_BASE:s3://snipy-click-logs}
+    s3-endpoint: ${DUCKDB_S3_ENDPOINT:}          # 예: seaweedfs:8333 (http:// 없이)
+    s3-access-key: ${S3_ACCESS_KEY:}
+    s3-secret-key: ${S3_SECRET_KEY:}
+    s3-region: ${S3_REGION:us-east-1}
+    s3-use-ssl: ${DUCKDB_S3_USE_SSL:false}
+    memory-limit: ${DUCKDB_MEMORY_LIMIT:256MB}
+    temp-directory: ${DUCKDB_TEMP_DIRECTORY:/tmp/duckdb}
+    # 이미지에 미리 받아둔 확장 위치 (Dockerfile에서 ENV로 지정). 로컬 IDE 실행 시엔 비워둔다
+    extension-directory: ${DUCKDB_EXTENSION_DIRECTORY:}
+    # 메모리 튜닝 (OOM 실험 결과)
+    # 스레드마다 버퍼를 따로 잡으므로 코어 수에 따라 메모리가 달라지지 않게 고정한다
+    threads: ${DUCKDB_THREADS:2}
+    preserve-insertion-order: ${DUCKDB_PRESERVE_INSERTION_ORDER:false}
+    # 방문자 수는 정확한 값. 근사치는 방문자가 적은 링크에서 틀린다 (실측: 3명 → 2명)
+    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:true}
+    # SeaweedFS 접속·IO 오류 재시도
+    # SeaweedFS 재기동 후 요청 수신까지 실측 34초 → 최소 대기 합계가 약 2배(60초)가 되도록 설정
+    # 대기: 2 → 4 → 8 → 16 → 30 → 30 → 30초 (각각 jitter로 50~100%), 합계 약 60~120초
+    retry:
+      max-attempts: ${DUCKDB_RETRY_MAX_ATTEMPTS:8}
+      initial-delay-ms: ${DUCKDB_RETRY_INITIAL_DELAY_MS:2000}
+      max-delay-ms: ${DUCKDB_RETRY_MAX_DELAY_MS:30000}
+
+

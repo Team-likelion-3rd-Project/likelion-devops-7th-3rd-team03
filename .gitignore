@@ -40,6 +40,10 @@ __pycache__/
 venv/
 *.egg-info/
 
+# ── MYSQL ─────────────────────────────────────
+00.sql
+*.sql.tmp
+
 # ── IDE / OS ──────────────────────────────────
 .idea/
 .vscode/
@@ -51,3 +55,41 @@ Thumbs.db
 *.sqlite3
 /uploads/
 /tmp/
+
+# ── Docker ────────────────────────────────────
+
+# Docker Compose local override
+docker-compose.override.yml
+compose.override.yml
+
+# Local environment
+.docker/
+
+# Docker volumes / local DB data
+docker-data/
+mysql-data/
+postgres-data/
+redis-data/
+volumes/
+
+# Docker logs
+docker.log
+*.docker.log
+
+# Docker build cache
+.dockerignore.local
+
+# ── Terraform ──────────────────────────────────
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# redirect-service local click-event log output
+src/redirect-service/logs/

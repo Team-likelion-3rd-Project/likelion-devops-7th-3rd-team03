@@ -1,0 +1,29 @@
+# 워커 2대(각 2 vCPU / 4GB)에 앱·DB·프론트를 같이 올리므로 파드 수와 요청량을 줄인다.
+# 힙은 configmaps.yaml의 JAVA_TOOL_OPTIONS(-Xmx384m)에 맞춰 limit을 잡는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: management-service
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 1000m, memory: 768Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redirect-service
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: redirect-service
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 1000m, memory: 768Mi }

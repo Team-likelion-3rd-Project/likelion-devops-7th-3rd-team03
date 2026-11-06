@@ -1,0 +1,9 @@
+# overlays/prod/patch-athena-cronjob.yaml
+# prod 집계 스케줄. components/aws/athena-batch-cronjob.yaml과 같은 값(매일 KST 02:00 = UTC 17:00)을
+# 명시해 두는 patch로, 지금은 원본 스케줄을 바꾸지 않는다. prod 스케줄을 바꿀 때 이 값만 고친다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: athena-batch
+spec:
+  schedule: "0 17 * * *"

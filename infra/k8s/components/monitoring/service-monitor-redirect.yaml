@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redirect-service
+  labels: { app: redirect-service }
+spec:
+  selector:
+    matchLabels: { app: redirect-service }
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s

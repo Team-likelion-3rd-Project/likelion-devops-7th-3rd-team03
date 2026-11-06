@@ -1,0 +1,9 @@
+# overlays/prod/patch-athena-configmap.yaml
+# base의 ATHENA_WORKGROUP placeholder를 prod 클러스터 실제 Workgroup 이름으로 덮어씀.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: athena-batch-config
+data:
+  ATHENA_WORKGROUP: "snipy-cluster-workgroup"
+  ATHENA_DATABASE: "snipy-cluster_click_logs"

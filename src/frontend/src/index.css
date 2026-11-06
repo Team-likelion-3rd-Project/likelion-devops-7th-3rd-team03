@@ -1,0 +1,34 @@
+/* 화면은 Cloudscape 컴포넌트가 그린다. 여기에는 Cloudscape가 다루지 않는 최소한만 둔다. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    'Open Sans', 'Helvetica Neue', Roboto, Arial, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  word-break: keep-all;
+}
+
+/* 프로필 이미지 (components/Avatar.jsx) */
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+/* 초대 코드 입력칸 (pages/Members.jsx) */
+.invite-code {
+  width: 220px;
+}
+
+.invite-code input {
+  font-family: ui-monospace, Menlo, monospace;
+  letter-spacing: 0.06em;
+}

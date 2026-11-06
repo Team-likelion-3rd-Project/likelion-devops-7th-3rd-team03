@@ -1,0 +1,61 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 온프렘 VM 클러스터(kubeadm) dev 환경.
+# AWS 전용(components/aws)과 Prometheus Operator 전용(components/monitoring) 리소스는 넣지 않는다.
+# snipy 네임스페이스는 infra/onprem/base/namespace.yaml에서 따로 관리한다 (여기서 만들지 않는다).
+# 시크릿은 infra/onprem/secrets의 SealedSecret을 먼저 적용해 둔다 (mysql-secrets, management-service-secrets, redirect-service-secrets, seaweedfs-s3-secrets).
+#
+# Argo CD 동기화 순서 (sync-wave)
+#   0: MySQL, SeaweedFS (+ 어노테이션 없는 ConfigMap·Service 등)
+#   1: 마이그레이션 Job, 버킷 Job (Sync 훅)
+#   2: 앱 (management, redirect, frontend)
+namespace: snipy
+
+resources:
+  - ../../base
+  - configmaps.yaml
+  - mysql.yaml
+  - redis.yaml
+  - migration-job.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - frontend-pdb.yaml
+  - ingress.yaml
+  - seaweedfs.yaml
+  - click-stats-batch-cronjob.yaml
+  - redirect-rollout.yaml
+  - redirect-canary-analysis.yaml
+  - management-rollout.yaml
+  - management-canary-analysis.yaml
+
+patches:
+  - path: patch-app-resources.yaml
+  - path: patch-hpa.yaml
+  - path: patch-redirect-service-nodeport.yaml
+  - path: patch-redirect-fluent-bit.yaml
+  - path: patch-sync-wave.yaml
+  - path: patch-onprem-startup.yaml
+
+# Fluent Bit 설정. 파일을 고치면 이름이 바뀌어 redirect 파드가 새 설정으로 다시 뜬다
+configMapGenerator:
+  - name: fluent-bit-config
+    files:
+      - fluent-bit.conf
+
+# 이미지는 CI가 develop 머지 때 GHCR에 올린다. 백엔드 세 이미지는 onprem-backend-ci.yml, 프론트는 onprem-frontend-ci.yml이 만든다 (같은 커밋 SHA 태그).
+# 프론트 태그는 onprem-frontend-ci.yml이 infra/onprem/bump-image-tag.sh로 바꿔 커밋한다. 손으로 고치지 않는다.
+# 조직 GHCR를 여러 팀이 공유해서 이름에 저장소 이름을 붙인다.
+images:
+  - name: snipy-frontend
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-frontend
+    newTag: 37fae3ba9a9d2922d531474e6d43e226ce4ac95f
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
+    newTag: 919098856e00b4767c2235cd1bb785448334df17
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
+    newTag: 919098856e00b4767c2235cd1bb785448334df17
+  - name: db-migration
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
+    newTag: 919098856e00b4767c2235cd1bb785448334df17

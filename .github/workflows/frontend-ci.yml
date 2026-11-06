@@ -1,0 +1,169 @@
+# prod(AWS) 프론트를 빌드해 S3·CloudFront에 배포한다. 온프렘 dev 이미지는 onprem-frontend-ci.yml이 따로 만든다.
+#   - PR·develop push: 빌드만 확인한다.
+#   - main push(릴리스 PR 머지): 빌드 후 prod에 배포한다. 릴리스 PR 머지가 곧 배포다 (#105).
+#   - terraform apply 후: terraform.yml이 이 워크플로를 호출해 배포한다 (인프라를 새로 만든 경우 대비).
+#
+# 저장소 Variables (Settings → Secrets and variables → Actions → Variables). 모두 공개되어도 되는 값이다.
+#   KAKAO_CLIENT_ID, GOOGLE_CLIENT_ID, NAVER_CLIENT_ID  각 개발자 콘솔의 클라이언트 ID (온프렘과 같이 씀)
+#   PROD_APP_URL             https://app.snipy.life  (redirect URI는 여기에 /auth/<provider>/callback 을 붙인다)
+#   PROD_API_BASE_URL        https://snipy.life/api  (프론트와 API 도메인이 달라 절대 주소)
+#   PROD_SOCIAL_PROVIDERS    kakao,google,naver      (로그인 버튼을 보여줄 provider)
+#   PROD_FRONTEND_S3_BUCKET  terraform output frontend_s3_bucket_name
+#   AWS_CI_ROLE_ARN          terraform(bootstrap) output github_actions_role_arn
+# CloudFront 배포 ID는 apply할 때마다 바뀌어서 Variable로 두지 않고, 배포할 때 별칭(PROD_APP_URL의 호스트)으로 찾는다.
+name: Frontend CI
+
+on:
+  # terraform.yml의 apply가 끝난 뒤 호출된다. 이벤트·브랜치는 호출한 실행 기준이라 deploy 조건이 그대로 적용된다.
+  workflow_call:
+    inputs:
+      after_apply:
+        description: apply 직후 호출 (버킷이 없으면 실패시킨다)
+        type: boolean
+        default: false
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    # VITE_* 값은 브라우저 번들에 들어가는 공개 값이다. prod 값으로 빌드한다.
+    env:
+      VITE_API_BASE_URL: ${{ vars.PROD_API_BASE_URL }}
+      VITE_SOCIAL_PROVIDERS: ${{ vars.PROD_SOCIAL_PROVIDERS }}
+      VITE_KAKAO_CLIENT_ID: ${{ vars.KAKAO_CLIENT_ID }}
+      VITE_KAKAO_REDIRECT_URI: ${{ vars.PROD_APP_URL }}/auth/kakao/callback
+      VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      VITE_GOOGLE_REDIRECT_URI: ${{ vars.PROD_APP_URL }}/auth/google/callback
+      VITE_NAVER_CLIENT_ID: ${{ vars.NAVER_CLIENT_ID }}
+      VITE_NAVER_REDIRECT_URI: ${{ vars.PROD_APP_URL }}/auth/naver/callback
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # deploy job은 별도 러너에서 실행되므로, 빌드 결과물을 전달한다.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/frontend/dist
+          retention-days: 1
+
+  deploy:
+    name: Deploy frontend to S3
+    needs: build
+
+    # prod 배포는 main에서만 한다 (릴리스 PR 머지 또는 main에서 수동 실행)
+    if: github.ref_name == 'main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # push 실행과 apply 후 실행이 겹치지 않게 차례로 실행한다
+    concurrency:
+      group: frontend-deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      S3_BUCKET: ${{ vars.PROD_FRONTEND_S3_BUCKET }}
+      APP_URL: ${{ vars.PROD_APP_URL }}
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Validate deployment configuration
+        env:
+          ROLE_ARN: ${{ vars.AWS_CI_ROLE_ARN }}
+        run: |
+          for v in S3_BUCKET APP_URL ROLE_ARN; do
+            [ -n "${!v}" ] || { echo "::error::$v 값이 비어 있습니다. 저장소 Variables를 확인하세요 (파일 맨 위 목록)."; exit 1; }
+          done
+
+      - name: AWS 자격증명 설정 (GitHub OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ap-southeast-1
+
+      # prod를 새로 만드는 릴리스에서는 main push 시점에 버킷이 아직 없다.
+      # 이때는 건너뛰고, terraform apply가 끝난 뒤 terraform.yml이 다시 호출해 배포한다.
+      - name: 버킷 확인
+        id: bucket
+        env:
+          AFTER_APPLY: ${{ inputs.after_apply || false }}
+        run: |
+          if aws s3api head-bucket --bucket "$S3_BUCKET" 2>err.txt; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "404\|Not Found" err.txt && [ "$AFTER_APPLY" != "true" ]; then
+            echo "::notice::버킷 $S3_BUCKET 이 아직 없어 배포를 건너뜁니다. terraform apply가 끝나면 자동으로 배포됩니다."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat err.txt
+            exit 1
+          fi
+
+      # 해시된 JS/CSS 파일은 길게 캐시하되, 새 배포를 가리키는 index.html은 매번 확인한다.
+      - name: Upload static assets
+        if: steps.bucket.outputs.exists == 'true'
+        run: |
+          aws s3 sync dist "s3://$S3_BUCKET" --delete \
+            --exclude "index.html" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      # 배포 ID는 terraform apply마다 바뀌므로 별칭(app 도메인)으로 찾아 캐시를 비운다.
+      - name: Invalidate CloudFront cache
+        if: steps.bucket.outputs.exists == 'true'
+        run: |
+          ALIAS="${APP_URL#https://}"
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, '$ALIAS')].Id | [0]" \
+            --output text)
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            echo "::error::별칭 $ALIAS 인 CloudFront 배포를 찾지 못했습니다."
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
