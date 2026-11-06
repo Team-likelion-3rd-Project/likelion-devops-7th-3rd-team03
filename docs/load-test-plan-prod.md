@@ -1,6 +1,7 @@
 # prod 사양 결정을 위한 부하 테스트 기획 (#244)
 
-운영 사양(`infra/terraform/env/prod/terraform.tfvars`)은 가용성을 우선해 크게 잡혀 있어서 하루 약 25달러가 든다. 부하 테스트로 목표 성능을 통과하는 **가장 작은 사양**을 찾고, 그 결과로 운영 사양을 정한다.
+
+운영 사양(`infra/terraform/env/prod/terraform.tfvars`)은 가용성을 우선해 크게 잡혀 있어서(m5.large 노드, db.m6g.large) 하루 약 25달러가 들었다. 부하 테스트로 목표 성능을 통과하는 **가장 작은 사양**을 찾고, 그 결과로 운영 사양을 정한다. 결정한 사양과 비용은 7절에 있다.
 
 시나리오와 스크립트는 2차에서 만든 것을 그대로 쓴다 (`load-test/SCENARIOS.md`, `load-test/README.md`). 이 문서는 그것을 3차 prod 환경에서 어떤 순서로 돌리고, 결과로 무엇을 정하는지만 적는다.
 
@@ -28,7 +29,7 @@
 
 `infra/terraform/env/prod/test-lite.tfvars`로 운영 사양 위에 덮어쓴다.
 
-| 대상 | 시작 값 | 운영 사양(현재) | 시작 값을 고른 이유 |
+| 대상 | 시작 값 | 테스트 전 운영 사양 | 시작 값을 고른 이유 |
 |---|---|---|---|
 | NAT Gateway | 1개 | 2개 | 부하가 클러스터 안에서만 오간다. 개수는 가용성 문제다 |
 | EKS 노드 | t3.medium 최소 3 / 최대 5 | m5.large 3 / 5 | 상주 파드가 3대에는 들어가는 것이 확인됨(2대는 부족). HPA 최대일 때 앱 requests가 4 vCPU라 cluster-autoscaler가 늘리는지도 본다 |
@@ -36,7 +37,7 @@
 | ElastiCache | cache.t4g.micro 1노드 | 2노드 | 읽기는 primary로만 가서 복제본은 성능과 관계없다 |
 | RDS 보호 | 삭제 보호 끔, 최종 스냅샷 생략 | 켬 | 시험 데이터는 남기지 않는다 |
 
-비용은 시간당 약 0.5달러다 (운영 사양은 약 1.05달러).
+비용은 시간당 약 0.5달러다 (테스트 전 운영 사양은 약 1.05달러).
 
 ### 3-2. 배포와 접속
 
@@ -101,12 +102,29 @@ SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤.
 
 ## 7. 운영 사양 결정
 
-부하 테스트를 통과한 사양에 가용성 설정을 더해 운영 사양을 정한다.
+부하 테스트를 통과한 사양에 가용성 설정을 더해 운영 사양을 정했다 (2026-11-06, #262).
 
-- **성능**: 통과한 노드, RDS, Redis 사양
-- **가용성**: RDS Multi-AZ(RDS 비용 2배), Redis 복제본, NAT 2개. 부하 테스트와 관계없이 예산을 보고 정한다 (강사님께 확인 중)
+| 대상 | 테스트 전 | 결정 | 근거 |
+|---|---|---|---|
+| EKS 노드 | m5.large 3 / 최대 5 | **t3.medium 3 / 최대 5** | 9·10절 통과. m5.large도 2 vCPU라 CPU 이득이 없다 |
+| RDS | db.m6g.large, Multi-AZ | **db.t4g.medium, Multi-AZ** | CPU 최대 15%, 연결 20/303 |
+| ElastiCache | cache.t4g.micro 2노드 | 그대로 | CPU 3.7%, 메모리 6.7%, Evictions 0 |
+| NAT Gateway | 2개 | 그대로 | 가용성 |
+| RDS 보호 | 삭제 보호, 최종 스냅샷 | 그대로 | |
 
-결정한 값으로 `terraform.tfvars`를 고치는 PR을 올리고, 그다음 prod를 연다.
+- **성능**: test-lite에서 통과한 노드, RDS, Redis 사양을 그대로 쓴다.
+- **가용성**: AZ 하나가 장애 나도 동작하도록 NAT 2개, RDS Multi-AZ, Redis 복제본을 유지한다. 앱 파드도 두 AZ에 나눠 놓는다 (prod overlay `patch-zone-spread.yaml`, `ScheduleAnyway`).
+- t3.medium은 CPU보다 메모리와 노드당 파드 수(17개)가 빠듯하다. 평소 노드 메모리 사용률이 57~76%였고, 1,600 TPS에서 `Too many pods`가 났다. 운영 중에 OOM이나 Pending이 생기면 t3.large로 올린다.
+
+### 예상 비용 (싱가포르 리전 온디맨드 추정, 트래픽 변동비 제외)
+
+| 사양 | 하루 |
+|---|---|
+| 테스트 전 운영 사양 | 약 25달러 |
+| **결정한 운영 사양** | **약 17달러** |
+| test-lite (가용성 설정 없음) | 약 12달러 |
+
+결정한 사양의 하루 비용 구성: RDS Multi-AZ 약 4.7, 노드 약 4.0, EKS 2.4, NAT 2개 약 3.1, ALB 약 0.8, Redis 2노드 약 1.2, 기타(WAF, Secrets Manager, 공인 IPv4 등) 약 1.0. 변동비(NAT 처리량, Firehose, CloudFront, 노드 증설)는 평소 트래픽이면 하루 1달러 안팎으로 본다.
 
 ## 8. 주의
 
@@ -153,7 +171,7 @@ SHOW STATUS LIKE 'Max_used_connections';   -- 시나리오가 모두 끝난 뒤.
 - Redis: **cache.t4g.micro** 로 충분하다.
 - 6절 노드 행의 m5.large를 4 vCPU 노드로 고쳤다. m5.large도 2 vCPU라 노드당 CPU가 t3.medium과 같다.
 - 사양으로 풀리지 않는 문제는 후속 이슈로 남긴다: 클릭 이벤트 유실(Firehose 배치 전송), 새 파드 콜드스타트(ALB slow start·워밍업 후 Ready·HPA 최소 파드 수), `viral-spike.js` 기본값과 `SPIKE_TPS` 전달.
-- 가용성 설정(RDS Multi-AZ, Redis 복제본, NAT 2개)은 예산 확인 후 정한다.
+- 가용성 설정(RDS Multi-AZ, Redis 복제본, NAT 2개)은 7절에서 정했다.
 
 ## 10. 재테스트 (2026-11-06, 바이럴 800)
 
