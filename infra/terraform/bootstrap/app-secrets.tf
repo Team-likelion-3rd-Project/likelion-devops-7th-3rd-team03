@@ -28,3 +28,21 @@ resource "aws_secretsmanager_secret" "oauth" {
     prevent_destroy = true
   }
 }
+
+# ══════════════════════════════════════════════════
+# prod Slack 웹훅 (Argo CD 알림, Alertmanager)
+# ══════════════════════════════════════════════════
+# Slack에서 발급받은 Incoming Webhook URL이라 terraform이 만들 수 없다. OAuth 시크릿과 같은 이유로 bootstrap이 소유하고
+# 값은 terraform 밖에서 넣는다 (infra/terraform/README.md 3-6). 값은 JSON이 아니라 URL 문자열 하나다.
+# prod의 ExternalSecret 두 개가 읽는다: argocd-notifications-secret(argocd), alertmanager-slack(monitoring).
+# 이름의 접두사는 prod ESO 권한 범위(<cluster_name>/*)에 맞춘다.
+# 값을 넣기 전에 prod를 올리면 알림만 안 갈 뿐 앱 배포에는 영향이 없다.
+resource "aws_secretsmanager_secret" "slack_webhook" {
+  name                    = "${var.cluster_name}/app/slack-webhook"
+  description             = "prod Slack 알림 채널 Incoming Webhook URL. 값은 terraform 밖에서 관리한다"
+  recovery_window_in_days = 7
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

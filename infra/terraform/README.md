@@ -98,7 +98,7 @@ terraform은 호스팅 존을 **조회만** 한다. destroy해도 NS가 바뀌�
 **NS가 반영되기 전에 apply하면 ACM 인증서 검증에서 최대 75분 기다리다 실패한다.**
 
 ### 3-2. bootstrap (로컬)
-state 버킷, ECR, GitHub OIDC 역할(앱 CI·terraform plan·terraform apply), 소셜 로그인 OAuth 시크릿, 온프렘 백업 버킷을 만든다.
+state 버킷, ECR, GitHub OIDC 역할(앱 CI·terraform plan·terraform apply), 소셜 로그인 OAuth 시크릿, prod Slack 웹훅 시크릿, 온프렘 백업 버킷을 만든다.
 **로컬 state**(`bootstrap/terraform.tfstate`, gitignore 대상)를 쓰므로 그 파일을 지우지 않는다.
 ```powershell
 cd infra/terraform/bootstrap
@@ -190,6 +190,19 @@ aws iam create-access-key --user-name snipy-onprem-backup     # 새 키를 cp1�
 aws iam list-access-keys --user-name snipy-onprem-backup
 aws iam delete-access-key --user-name snipy-onprem-backup --access-key-id <이전 키 ID>
 ```
+
+### 3-6. prod Slack 웹훅 입력
+prod 알림(Argo CD 배포·배치, Alertmanager)은 prod 전용 Slack 채널로 간다. 웹훅 URL을 `snipy-cluster/app/slack-webhook`(bootstrap이 만든 시크릿)에 **문자열 하나**로 넣는다. GitHub Actions 실패 알림은 같은 URL을 저장소 Secret `SLACK_WEBHOOK_URL_PROD`로 따로 쓴다.
+```powershell
+notepad "$env:TEMP\slack.txt"      # 웹훅 URL 한 줄만 넣고 저장
+aws secretsmanager put-secret-value --secret-id snipy-cluster/app/slack-webhook --secret-string "file://$env:TEMP\slack.txt"
+Remove-Item "$env:TEMP\slack.txt"
+
+# 값은 출력하지 않고 들어갔는지만 확인
+aws secretsmanager describe-secret --secret-id snipy-cluster/app/slack-webhook --query "LastChangedDate"
+```
+- 값을 넣기 전에 prod를 올리면 알림만 가지 않고 배포에는 영향이 없다.
+- 웹훅을 바꾸면 ESO가 1시간 안에 반영한다. 바로 반영하려면 `kubectl -n argocd annotate externalsecret argocd-notifications-secret force-sync=$(Get-Date -Format o) --overwrite`
 
 ---
 
