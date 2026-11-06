@@ -7,6 +7,15 @@ metadata:
 spec:
   template:
     spec:
+      # 워커 두 대에 나눠 올린다. 한쪽 워커를 점검(drain)해도 다른 쪽에 파드가 남아 서비스가 이어진다.
+      # redirect 와 달리 ScheduleAnyway 로 둔다: 워커 한 대가 빠진 동안 두 번째 파드가 Pending 으로 멈추지 않고 남은 워커에 올라간다.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels: { app: management-service }
       containers:
         - name: management-service
           startupProbe:

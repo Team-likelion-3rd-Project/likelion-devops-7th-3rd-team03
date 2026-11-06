@@ -21,6 +21,7 @@ resources:
   - frontend-deployment.yaml
   - frontend-service.yaml
   - frontend-pdb.yaml
+  - app-pdb.yaml
   - ingress.yaml
   - seaweedfs.yaml
   - click-stats-batch-cronjob.yaml
