@@ -31,3 +31,10 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+  # 차트 CRD의 preserveUnknownFields: false는 기본값이라 API 서버가 저장하지 않는다.
+  # 그래서 Git과 계속 달라 보여 OutOfSync가 되므로 비교에서 뺀다 (동작에는 차이 없음)
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jsonPointers:
+        - /spec/preserveUnknownFields
