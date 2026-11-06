@@ -6,6 +6,12 @@ metadata:
   annotations:
     # 순서: Prometheus CRD(-1) → 앱(0, ServiceMonitor가 CRD 필요) → 모니터링(1)
     argocd.argoproj.io/sync-wave: "0"
+    # prod Slack 알림 (modules/gitops/argocd-notifications-values.yaml)
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-today-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-succeeded.slack: ""
 spec:
   project: default
   source:

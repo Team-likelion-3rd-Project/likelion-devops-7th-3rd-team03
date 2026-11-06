@@ -6,6 +6,8 @@ metadata:
   annotations:
     # 앱(0)이 만드는 시크릿 저장소(Grafana 비밀번호 ExternalSecret)와 gp3 StorageClass(PVC)를 쓴다
     argocd.argoproj.io/sync-wave: "1"
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
 spec:
   project: default
   source:
@@ -70,7 +72,44 @@ spec:
               requests: { cpu: 250m, memory: 256Mi }
               limits: { cpu: 1000m, memory: 1Gi }
         alertmanager:
+          # prod Slack 채널로 critical·warning만 보낸다 (#291).
+          # 웹훅은 아래 extraManifests의 ExternalSecret이 만든 alertmanager-slack Secret을 파일로 읽는다 (값이 설정에 남지 않는다).
+          # 이 파일은 root 차트(infra/argocd/prod)의 Helm 템플릿이라 Alertmanager 템플릿 표현식은 Helm 원문 문자열(백틱)로 감싼다.
+          # config를 쓰면 차트 기본 설정을 통째로 바꾸므로 기본 inhibit 규칙도 같이 적는다.
+          config:
+            route:
+              receiver: "null"
+              group_by: [alertname, namespace]
+              group_wait: 30s
+              group_interval: 5m
+              repeat_interval: 4h
+              routes:
+                # Watchdog은 항상 울리는 생존 신호, InfoInhibitor는 info 알림을 누르는 용도라 보내지 않는다
+                - receiver: "null"
+                  matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+                - receiver: slack
+                  matchers: ['severity =~ "critical|warning"']
+            inhibit_rules:
+              - source_matchers: ['severity = "critical"']
+                target_matchers: ['severity =~ "warning|info"']
+                equal: [namespace, alertname]
+              - source_matchers: ['severity = "warning"']
+                target_matchers: ['severity = "info"']
+                equal: [namespace, alertname]
+              - source_matchers: ['alertname = "InfoInhibitor"']
+                target_matchers: ['severity = "info"']
+                equal: [namespace]
+            receivers:
+              - name: "null"
+              - name: slack
+                slack_configs:
+                  - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/url
+                    send_resolved: true
+                    title: '[prod] {{`{{ template "slack.default.title" . }}`}}'
+                    text: '{{`{{ range .Alerts }}• {{ .Labels.severity }}: {{ .Annotations.summary }}{{ if .Labels.namespace }} ({{ .Labels.namespace }}){{ end }} {{ end }}`}}'
           alertmanagerSpec:
+            # alertmanager-slack Secret을 /etc/alertmanager/secrets/alertmanager-slack/ 아래에 파일로 붙인다
+            secrets: [alertmanager-slack]
             resources:
               requests: { cpu: 25m, memory: 64Mi }
               limits: { cpu: 100m, memory: 128Mi }
@@ -103,6 +142,21 @@ spec:
                 - secretKey: admin-password
                   remoteRef:
                     key: snipy-cluster/app/grafana-admin-password
+          # Alertmanager Slack 웹훅. bootstrap이 만든 Secrets Manager 시크릿(README 3-6)을 가져온다 (#291)
+          - apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: alertmanager-slack
+            spec:
+              secretStoreRef:
+                name: aws-secrets-manager
+                kind: ClusterSecretStore
+              target:
+                name: alertmanager-slack
+              data:
+                - secretKey: url
+                  remoteRef:
+                    key: snipy-cluster/app/slack-webhook
         # EKS 관리형 컨트롤 플레인이라 노출되지 않는 컴포넌트 — 켜봤자 타겟이 영구 Down으로 남음
         kubeControllerManager:
           enabled: false
