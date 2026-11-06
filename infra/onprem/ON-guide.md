@@ -312,6 +312,7 @@ systemctl start kubelet          # 원래대로 되돌리기
 - 기록할 것: ① `stop` 한 시각 ② w2가 `NotReady`로 표시된 시각 ③ `start` 후 `Ready`로 돌아온 시각.
 - 참고: 쿠버네티스 기본값으로는 노드가 응답을 멈춘 뒤 약 40초 후 `NotReady`로 표시되고, 그 노드의 파드는 기본 5분 뒤에 다른 노드로 옮겨집니다 (공식 문서 기준).
 - 실측 예 (Ubuntu 26.04, 워커 1대의 kubelet 중지): 중지 후 **약 44초** 만에 `NotReady`, **약 5분** 뒤 그 노드의 파드가 퇴출되어 다른 워커에서 새 파드가 6~18초 안에 `Running`, kubelet 재시작 후 **약 2초** 만에 `Ready`로 복귀했습니다. 노드가 돌아와도 파드는 원래 노드로 되돌아가지 않습니다.
+- 이 절은 노드가 갑자기 죽는 경우를 흉내 낸 것입니다. 점검이나 재부팅을 미리 계획해서 노드를 비우는 절차(cordon, drain, uncordon)는 [node-maintenance.md](node-maintenance.md)를 봅니다.
 
 ## G. 문제 해결
 

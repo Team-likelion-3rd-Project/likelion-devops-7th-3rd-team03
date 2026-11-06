@@ -348,7 +348,7 @@ jobs:
           fi
           aws eks update-kubeconfig --name snipy-cluster
           # 앱을 먼저 지워야 리소스를 지우는 동안 ArgoCD가 다시 만들지 않는다 (finalizer가 없어 리소스는 남는다)
-          kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds --ignore-not-found
+          kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds snipy-prod-argo-rollouts --ignore-not-found
           # CRD가 이미 없는 리소스(ServiceMonitor 등)는 오류가 나도 넘어간다
           kubectl delete -k infra/k8s/overlays/prod --ignore-not-found || true
           # Prometheus·Grafana PVC까지 지워 EBS 볼륨을 정리한다

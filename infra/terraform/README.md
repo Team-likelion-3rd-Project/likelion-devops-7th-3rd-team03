@@ -99,7 +99,7 @@ terraform은 호스팅 존을 **조회만** 한다. destroy해도 NS가 바뀌�
 **NS가 반영되기 전에 apply하면 ACM 인증서 검증에서 최대 75분 기다리다 실패한다.**
 
 ### 3-2. bootstrap (로컬)
-state 버킷, ECR, GitHub OIDC 역할(앱 CI·terraform plan·terraform apply), 소셜 로그인 OAuth 시크릿, 온프렘 백업 버킷을 만든다.
+state 버킷, ECR, GitHub OIDC 역할(앱 CI·terraform plan·terraform apply), 소셜 로그인 OAuth 시크릿, prod Slack 웹훅 시크릿, 온프렘 백업 버킷을 만든다.
 **로컬 state**(`bootstrap/terraform.tfstate`, gitignore 대상)를 쓰므로 그 파일을 지우지 않는다.
 ```powershell
 cd infra/terraform/bootstrap
@@ -192,6 +192,19 @@ aws iam list-access-keys --user-name snipy-onprem-backup
 aws iam delete-access-key --user-name snipy-onprem-backup --access-key-id <이전 키 ID>
 ```
 
+### 3-6. prod Slack 웹훅 입력
+prod 알림(Argo CD 배포·배치, Alertmanager)은 prod 전용 Slack 채널로 간다. 웹훅 URL을 `snipy-cluster/app/slack-webhook`(bootstrap이 만든 시크릿)에 **문자열 하나**로 넣는다. GitHub Actions 실패 알림은 같은 URL을 저장소 Secret `SLACK_WEBHOOK_URL_PROD`로 따로 쓴다.
+```powershell
+notepad "$env:TEMP\slack.txt"      # 웹훅 URL 한 줄만 넣고 저장
+aws secretsmanager put-secret-value --secret-id snipy-cluster/app/slack-webhook --secret-string "file://$env:TEMP\slack.txt"
+Remove-Item "$env:TEMP\slack.txt"
+
+# 값은 출력하지 않고 들어갔는지만 확인
+aws secretsmanager describe-secret --secret-id snipy-cluster/app/slack-webhook --query "LastChangedDate"
+```
+- 값을 넣기 전에 prod를 올리면 알림만 가지 않고 배포에는 영향이 없다.
+- 웹훅을 바꾸면 ESO가 1시간 안에 반영한다. 바로 반영하려면 `kubectl -n argocd annotate externalsecret argocd-notifications-secret force-sync=$(Get-Date -Format o) --overwrite`
+
 ---
 
 ## 4. prod apply
@@ -267,9 +280,10 @@ kubectl -n argocd get applications      # 4개 Synced / Healthy. 처음 몇 분�
 ```
 
 ArgoCD 동기화 순서:
+
 | wave | 앱 / 리소스 |
 |---|---|
-| -1 | `snipy-prod-prometheus-crds` (Prometheus CRD) |
+| -1 | `snipy-prod-prometheus-crds` (Prometheus CRD), `snipy-prod-argo-rollouts` (카나리 컨트롤러) |
 | 0 | `snipy-prod` — 그 안에서 시크릿 저장소(-3) → ExternalSecret(-2) → 마이그레이션 Job(-1) → 앱(0) |
 | 1 | `snipy-prod-observability` (kube-prometheus-stack, Grafana) |
 
@@ -292,6 +306,35 @@ kubectl -n argocd port-forward svc/argocd-server 8080:443              # https:/
 | 모니터링 | `kubectl -n monitoring get pods`, `kubectl get servicemonitors` | Running, ServiceMonitor 2개 |
 
 PowerShell의 `curl`은 `Invoke-WebRequest` 별칭이라 `curl.exe`를 쓴다.
+
+### 5-1. 알림 (prod Slack 채널, #291)
+
+| 무엇 | 보내는 곳 | 설정 |
+|---|---|---|
+| Terraform (prod) 실패, main의 Frontend CI 실패 | GitHub Actions `Notify Failure` | `.github/workflows/notify-failure.yml`, 저장소 Secret `SLACK_WEBHOOK_URL_PROD` |
+| `snipy-prod`·`snipy-prod-observability` 동기화 실패·Degraded | Argo CD Notifications | `modules/gitops/argocd-notifications-values.yaml`, Application annotation |
+| 배치 실패(두 CronJob), 매일 배치 성공 | Argo CD Notifications | 위와 같음 (CronJob health 메시지) |
+| Prometheus 알림 critical·warning | Alertmanager | `infra/argocd/prod/templates/observability.yaml` |
+
+웹훅은 Secrets Manager `snipy-cluster/app/slack-webhook`([3-6](#3-6-prod-slack-웹훅-입력))에서 ExternalSecret 두 개가 가져온다 (`argocd/argocd-notifications-secret`, `monitoring/alertmanager-slack`).
+
+시험:
+```powershell
+# Actions: Notify Failure → Run workflow → channel: prod
+
+# Alertmanager: 시험 알림 하나를 직접 넣는다 (5분 안에 Slack, 끝나면 resolved)
+# port-forward는 끝나지 않으니 다른 터미널에서 띄워 둔다
+kubectl -n monitoring port-forward svc/kube-prometheus-kube-prome-alertmanager 9093
+# (다른 터미널)
+$end = (Get-Date).ToUniversalTime().AddMinutes(5).ToString("o")
+$body = '[{"labels":{"alertname":"SlackTest","severity":"warning"},"annotations":{"summary":"prod 알림 시험"},"endsAt":"' + $end + '"}]'
+Invoke-RestMethod -Method Post -Uri http://localhost:9093/api/v2/alerts -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body))
+
+# Argo CD 알림 기록을 지우고 다시 평가 (상태가 이미 바뀐 뒤 시험할 때)
+kubectl -n argocd annotate app snipy-prod notified.notifications.argoproj.io-
+kubectl -n argocd logs deploy/argocd-notifications-controller --tail=30
+```
+Alertmanager Service 이름이 다르면 `kubectl -n monitoring get svc`로 확인한다.
 
 ---
 
@@ -324,6 +367,7 @@ cd ../..
 1~2분 뒤 https://app.snipy.life 에서 `Ctrl+F5` 후 세 provider로 로그인한다.
 
 **각 개발자 콘솔 등록 값** (온프렘 `http://localhost:3000/...` 값은 지우지 않고 추가한다)
+
 | provider | 등록 위치 | 값 |
 |---|---|---|
 | 카카오 | 플랫폼 → Web 사이트 도메인 / 카카오 로그인 → Redirect URI | `https://app.snipy.life` / `https://app.snipy.life/auth/kakao/callback` |
@@ -367,7 +411,7 @@ aws route53 list-resource-record-sets --hosted-zone-id <존 ID> --query "Resourc
 ### 7-2. 로컬로 실행 (예비)
 ```powershell
 aws eks update-kubeconfig --region ap-southeast-1 --name snipy-cluster
-kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds
+kubectl -n argocd delete application snipy-root snipy-prod snipy-prod-observability snipy-prod-prometheus-crds snipy-prod-argo-rollouts
 kubectl delete -k infra/k8s/overlays/prod       # ServiceMonitor "not found"는 무시
 kubectl delete namespace monitoring
 # ALB가 없어지고 kubectl get pv 가 비면

@@ -4,8 +4,14 @@ metadata:
   name: snipy-prod
   namespace: argocd
   annotations:
-    # 순서: Prometheus CRD(-1) → 앱(0, ServiceMonitor가 CRD 필요) → 모니터링(1)
+    # 순서: Prometheus CRD·Argo Rollouts(-1) → 앱(0, ServiceMonitor·Rollout이 CRD 필요) → 모니터링(1)
     argocd.argoproj.io/sync-wave: "0"
+    # prod Slack 알림 (modules/gitops/argocd-notifications-values.yaml)
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-today-failed.slack: ""
+    notifications.argoproj.io/subscribe.on-batch-succeeded.slack: ""
 spec:
   project: default
   source:
@@ -27,8 +33,18 @@ spec:
         duration: 30s
         factor: 2
         maxDuration: 5m
+    # 아래 ignoreDifferences를 동기화할 때도 적용한다 (없으면 동기화마다 Git의 replicas로 되돌린다)
+    syncOptions:
+      - RespectIgnoreDifferences=true
+  # 파드 수는 HPA가 조절하므로 Git 값과 달라도 OutOfSync로 보지 않고 되돌리지도 않는다.
+  #   Deployment: 카나리 전환 후에는 Rollout이 0개로 줄여 둔다 (workloadRef scaleDown)
+  #   Rollout: HPA가 늘린 값을 selfHeal이 2로 되돌리지 않게 한다
   ignoreDifferences:
     - group: apps
       kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: argoproj.io
+      kind: Rollout
       jsonPointers:
         - /spec/replicas

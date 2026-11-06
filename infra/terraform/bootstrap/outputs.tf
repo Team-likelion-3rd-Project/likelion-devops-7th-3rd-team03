@@ -20,6 +20,11 @@ output "oauth_secret_name" {
   value       = aws_secretsmanager_secret.oauth.name
 }
 
+output "slack_webhook_secret_name" {
+  description = "prod Slack 웹훅 URL을 넣을 Secrets Manager 시크릿 이름 (README 3-6)"
+  value       = aws_secretsmanager_secret.slack_webhook.name
+}
+
 output "onprem_backup_bucket_name" {
   description = "온프렘 cp1의 백업 업로드 대상 버킷 (ON 담당자에게 전달)"
   value       = aws_s3_bucket.onprem_backup.bucket
