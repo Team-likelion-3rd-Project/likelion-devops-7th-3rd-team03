@@ -6,6 +6,7 @@ resources:
   - ../../base
   - external-secrets.yaml
   - migration-job.yaml
+  - pdb.yaml
 
 components:
   - ../../components/aws
