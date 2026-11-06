@@ -1,0 +1,66 @@
+# redirect를 롤링 업데이트 대신 카나리로 배포한다 (Argo Rollouts, dev overlay와 같은 방식).
+# base Deployment는 그대로 두고, Rollout이 workloadRef로 Deployment의 파드 템플릿(zone spread 패치 포함)을 넘겨받는다.
+# Rollout이 정상으로 뜨면 원래 Deployment는 0개로 줄인다(scaleDown: onsuccess). Deployment의 replicas는
+# snipy-prod Application의 ignoreDifferences로 Argo CD가 되돌리지 않는다.
+#
+# 단계: 새 버전을 파드 50%로 → 1분 대기 → k6가 카나리 파드에만 2분간 요청해 판단 → 통과하면 100%, 실패하면 자동 롤백.
+# ALB는 redirect-service Service의 파드(카나리·stable 모두)로 보내므로 트래픽은 파드 수 비율로 나뉜다.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: redirect-service
+  annotations:
+    # 마이그레이션 Job(-1) 다음, prod 앱과 같은 wave
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: redirect-service }
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: redirect-service
+    scaleDown: onsuccess
+  strategy:
+    canary:
+      # Argo Rollouts가 selector에 버전 해시를 붙여 각각 카나리·stable 파드만 가리키게 만든다.
+      # k6는 카나리 Service로만 요청해서 새 버전만 판단한다.
+      canaryService: redirect-service-canary
+      stableService: redirect-service-stable
+      steps:
+        - setWeight: 50
+        # 워밍업(#264)이 끝나야 Ready가 되지만, management와 같은 기준으로 1분 더 기다린다
+        - pause: { duration: 60s }
+        - analysis:
+            templates:
+              - templateName: redirect-canary-k6
+            args:
+              - name: target
+                value: http://redirect-service-canary.default.svc:8080
+        - setWeight: 100
+---
+# 카나리 판단 전용 Service. app 라벨을 붙이지 않는다:
+# ServiceMonitor가 app 라벨로 Service를 고르므로, 붙이면 같은 파드를 Service 3개로 중복 수집한다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redirect-service-canary
+  labels: { canary-of: redirect-service }
+spec:
+  selector: { app: redirect-service }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redirect-service-stable
+  labels: { canary-of: redirect-service }
+spec:
+  selector: { app: redirect-service }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

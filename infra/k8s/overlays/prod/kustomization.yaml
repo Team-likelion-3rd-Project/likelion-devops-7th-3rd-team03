@@ -7,6 +7,10 @@ resources:
   - external-secrets.yaml
   - migration-job.yaml
   - pdb.yaml
+  - redirect-rollout.yaml
+  - redirect-canary-analysis.yaml
+  - management-rollout.yaml
+  - management-canary-analysis.yaml
 
 components:
   - ../../components/aws
@@ -20,6 +24,7 @@ patches:
   - path: patch-athena-cronjob.yaml
   - path: patch-zone-spread.yaml
   - path: patch-redirect-env.yaml
+  - path: patch-hpa.yaml
 
 # 이미지는 온프렘 CI(onprem-backend-ci)가 GHCR에 한 번 빌드·스캔해 올린 것을 dev와 같이 쓴다 (#105).
 # 그 CI가 dev overlay와 이 파일의 태그를 같은 SHA로 develop에 커밋하고, 릴리스 PR이 main에 머지되면 prod에 배포된다.
