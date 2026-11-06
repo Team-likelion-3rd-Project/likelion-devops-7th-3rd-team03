@@ -1,0 +1,89 @@
+# Argo CD 알림·배치 health 설정 (prod). main.tf의 helm_release.argocd가 values로 같이 읽는다.
+# 온프렘(infra/onprem/argocd의 notifications.yaml, argocd-cm-patch.yaml, argocd-cmd-params-patch.yaml)과 같은 방식이다.
+# prod는 메시지 앞에 [prod]를 붙이고, CronJob이 두 개(athena-batch 매일, athena-batch-today 매시)라 배치 트리거를 이름별로 나눈다.
+#   실패: 두 배치 모두 / 성공: 매일 배치(athena-batch)만 (매시 성공 알림은 하루 24건이라 보내지 않는다)
+configs:
+  params:
+    # Argo CD 3.x는 리소스별 health를 Application에 저장하지 않는다.
+    # 배치 알림이 CronJob health 메시지(app.status.resources)를 읽으므로 저장하게 한다 (온프렘과 같음)
+    controller.resource.health.persist: "true"
+  cm:
+    # CronJob 건강 상태를 "마지막 실행 성공 여부"로 보지 않는다 (항상 Healthy).
+    # 대신 마지막 실행 결과를 메시지에 시각과 함께 남기고, 아래 배치 트리거가 Slack으로 알린다.
+    # 시각이 들어가 실행마다 메시지가 달라져, 연속으로 실패해도 회차마다 한 번씩 알림이 간다.
+    resource.customizations.health.batch_CronJob: |
+      hs = {}
+      hs.status = "Healthy"
+      hs.message = "배치 실행 결과는 배포 상태에서 제외한다"
+      local s = obj.status
+      if s ~= nil and s.lastScheduleTime ~= nil and (s.active == nil or #s.active == 0) then
+        if s.lastSuccessfulTime ~= nil and s.lastSuccessfulTime >= s.lastScheduleTime then
+          hs.message = "BATCH_LAST_RUN_SUCCEEDED " .. s.lastSuccessfulTime
+        else
+          hs.message = "BATCH_LAST_RUN_FAILED " .. s.lastScheduleTime
+        end
+      end
+      return hs
+
+notifications:
+  # 웹훅은 ExternalSecret(infra/argocd/prod/templates/notifications-secret.yaml)이 Secrets Manager에서 가져와 만든다
+  secret:
+    create: false
+
+  # Slack incoming webhook. 서비스 이름이 slack이라 annotation은 subscribe.<트리거>.slack이다.
+  notifiers:
+    service.webhook.slack: |
+      url: $slack-webhook-url
+      headers:
+      - name: Content-Type
+        value: application/json
+
+  # 메시지에 따옴표가 들어 있는 필드(operationState.message 등)는 넣지 않는다. JSON이 깨진다.
+  # {{ }} 안의 문자열은 백틱으로 쓴다 (\"를 쓰면 템플릿 파싱이 깨져 이 앱의 알림 전체가 안 나간다)
+  templates:
+    template.app-sync-failed: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {"text": ":x: [prod] {{.app.metadata.name}} 배포(Sync) 실패\n단계: {{.app.status.operationState.phase}} / 리비전: {{.app.status.sync.revision | trunc 7}}\n확인: kubectl -n argocd describe app {{.app.metadata.name}}"}
+    template.app-health-degraded: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {"text": ":warning: [prod] {{.app.metadata.name}} 상태 Degraded\n리비전: {{.app.status.sync.revision | trunc 7}}\n확인: ArgoCD 화면에서 Degraded 리소스, kubectl get pods"}
+    template.batch-failed: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {"text": ":x: [prod] 배치(CronJob) 실패{{range .app.status.resources}}{{if eq .kind `CronJob`}}\n- {{.name}}: {{.health.message}}{{end}}{{end}}\n확인: kubectl get jobs --sort-by=.metadata.creationTimestamp (가장 아래 Failed의 로그를 kubectl logs job/이름 으로 확인)"}
+    template.batch-succeeded: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {"text": ":white_check_mark: [prod] 매일 배치(athena-batch) 성공{{range .app.status.resources}}{{if and (eq .kind `CronJob`) (eq .name `athena-batch`)}} ({{.health.message}}){{end}}{{end}}"}
+
+  # 상태가 바뀔 때 한 번만 보낸다. 정상 배포에는 아무것도 보내지 않는다.
+  # 배치는 oncePer에 시각이 든 메시지를 넣어 실행마다 한 번씩 보낸다. CronJob별로 트리거를 나눠 서로 기록이 섞이지 않게 한다.
+  triggers:
+    trigger.on-sync-failed: |
+      - when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
+        send: [app-sync-failed]
+    trigger.on-health-degraded: |
+      - when: app.status.health.status == 'Degraded'
+        send: [app-health-degraded]
+    trigger.on-batch-failed: |
+      - when: any(app.status.resources, {.kind == 'CronJob' && .name == 'athena-batch' && .health != nil && .health.message startsWith 'BATCH_LAST_RUN_FAILED'})
+        oncePer: filter(app.status.resources, {.kind == 'CronJob' && .name == 'athena-batch'})[0].health.message
+        send: [batch-failed]
+    trigger.on-batch-today-failed: |
+      - when: any(app.status.resources, {.kind == 'CronJob' && .name == 'athena-batch-today' && .health != nil && .health.message startsWith 'BATCH_LAST_RUN_FAILED'})
+        oncePer: filter(app.status.resources, {.kind == 'CronJob' && .name == 'athena-batch-today'})[0].health.message
+        send: [batch-failed]
+    trigger.on-batch-succeeded: |
+      - when: any(app.status.resources, {.kind == 'CronJob' && .name == 'athena-batch' && .health != nil && .health.message startsWith 'BATCH_LAST_RUN_SUCCEEDED'})
+        oncePer: filter(app.status.resources, {.kind == 'CronJob' && .name == 'athena-batch'})[0].health.message
+        send: [batch-succeeded]
