@@ -281,6 +281,36 @@ kubectl -n argocd port-forward svc/argocd-server 8080:443              # https:/
 
 PowerShell의 `curl`은 `Invoke-WebRequest` 별칭이라 `curl.exe`를 쓴다.
 
+### 5-1. 알림 (prod Slack 채널, #291)
+
+| 무엇 | 보내는 곳 | 설정 |
+|---|---|---|
+| Terraform (prod) 실패, main의 Frontend CI 실패 | GitHub Actions `Notify Failure` | `.github/workflows/notify-failure.yml`, 저장소 Secret `SLACK_WEBHOOK_URL_PROD` |
+| `snipy-prod`·`snipy-prod-observability` 동기화 실패·Degraded | Argo CD Notifications | `modules/gitops/argocd-notifications-values.yaml`, Application annotation |
+| 배치 실패(두 CronJob), 매일 배치 성공 | Argo CD Notifications | 위와 같음 (CronJob health 메시지) |
+| Prometheus 알림 critical·warning | Alertmanager | `infra/argocd/prod/templates/observability.yaml` |
+
+웹훅은 Secrets Manager `snipy-cluster/app/slack-webhook`([3-6](#3-6-prod-slack-웹훅-입력))에서 ExternalSecret 두 개가 가져온다 (`argocd/argocd-notifications-secret`, `monitoring/alertmanager-slack`).
+
+시험:
+```powershell
+# Actions: Notify Failure → Run workflow → channel: prod
+
+# Alertmanager: 시험 알림 하나를 직접 넣는다 (5분 안에 Slack, 끝나면 resolved)
+# port-forward는 끝나지 않으니 다른 터미널에서 띄워 둔다
+kubectl -n monitoring port-forward svc/kube-prometheus-kube-prome-alertmanager 9093
+# (다른 터미널)
+$end = (Get-Date).ToUniversalTime().AddMinutes(5).ToString("o")
+$body = '[{"labels":{"alertname":"SlackTest","severity":"warning"},"annotations":{"summary":"prod 알림 시험"},"endsAt":"' + $end + '"}]'
+Invoke-RestMethod -Method Post -Uri http://localhost:9093/api/v2/alerts -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body))
+curl.exe -s -X POST -H "Content-Type: application/json" -d $body http://localhost:9093/api/v2/alerts
+
+# Argo CD 알림 기록을 지우고 다시 평가 (상태가 이미 바뀐 뒤 시험할 때)
+kubectl -n argocd annotate app snipy-prod notified.notifications.argoproj.io-
+kubectl -n argocd logs deploy/argocd-notifications-controller --tail=30
+```
+Alertmanager Service 이름이 다르면 `kubectl -n monitoring get svc`로 확인한다.
+
 ---
 
 ## 6. 소셜 로그인 확인 (프론트 임시 배포)
