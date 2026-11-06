@@ -249,11 +249,18 @@ public class FirehoseClickEventPublisher implements SmartLifecycle {
     }
 
     /**
-     * 기본(Integer.MAX_VALUE)보다 낮은 단계라 조립 실행기 등 기본 단계 빈보다 나중에 멈춘다.
-     * 앞 단계가 먼저 멈춰야 마지막까지 들어온 클릭을 이 큐가 받아 보낼 수 있다.
+     * 종료 순서 (#263 리뷰 반영). SmartLifecycle 은 phase 가 큰 것부터 멈춘다.
+     *   웹 서버 graceful shutdown (MAX-1024, 처리 중인 요청 마무리)
+     *   → 웹 서버 정지 (MAX-2048)
+     *   → 조립 실행기 (MAX-3000) → 로그·실시간 실행기 (MAX-3500)   (AsyncEventConfig)
+     *   → 이 전송기 (MAX-4096, 큐를 비우고 전송)
+     *   → RealtimeStatsRecorder (1024, Redis flush) → Redis 연결 (0)
+     * 앞 단계가 모두 멈춘 뒤에 멈춰야 마지막까지 들어온 클릭을 보낼 수 있다.
      */
+    public static final int PHASE = SmartLifecycle.DEFAULT_PHASE - 4096;
+
     @Override
     public int getPhase() {
-        return Integer.MAX_VALUE - 1000;
+        return PHASE;
     }
 }
