@@ -33,6 +33,12 @@ export async function getBreakdown(ws, linkId, type, from, to) {
   return groups[0]
 }
 
+// HOUR 분포는 값이 "00"~"23"(KST)이고 클릭이 있는 시간만 올 수 있어, 0~23시를 모두 채워 그래프에 쓴다.
+export function hourlyClicks(breakdown) {
+  const byHour = new Map(breakdown.map((r) => [Number(r.value), r.clickCount]))
+  return Array.from({ length: 24 }, (_, hour) => ({ hour, clickCount: byHour.get(hour) ?? 0 }))
+}
+
 export async function getReferrerStats(ws, linkId, from, to) {
   return (await getBreakdown(ws, linkId, 'REFERRER', from, to)).breakdown
 }

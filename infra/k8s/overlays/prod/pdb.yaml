@@ -1,0 +1,26 @@
+# 노드 drain(점검, 노드그룹 업데이트, cluster-autoscaler 축소) 때 같은 서비스 파드를 한꺼번에 내리지 않는다.
+# HPA 최소 2개 중 최소 1개는 유지한다. 선택자가 app 라벨이라 카나리(Rollout) 파드에도 그대로 적용된다.
+# 온프렘(dev)은 ON 담당 영역이라 prod에만 둔다.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redirect-service
+  labels:
+    app: redirect-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: redirect-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: management-service
+  labels:
+    app: management-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: management-service

@@ -8,6 +8,7 @@ AWS 운영 환경(prod)을 올리고, 동작을 확인하고, 정리(destroy)하
 | 인프라 (VPC·EKS·RDS·Redis·CloudFront·WAF·ACM·DNS·ArgoCD) | GitHub Actions `Terraform (prod)` 워크플로가 terraform을 실행한다. apply·destroy는 승인 후에만 실행된다 |
 | 앱 | ArgoCD가 Git(`infra/argocd/prod` → `infra/k8s/overlays/prod`)을 보고 배포한다. kubectl은 확인용으로만 쓴다 |
 | 이미지 | 온프렘과 같은 GHCR 이미지. develop 머지 때 CI 봇이 dev·prod 태그를 커밋하고, **릴리스 PR(develop → main) 머지가 곧 prod 배포**다 |
+| 프론트 | main push에서 frontend-ci가 S3·CloudFront에 배포한다. 인프라를 새로 만드는 릴리스에서는 버킷이 없어 건너뛰고, terraform apply가 끝난 뒤 같은 실행에서 자동 배포된다 (#276) |
 
 PowerShell 명령은 **레포 루트 기준**이다. 다른 경로에서 실행하는 단계는 `cd`를 같이 적었다.
 
@@ -231,6 +232,30 @@ kubectl -n argocd get application snipy-root -o jsonpath='{.metadata.finalizers}
 kubectl -n argocd delete application snipy-root                                     # 새 root가 같은 이름이라 하위 앱을 이어받는다
 ```
 
+### 4-4. 릴리스 PR (develop → main)
+
+저장소는 squash merge만 허용한다. squash로 머지하면 main에는 develop과 내용은 같지만 이력이 이어지지 않는 커밋 하나가 생겨서, 다음 develop → main PR은 예전 변경까지 diff로 잡고 충돌이 난다. 그래서 **두 번째 릴리스부터는 develop 기준 릴리스 브랜치에 main 이력을 연결해서 PR을 연다** (#279).
+
+1. 릴리스 이슈를 만들고 브랜치를 준비한다.
+   ```bash
+   git fetch origin
+   git diff <지난 릴리스 때 develop 커밋> origin/main --stat   # 비어 있어야 함. 지난 릴리스 PR의 "main 이력 연결" 커밋 첫 번째 부모 (git log -1 --format=%P <그 커밋>)
+   git switch -c chore/#<이슈>-release-<n> origin/develop
+   git merge -s ours origin/main -m "chore: main 이력 연결 (#<이슈>)"
+   git diff origin/develop          # 비어 있어야 함 (내용은 develop 그대로)
+   git diff origin/main --stat      # 이번 릴리스 변경만 나와야 함
+   git push -u origin chore/#<이슈>-release-<n>
+   ```
+   `-s ours`는 내용은 develop 그대로 두고 main을 부모로만 연결한다. PR의 커밋 목록에는 예전 커밋이 다시 보이지만, **Files changed**에는 이번 변경만 나온다.
+2. PR(base `main`)을 열고 승인 2명 + 코드 오너 승인을 받는다. 배포일(화·목)에 머지한다.
+3. **squash 확인 화면에서 Extended description(커밋 본문)을 비운다.** 기본 본문에는 CI 봇 커밋 메시지(`... [skip ci]`)가 들어 있어서, 그대로 머지하면 main push 워크플로가 하나도 실행되지 않는다 (#280에서 실제 발생).
+4. main 머지는 기본 브랜치가 아니라서 `Closes #`가 동작하지 않는다. PR 본문에는 `Refs #<이슈>`를 쓰고, 확인이 끝나면 이슈를 직접 닫는다.
+
+머지 후 순서:
+1. 인프라 변경이 있으면 `Terraform (prod)`가 실행된다 → [4-1](#4-1-ci로-실행-기본)처럼 plan 확인 → 승인. apply가 끝나면 같은 실행의 `Frontend deploy`가 프론트를 배포한다.
+2. 프론트 변경이 있으면 `Frontend CI`가 바로 배포한다 (인프라를 새로 만드는 경우에는 건너뛰고 1의 apply 후에 배포).
+3. [5. 배포 확인](#5-배포-확인), 스모크(KR IP): 3사 로그인, 링크 생성·리다이렉트, 클릭 통계(매시 :30 배치).
+
 ---
 
 ## 5. 배포 확인
@@ -272,7 +297,7 @@ PowerShell의 `curl`은 `Invoke-WebRequest` 별칭이라 `curl.exe`를 쓴다.
 
 ## 6. 소셜 로그인 확인 (프론트 임시 배포)
 
-prod 프론트(S3)는 **main 머지 때만** frontend-ci가 배포한다. main 릴리스 전에 확인하려면 로컬에서 빌드해 올린다.
+prod 프론트(S3)는 **main push 때와 main 기준 terraform apply 직후에만** frontend-ci가 배포한다 (#276). main 릴리스 전에 확인하려면 로컬에서 빌드해 올린다.
 client ID는 **Secrets Manager에서 읽어** 백엔드와 같은 값을 쓴다 (예시 자리표시자를 그대로 빌드하면 카카오 KOE101).
 ```powershell
 cd src/frontend
@@ -377,3 +402,6 @@ cd ../../..
 | destroy가 `BucketNotEmpty` | 버킷에 파일이 남아 있음 (프론트 버킷은 이후 `force_destroy`) | `aws s3 rm s3://<버킷> --recursive` 후 다시 실행 |
 | destroy가 보안 그룹·서브넷에서 멈춤 | ALB(또는 ENI)가 남아 있음 | k8s 정리 후 다시 실행 |
 | destroy 후에도 EBS 비용 | PVC를 지우지 않고 클러스터를 지움 | EC2 → 볼륨에서 `available` 상태 볼륨 삭제 |
+| main 머지 후 워크플로가 하나도 실행되지 않음 | squash 커밋 본문에 CI 봇 커밋의 `[skip ci]`가 들어감 | [4-4](#4-4-릴리스-pr-develop--main)처럼 본문을 비우고 머지. 이미 머지했으면 main에서 수동 실행: 인프라 변경이 있으면 `Terraform (prod)`(apply 후 프론트도 배포), 프론트만 바뀌었으면 `Frontend CI`. 앱 이미지는 ArgoCD가 main을 동기화하므로 영향 없음 |
+| 구글 `400 redirect_uri_mismatch` (URI가 콘솔에 등록되어 있는데도) | 프론트 빌드의 `GOOGLE_CLIENT_ID`(GitHub Variable)가 URI를 등록한 클라이언트와 다름 | 번들의 client ID와 백엔드(`kubectl exec deploy/management-service -- printenv GOOGLE_CLIENT_ID`) 비교 → Variable 수정 → Frontend CI를 main에서 수동 실행 |
+| PowerShell에서 `kubectl logs ... \| Select-String "워밍업"`이 아무것도 못 찾음 | PowerShell 5.1이 kubectl의 UTF-8 출력을 다른 인코딩으로 읽어 한글이 깨짐 | 로그의 영문 키로 검색 (`Select-String "elapsedMs"`) |
