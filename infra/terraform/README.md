@@ -303,7 +303,6 @@ kubectl -n monitoring port-forward svc/kube-prometheus-kube-prome-alertmanager 9
 $end = (Get-Date).ToUniversalTime().AddMinutes(5).ToString("o")
 $body = '[{"labels":{"alertname":"SlackTest","severity":"warning"},"annotations":{"summary":"prod 알림 시험"},"endsAt":"' + $end + '"}]'
 Invoke-RestMethod -Method Post -Uri http://localhost:9093/api/v2/alerts -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body))
-curl.exe -s -X POST -H "Content-Type: application/json" -d $body http://localhost:9093/api/v2/alerts
 
 # Argo CD 알림 기록을 지우고 다시 평가 (상태가 이미 바뀐 뒤 시험할 때)
 kubectl -n argocd annotate app snipy-prod notified.notifications.argoproj.io-
