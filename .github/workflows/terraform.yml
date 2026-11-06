@@ -275,6 +275,19 @@ jobs:
             echo "- kubectl: \`aws eks update-kubeconfig --region $AWS_REGION --name snipy-cluster\` (cluster_admin_arns의 사용자)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ── apply 후 프론트 배포 ────────────────────────────────────
+  # 인프라를 새로 만들면 main push 시점의 프론트 배포는 버킷이 없어 건너뛴다. apply가 끝난 뒤 여기서 배포한다.
+  # 배포 조건(main에서만)은 frontend-ci.yml의 deploy job이 판단한다.
+  frontend:
+    name: Frontend deploy
+    needs: apply
+    uses: ./.github/workflows/frontend-ci.yml
+    with:
+      after_apply: true
+    permissions:
+      contents: read
+      id-token: write
+
   # ── destroy (수동, production 승인) ─────────────────────────
   # 클러스터를 지우기 전에 k8s가 만든 AWS 자원(ALB, EBS 볼륨)을 먼저 정리한다.
   # 남아 있으면 ALB가 쓰는 보안 그룹 때문에 destroy가 멈추거나, EBS 볼륨이 계정에 남는다.
