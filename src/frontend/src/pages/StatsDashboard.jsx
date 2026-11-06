@@ -13,19 +13,29 @@ import Multiselect from '@cloudscape-design/components/multiselect'
 import Select from '@cloudscape-design/components/select'
 import SpaceBetween from '@cloudscape-design/components/space-between'
 import Table from '@cloudscape-design/components/table'
-import { getDailyStats, compareLinks, getReferrerStats, kstDay } from '../api/stats'
+import {
+  getDailyStats,
+  compareLinks,
+  getReferrerStats,
+  getBreakdown,
+  hourlyClicks,
+  kstDay
+} from '../api/stats'
 import { listLinks } from '../api/links'
 import { ApiError } from '../api/http'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { RequireWorkspace } from '../components/RequireWorkspace'
 import { StatGrid, TrendChart } from '../components/StatsParts'
 import { toast } from '../components/Toast'
+import { dimensionName, mergeByName, osName } from '../statsLabels'
 
 const linkOption = (l) => ({
   label: l.title || l.shortUrl,
   value: l.linkId,
   description: l.shortUrl
 })
+
+const wholeNumbers = { yTickFormatter: (y) => (Number.isInteger(y) ? y.toLocaleString() : '') }
 
 const dateProps = {
   locale: 'ko',
@@ -56,6 +66,7 @@ function StatsView() {
 
   const [daily, setDaily] = useState(null)
   const [referrers, setReferrers] = useState(null)
+  const [dist, setDist] = useState(null) // { os, browser, hours }
   const [compareRows, setCompareRows] = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -97,12 +108,20 @@ function StatsView() {
     }
     setLoading(true)
     try {
-      const [dailyRes, referrerRes] = await Promise.all([
+      const [dailyRes, referrerRes, osRes, browserRes, hourRes] = await Promise.all([
         getDailyStats(current, linkId, from, to),
-        getReferrerStats(current, linkId, from, to)
+        getReferrerStats(current, linkId, from, to),
+        getBreakdown(current, linkId, 'OS', from, to),
+        getBreakdown(current, linkId, 'BROWSER', from, to),
+        getBreakdown(current, linkId, 'HOUR', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
+      setDist({
+        os: mergeByName(osRes.breakdown, osName),
+        browser: mergeByName(browserRes.breakdown, dimensionName),
+        hours: hourlyClicks(hourRes.breakdown)
+      })
       setCompareRows(
         compareIds.length > 0
           ? withLinkInfo(await compareLinks(current, compareIds, from, to))
@@ -113,6 +132,7 @@ function StatsView() {
       toast(message, 'error')
       setDaily(null)
       setReferrers(null)
+      setDist(null)
       setCompareRows(null)
     } finally {
       setLoading(false)
@@ -232,52 +252,42 @@ function StatsView() {
         )}
 
         {referrers && (
-          <Container header={<Header variant="h2">유입 경로</Header>}>
-            <SpaceBetween size="l">
-              <BarChart
-                series={[
-                  {
-                    title: '클릭 수',
-                    type: 'bar',
-                    data: referrers.map((r) => ({ x: r.value, y: r.clickCount }))
-                  }
-                ]}
-                xScaleType="categorical"
-                i18nStrings={{
-                  yTickFormatter: (y) => (Number.isInteger(y) ? y.toLocaleString() : '')
-                }}
-                height={240}
-                hideFilter
-                hideLegend
-                ariaLabel="유입 경로별 클릭 수"
-                empty={
-                  <Box textAlign="center" color="inherit">
-                    <b>해당 기간에 클릭 기록이 없습니다.</b>
-                  </Box>
-                }
-              />
-              <Table
-                variant="embedded"
-                items={referrers}
-                trackBy="value"
-                columnDefinitions={[
-                  {
-                    id: 'name',
-                    header: '유입 경로',
-                    cell: (r) => r.value,
-                    isRowHeader: true
-                  },
-                  { id: 'clicks', header: '클릭 수', cell: (r) => r.clickCount.toLocaleString() },
-                  { id: 'rate', header: '비율', cell: (r) => `${r.percentage}%` }
-                ]}
-                empty={
-                  <Box textAlign="center" color="text-body-secondary">
-                    해당 기간에 클릭 기록이 없습니다.
-                  </Box>
-                }
-              />
-            </SpaceBetween>
-          </Container>
+          <Box color="text-body-secondary" fontSize="body-s">
+            유입 경로·운영체제·브라우저·시간대 분포는 어제까지 집계예요. 시간대는 한국 시간(KST)
+            기준이에요.
+          </Box>
+        )}
+
+        {referrers && <BreakdownCard title="유입 경로" rows={referrers} />}
+
+        {dist && (
+          <>
+            <BreakdownCard title="운영체제(OS)" rows={dist.os} />
+            <BreakdownCard title="브라우저" rows={dist.browser} />
+            <Container header={<Header variant="h2">시간대별 클릭</Header>}>
+              {dist.hours.some((h) => h.clickCount > 0) ? (
+                <BarChart
+                  series={[
+                    {
+                      title: '클릭 수',
+                      type: 'bar',
+                      data: dist.hours.map((h) => ({ x: `${h.hour}시`, y: h.clickCount }))
+                    }
+                  ]}
+                  xScaleType="categorical"
+                  i18nStrings={wholeNumbers}
+                  height={240}
+                  hideFilter
+                  hideLegend
+                  ariaLabel="시간대별 클릭 수"
+                />
+              ) : (
+                <Box textAlign="center" color="text-body-secondary" padding="l">
+                  해당 기간에 클릭 기록이 없습니다.
+                </Box>
+              )}
+            </Container>
+          </>
         )}
 
         {compareRows && (
@@ -310,5 +320,50 @@ function StatsView() {
         )}
       </SpaceBetween>
     </ContentLayout>
+  )
+}
+
+// 분포 하나(막대 그래프 + 표). rows: [{ value, clickCount, percentage }]
+function BreakdownCard({ title, rows }) {
+  return (
+    <Container header={<Header variant="h2">{title}</Header>}>
+      <SpaceBetween size="l">
+        <BarChart
+          series={[
+            {
+              title: '클릭 수',
+              type: 'bar',
+              data: rows.map((r) => ({ x: r.value, y: r.clickCount }))
+            }
+          ]}
+          xScaleType="categorical"
+          i18nStrings={wholeNumbers}
+          height={240}
+          hideFilter
+          hideLegend
+          ariaLabel={`${title}별 클릭 수`}
+          empty={
+            <Box textAlign="center" color="inherit">
+              <b>해당 기간에 클릭 기록이 없습니다.</b>
+            </Box>
+          }
+        />
+        <Table
+          variant="embedded"
+          items={rows}
+          trackBy="value"
+          columnDefinitions={[
+            { id: 'name', header: title, cell: (r) => r.value, isRowHeader: true },
+            { id: 'clicks', header: '클릭 수', cell: (r) => r.clickCount.toLocaleString() },
+            { id: 'rate', header: '비율', cell: (r) => `${r.percentage}%` }
+          ]}
+          empty={
+            <Box textAlign="center" color="text-body-secondary">
+              해당 기간에 클릭 기록이 없습니다.
+            </Box>
+          }
+        />
+      </SpaceBetween>
+    </Container>
   )
 }
