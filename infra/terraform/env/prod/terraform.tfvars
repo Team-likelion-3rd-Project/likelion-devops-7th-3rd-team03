@@ -13,10 +13,11 @@ node_min_size      = 3
 node_max_size      = 5
 node_desired_size  = 3
 
-rds_instance_class      = "db.t4g.medium"
-rds_multi_az            = true
-rds_deletion_protection = true
-rds_skip_final_snapshot = false
+rds_instance_class          = "db.t4g.medium"
+rds_multi_az                = true
+rds_backup_retention_period = 7
+rds_deletion_protection     = true
+rds_skip_final_snapshot     = false
 
 elasticache_num_cache_clusters         = 2
 elasticache_automatic_failover_enabled = true
