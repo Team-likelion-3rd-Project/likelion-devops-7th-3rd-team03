@@ -10,7 +10,7 @@ import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { NotFound } from './pages/NotFound'
 
-// 처음 화면(홈·로그인)에 필요 없는 페이지는 들어갈 때 내려받는다. 통계 차트(recharts) 등이 첫 화면 번들에서 빠진다.
+// 처음 화면(홈·로그인)에 필요 없는 페이지는 들어갈 때 내려받는다. 통계 화면과 홈의 운영 현황(Cloudscape 차트)이 첫 화면 번들에서 빠진다.
 const load = (name, importer) => lazy(() => importer().then((m) => ({ default: m[name] })))
 const AuthCallback = load('AuthCallback', () => import('./pages/AuthCallback'))
 const SignupProfile = load('SignupProfile', () => import('./pages/SignupProfile'))
