@@ -27,7 +27,7 @@ public class AsyncEventConfig {
     /** 종료 순서는 FirehoseClickEventPublisher.getPhase 주석 참고 */
     static final int ASSEMBLER_PHASE = SmartLifecycle.DEFAULT_PHASE - 3000;
     static final int CONSUMER_PHASE = SmartLifecycle.DEFAULT_PHASE - 3500;
-    private static final int AWAIT_TERMINATION_SECONDS = 10;
+    private static final int AWAIT_TERMINATION_SECONDS = 5;
 
     @Bean(name = "clickEventAssemblerExecutor")
     public Executor clickEventAssemblerExecutor(MeterRegistry meterRegistry) {

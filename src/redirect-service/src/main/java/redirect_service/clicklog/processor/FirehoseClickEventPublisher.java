@@ -75,7 +75,7 @@ public class FirehoseClickEventPublisher implements SmartLifecycle {
             @Value("${app.click-event.firehose.queue-capacity:50000}") int queueCapacity,
             @Value("${app.click-event.firehose.linger:200ms}") String linger,
             @Value("${app.click-event.firehose.max-attempts:3}") int maxAttempts,
-            @Value("${app.click-event.firehose.shutdown-timeout:20s}") String shutdownTimeout) {
+            @Value("${app.click-event.firehose.shutdown-timeout:10s}") String shutdownTimeout) {
         this.firehoseClient = firehoseClient;
         this.jsonMapper = jsonMapper;
         this.streamName = streamName;
@@ -227,19 +227,28 @@ public class FirehoseClickEventPublisher implements SmartLifecycle {
         sender.start();
     }
 
-    /** 새로 들어오는 클릭은 받지 않고, 큐에 남은 것을 보낸 뒤 끝낸다 */
+    /**
+     * 새로 들어오는 클릭은 받지 않고, 큐에 남은 것을 보낸 뒤 끝낸다.
+     * 시간 안에 못 끝내면 전송 스레드를 멈춘 다음 남은 것을 센다.
+     * (전송 스레드가 살아 있는 채로 세면, 그 뒤에 보낸 것까지 버림으로 잡혀 지표가 커진다)
+     */
     @Override
     public void stop() {
         running = false;
         try {
             sender.join(shutdownTimeout.toMillis());
+            if (sender.isAlive()) {
+                sender.interrupt();
+                sender.join(1_000);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        int left = queue.size();
-        if (left > 0) {
-            droppedSendFailed.increment(left);
-            log.error("종료 시간 안에 보내지 못한 클릭 {}건을 버립니다", left);
+        List<String> left = new ArrayList<>();
+        queue.drainTo(left);
+        if (!left.isEmpty()) {
+            droppedSendFailed.increment(left.size());
+            log.error("종료 시간 안에 보내지 못한 클릭 {}건을 버립니다", left.size());
         }
     }
 

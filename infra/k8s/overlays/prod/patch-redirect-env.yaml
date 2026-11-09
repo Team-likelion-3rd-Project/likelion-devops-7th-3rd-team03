@@ -7,7 +7,7 @@ metadata:
 spec:
   template:
     spec:
-      # 종료 때 남은 요청 → 실행기 큐 → Firehose 큐를 순서대로 비우는 데 30초(기본)를 넘길 수 있다 (#263)
+      # 종료 때 남은 요청(최대 30초) → 실행기 큐(5초 × 2) → Firehose 큐(10초)를 비우는 데 기본 30초를 넘길 수 있다 (#263)
       terminationGracePeriodSeconds: 60
       containers:
         - name: redirect-service

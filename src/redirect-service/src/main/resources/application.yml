@@ -75,8 +75,8 @@ app:
       # 첫 레코드를 이만큼 기다린 뒤 쌓여 있는 것을 최대 500건까지 한 번에 보낸다
       linger: ${FIREHOSE_LINGER:200ms}
       max-attempts: ${FIREHOSE_MAX_ATTEMPTS:3}
-      # 종료 때 큐를 비우는 최대 시간. terminationGracePeriodSeconds 안이어야 한다
-      shutdown-timeout: ${FIREHOSE_SHUTDOWN_TIMEOUT:20s}
+      # 종료 때 큐를 비우는 최대 시간. graceful 30초 + 실행기 5초 × 2 + 이 값이 terminationGracePeriodSeconds(60) 안이어야 한다
+      shutdown-timeout: ${FIREHOSE_SHUTDOWN_TIMEOUT:10s}
     # 클릭마다 콘솔에 JSON 로그를 남길지 (관측용). prod 는 Firehose 로 보내므로 false (#274)
     console-log:
       enabled: ${CLICK_EVENT_CONSOLE_LOG_ENABLED:true}
