@@ -54,11 +54,14 @@ spec:
               command: [ "sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\"" ]
             periodSeconds: 5
             timeoutSeconds: 5
+          # 다 뜬 뒤 감시. 노드가 과부하일 때 ping 이 잠깐 늦는 것만으로 재시작하지 않게 넉넉히 둔다(10초 × 6번 = 60초).
+          # 30초로 두었을 때 워커 과부하 중 재시작 → Endpoints 가 비어 DNS NXDOMAIN → 앱 연쇄 실패가 있었다(11/9).
           livenessProbe:
             exec:
               command: [ "sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\"" ]
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 6
           resources:
             requests: { cpu: 100m, memory: 512Mi }
             limits:   { cpu: 500m, memory: 1Gi }
