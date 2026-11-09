@@ -14,6 +14,11 @@ import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -24,6 +29,15 @@ public class RedirectService {
     private final ApplicationEventPublisher eventPublisher;
     private final Counter successOutcomeCounter;
     private final Map<RedirectNotFoundException.Reason, Counter> failureOutcomeCounters;
+    /**
+     * 같은 slug 의 동시 캐시 미스를 한 번의 DB 조회로 합친다 (single-flight, #번호).
+     * 캐시가 빈 링크에 요청이 몰리면 요청마다 DB 를 조회해 커넥션 풀이 꽉 찼다 (400건/초에서 대기 71, 최대 7초).
+     * 파드 안에서만 합쳐서 파드 수만큼은 DB 조회가 생긴다.
+     */
+    private final ConcurrentHashMap<String, CompletableFuture<Optional<RedirectCacheEntry>>> inFlightLoads = new ConcurrentHashMap<>();
+    private static final long JOIN_TIMEOUT_MILLIS = 2_000;
+    private final Counter dbLoadCounter;
+    private final Counter joinedLoadCounter;
 
     public RedirectService(LinkRepository linkRepository, RedisRedirectCache redirectCache,
             ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
@@ -32,6 +46,10 @@ public class RedirectService {
         this.eventPublisher = eventPublisher;
         this.successOutcomeCounter = outcomeCounter(meterRegistry, "SUCCESS");
         this.failureOutcomeCounters = new EnumMap<>(RedirectNotFoundException.Reason.class);
+        this.dbLoadCounter = Counter.builder("redirect_cache_load_total").tag("result", "db")
+                .description("캐시 미스로 DB 를 조회한 수 (같은 slug 동시 미스는 한 번)").register(meterRegistry);
+        this.joinedLoadCounter = Counter.builder("redirect_cache_load_total").tag("result", "joined")
+                .description("다른 요청의 DB 조회 결과를 기다려 받은 수").register(meterRegistry);
         for (RedirectNotFoundException.Reason reason : RedirectNotFoundException.Reason.values()) {
             failureOutcomeCounters.put(reason, outcomeCounter(meterRegistry, reason.name()));
         }
@@ -92,22 +110,52 @@ public class RedirectService {
     }
 
     private RedirectTarget findDatabaseRedirectTarget(String slug, LocalDateTime now) {
-        Link link = linkRepository.findBySlug(slug)
+        RedirectCacheEntry entry = loadOnce(slug)
                 .orElseThrow(() -> new RedirectNotFoundException(RedirectNotFoundException.Reason.NOT_FOUND));
-
-        // 만료/비활성 링크도 캐시에 저장해 다음 요청을 DB 없이 404로 처리한다.
-        RedirectCacheEntry cacheEntry = new RedirectCacheEntry(
-                link.getId(),
-                link.getOriginalUrl(),
-                link.isEnabled(),
-                link.getExpiresAt()
-        );
-        redirectCache.put(slug, cacheEntry);
-
-        if (!link.isRedirectable(now)) {
-            throw new RedirectNotFoundException(unavailableReason(link.isEnabled()));
+        if (!entry.isRedirectable(now)) {
+            throw new RedirectNotFoundException(unavailableReason(entry.isEnabled()));
         }
-        return cacheEntry.toRedirectTarget();
+        return entry.toRedirectTarget();
+    }
+
+    /** 같은 slug 를 이미 조회 중인 요청이 있으면 그 결과를 기다리고, 없으면 직접 조회해 캐시에 넣는다 */
+    private Optional<RedirectCacheEntry> loadOnce(String slug) {
+        CompletableFuture<Optional<RedirectCacheEntry>> mine = new CompletableFuture<>();
+        CompletableFuture<Optional<RedirectCacheEntry>> existing = inFlightLoads.putIfAbsent(slug, mine);
+        if (existing != null) {
+            try {
+                Optional<RedirectCacheEntry> joined = existing.get(JOIN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                joinedLoadCounter.increment();
+                return joined;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return loadFromDatabase(slug);
+            } catch (ExecutionException | TimeoutException e) {
+                // 앞선 조회가 실패하거나 너무 오래 걸리면 각자 조회한다 (기존 동작)
+                return loadFromDatabase(slug);
+            }
+        }
+        try {
+            Optional<RedirectCacheEntry> loaded = loadFromDatabase(slug);
+            mine.complete(loaded);
+            return loaded;
+        } catch (RuntimeException e) {
+            mine.completeExceptionally(e);
+            throw e;
+        } finally {
+            inFlightLoads.remove(slug, mine);
+        }
+    }
+
+    /** DB 를 조회하고, 만료·비활성 링크도 캐시에 넣어 다음 요청을 DB 없이 404 로 처리한다 */
+    private Optional<RedirectCacheEntry> loadFromDatabase(String slug) {
+        dbLoadCounter.increment();
+        return linkRepository.findBySlug(slug).map(link -> {
+            RedirectCacheEntry cacheEntry = new RedirectCacheEntry(
+                    link.getId(), link.getOriginalUrl(), link.isEnabled(), link.getExpiresAt());
+            redirectCache.put(slug, cacheEntry);
+            return cacheEntry;
+        });
     }
 
     /**
