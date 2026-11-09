@@ -45,7 +45,6 @@ public class WorkspaceStatsService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final int MAX_TARGETS = 20;
     private static final long MAX_RANGE_DAYS = 90;
-    // redirect 의 RealtimeStatsRecorder, 기존 StatsService 와 같은 키
     private static final String CLICKS_KEY = "stats:%s:link:%d:clicks";
     private static final String UV_KEY = "stats:%s:link:%d:uv";
 

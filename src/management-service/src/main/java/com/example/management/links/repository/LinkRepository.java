@@ -22,12 +22,6 @@ public interface LinkRepository extends JpaRepository<Link, Long> {
     /** 수정·삭제 대상 조회. 다른 워크스페이스의 링크는 찾지 못한다. */
     Optional<Link> findByLinkIdAndWorkspaceIdAndIsVisibleTrue(String linkId, Long workspaceId);
 
-    /** 통계 조회 전에 요청한 링크들이 현재 사용자 소유이며 노출 가능한지 한 번에 확인한다. */
-    List<Link> findByLinkIdInAndUserIdAndIsVisibleTrue(List<String> linkIds, Long userId);
-
-    /** 단건 통계 조회의 소유권·soft-delete 상태를 함께 확인한다. */
-    Optional<Link> findByLinkIdAndUserIdAndIsVisibleTrue(String linkId, Long userId);
-
     /** 워크스페이스를 삭제할 때 비활성화할 링크 */
     List<Link> findByWorkspaceIdAndIsVisibleTrue(Long workspaceId);
 
