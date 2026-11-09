@@ -18,6 +18,9 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels: { app: redirect-service }
+          # 같은 버전(Rollout이 붙이는 해시) 파드끼리만 센다. 없으면 배포 중 남아 있는
+          # 이전 버전 파드까지 세서, 이전 버전이 지워진 뒤 새 파드가 한 AZ에 몰릴 수 있다 (#303 첫 배포에서 발생)
+          matchLabelKeys: [rollouts-pod-template-hash]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,3 +35,6 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels: { app: management-service }
+          # 같은 버전(Rollout이 붙이는 해시) 파드끼리만 센다. 없으면 배포 중 남아 있는
+          # 이전 버전 파드까지 세서, 이전 버전이 지워진 뒤 새 파드가 한 AZ에 몰릴 수 있다 (#303 첫 배포에서 발생)
+          matchLabelKeys: [rollouts-pod-template-hash]

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Alert from '@cloudscape-design/components/alert'
 import Box from '@cloudscape-design/components/box'
@@ -12,6 +12,7 @@ import FormField from '@cloudscape-design/components/form-field'
 import Header from '@cloudscape-design/components/header'
 import Input from '@cloudscape-design/components/input'
 import Link from '@cloudscape-design/components/link'
+import Spinner from '@cloudscape-design/components/spinner'
 import SpaceBetween from '@cloudscape-design/components/space-between'
 import { useAuth } from '../context/AuthContext'
 import { useWorkspace } from '../context/WorkspaceContext'
@@ -21,7 +22,11 @@ import { ApiError } from '../api/http'
 import { ExpiryInput } from '../components/ExpiryInput'
 import { toast } from '../components/Toast'
 import { AlertsPanel } from '../components/AlertsPanel'
-import { TeamOverview } from '../components/TeamOverview'
+
+// 운영 현황(차트)은 로그인한 사용자만 보므로, 처음 화면(비로그인 홈)에서는 내려받지 않는다.
+const TeamOverview = lazy(() =>
+  import('../components/TeamOverview').then((m) => ({ default: m.TeamOverview }))
+)
 
 const TITLE_MAX = 100
 
@@ -215,7 +220,9 @@ export function Home() {
           {MOCK_TEAMS ? (
             <MockNote title="운영 현황" />
           ) : (
-            <TeamOverview key={current.workspaceId} ws={current} reloadKey={created} />
+            <Suspense fallback={<Spinner size="large" />}>
+              <TeamOverview key={current.workspaceId} ws={current} reloadKey={created} />
+            </Suspense>
           )}
           {main}
         </Grid>
