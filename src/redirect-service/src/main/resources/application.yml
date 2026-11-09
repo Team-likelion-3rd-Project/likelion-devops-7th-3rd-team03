@@ -80,8 +80,8 @@ app:
     requests: ${REDIRECT_WARMUP_REQUESTS:15000}
     concurrency: ${REDIRECT_WARMUP_CONCURRENCY:8}
     max-duration: ${REDIRECT_WARMUP_MAX_DURATION:60s}
-    # 클릭 경로(UA 분석·직렬화·Firehose 첫 연결)를 데우는 반복 횟수 (#273)
-    click-path-iterations: ${REDIRECT_WARMUP_CLICK_PATH_ITERATIONS:2000}
+    # 클릭 경로 워밍업 반복 횟수 (#273). UA 분석기는 preHeat 이 데우고, 반복은 봇·유입 판별·직렬화를 데운다
+    click-path-iterations: ${REDIRECT_WARMUP_CLICK_PATH_ITERATIONS:500}
 
   realtime-stats:
     # Redis는 당일 잠정 통계만 보관한다. 원본 클릭 이벤트가 최종 집계의 기준이다.

@@ -26,8 +26,8 @@ import java.util.concurrent.TimeUnit;
  * 한꺼번에 처음 실행해 CPU 가 몰렸다 (바이럴 800 재테스트에서 시작 24초 p99 3.6s).
  *
  * 여기서는 클릭 이벤트를 만들거나 보내지 않고 경로만 실행한다.
- * - UA 분석기: Yauaa preheat + 대표 UA 로 resolve
- * - 봇·유입 판별, 클릭 이벤트 JSON 직렬화: 결과는 버린다
+ * - UA 분석기: Yauaa preHeat (분석 결과는 캐시돼 반복 resolve 로는 데워지지 않는다)
+ * - 봇·유입 판별, 클릭 이벤트 JSON 직렬화: 반복 실행하고 결과는 버린다
  * - Firehose: 레코드 0개 PutRecordBatch. 서버가 검증 오류로 거절해 데이터는 쓰지 않지만,
  *   자격 증명(IRSA → STS)과 TLS 연결은 이 호출에서 맺어진다. redirect 의 IAM 권한은 PutRecord·PutRecordBatch 뿐이다
  */
