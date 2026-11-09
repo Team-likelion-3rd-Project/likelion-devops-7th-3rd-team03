@@ -190,6 +190,8 @@ public class FirehoseClickEventPublisher implements SmartLifecycle {
                 }
                 pending = failed;
             } catch (RuntimeException e) {
+                // 예외(타임아웃·서버 오류)는 서버가 이미 썼을 수 있어 재전송하면 중복이 생길 수 있다.
+                // 유실보다 중복이 낫고(최소 한 번), 중복은 배치가 event_id 로 걸러 센다 (#번호)
                 log.warn("Firehose PutRecordBatch failed. attempt={}, records={}", attempt, pending.size(), e);
             }
             if (!pending.isEmpty() && attempt < maxAttempts) {
