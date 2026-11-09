@@ -168,6 +168,7 @@ prod(AWS)는 롤링 업데이트 그대로다. 이 설정은 dev overlay 에만 
 | 카나리가 옛 이미지로 진행됨 | 오래된 overlay 로 `kubectl apply -k` 해서 Deployment 이미지 태그가 되돌아감 | `abort` 후 최신 develop 으로 다시 적용. 머지 후엔 손으로 apply 하지 않는다 |
 | 동기화가 멈추고 HPA 가 `unable to get the target's current scale: rollouts ... not found` | HPA 가 Rollout 보다 먼저 만들어짐 (#224 수정 전 클러스터) | `kubectl -n snipy apply -f infra/k8s/overlays/dev/<서비스>-rollout.yaml` 로 Rollout 을 먼저 만든다 |
 | Deployment 와 Rollout 파드가 같이 떠 있고 워커 CPU 가 포화 | Rollout 이 Healthy 가 되기 전엔 Deployment 를 줄이지 않는다 (`scaleDown: onsuccess`). CPU 가 부족하면 Rollout 이 못 떠서 서로 기다림 | Rollout stable 파드가 Ready 인지 확인 후 `kubectl -n snipy scale deploy <서비스> --replicas=0` |
+| 서비스마다 파드가 3개 (Deployment 파드가 다시 뜸) | `operation` 패치로 수동 동기화하면 RespectIgnoreDifferences 가 적용되지 않아 Git 의 Deployment replicas 로 되돌아갔음 | dev overlay Deployment replicas 를 0 으로 둠(#번호). 수동 동기화는 Argo CD UI 의 SYNC 버튼으로 |
 
 ## 8. 되돌리기 (롤링 업데이트로)
 

@@ -5,7 +5,9 @@ kind: Deployment
 metadata:
   name: management-service
 spec:
-  replicas: 1
+  # 카나리 전환 후 Deployment 는 파드 템플릿 역할만 한다. 파드는 Rollout 이 띄운다 (workloadRef).
+  # 1 로 두면 수동 동기화로 Git 값이 적용될 때 Deployment 파드가 다시 떠 Rollout 파드와 트래픽이 섞인다
+  replicas: 0
   template:
     spec:
       containers:
@@ -19,7 +21,9 @@ kind: Deployment
 metadata:
   name: redirect-service
 spec:
-  replicas: 1
+  # 카나리 전환 후 Deployment 는 파드 템플릿 역할만 한다. 파드는 Rollout 이 띄운다 (workloadRef).
+  # 1 로 두면 수동 동기화로 Git 값이 적용될 때 Deployment 파드가 다시 떠 Rollout 파드와 트래픽이 섞인다
+  replicas: 0
   template:
     spec:
       containers:
