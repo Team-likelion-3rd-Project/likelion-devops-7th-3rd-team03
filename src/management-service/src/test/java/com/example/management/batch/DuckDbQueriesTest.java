@@ -124,6 +124,22 @@ class DuckDbQueriesTest {
                 List.of("2", "2026-10-13", "KR-11", "1"));
     }
 
+    @Test
+    void 같은_event_id가_여러_번_저장돼도_클릭은_한_번으로_센다() throws IOException {
+        // 재전송·Firehose 중복 전달로 같은 이벤트가 같은 파일에 두 번, 다른 파일에 한 번 더 저장된 경우 (#314)
+        String duplicated = v1WithId("dup-event", 9, "2026-10-13T05:00:00", "v9", "ko-KR",
+                "DESKTOP", "Windows", "Chrome", "DIRECT", false);
+        write("year=2026/month=10/day=13/dup-a.json", false, duplicated, duplicated);
+        write("year=2026/month=10/day=13/dup-b.json", false, duplicated);
+
+        assertThat(run(queries().dailyStats(TARGET)))
+                .filteredOn(row -> row.get(0).equals("9"))
+                .containsExactly(List.of("9", "2026-10-13", "1", "1"));
+        assertThat(run(queries().dimensionStats(TARGET, "DEVICE")))
+                .filteredOn(row -> row.get(0).equals("9"))
+                .containsExactly(List.of("9", "2026-10-13", "DESKTOP", "1"));
+    }
+
     private DuckDbQueries queries() {
         return new DuckDbQueries(base.toString().replace('\\', '/'), true);
     }
@@ -135,15 +151,21 @@ class DuckDbQueriesTest {
         return rows;
     }
 
-    /** 스키마 1 이벤트 (country·region 필드 없음) */
+    /** 스키마 1 이벤트 (country·region 필드 없음). event_id 는 이벤트마다 다르다 */
     private static String v1(long linkId, String clickedAt, String visitorId, String language, String deviceType,
                              String os, String browser, String referrerCategory, boolean isBot) {
+        return v1WithId(java.util.UUID.randomUUID().toString(), linkId, clickedAt, visitorId, language,
+                deviceType, os, browser, referrerCategory, isBot);
+    }
+
+    private static String v1WithId(String eventId, long linkId, String clickedAt, String visitorId, String language,
+                                   String deviceType, String os, String browser, String referrerCategory, boolean isBot) {
         return String.format(
-                "{\"event_id\":\"e\",\"schema_version\":1,\"link_id\":%d,\"clicked_at\":\"%s\","
+                "{\"event_id\":\"%s\",\"schema_version\":1,\"link_id\":%d,\"clicked_at\":\"%s\","
                         + "\"visitor_id\":\"%s\",\"language\":%s,\"device_type\":\"%s\","
                         + "\"operating_system\":\"%s\",\"browser\":\"%s\","
                         + "\"referrer_category\":\"%s\",\"is_bot\":%s}",
-                linkId, clickedAt, visitorId, quote(language), deviceType, os, browser, referrerCategory, isBot);
+                eventId, linkId, clickedAt, visitorId, quote(language), deviceType, os, browser, referrerCategory, isBot);
     }
 
     /** 스키마 2 이벤트 (#207 country·region 포함) */

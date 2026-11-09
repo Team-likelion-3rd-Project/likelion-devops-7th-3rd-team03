@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
  *  - KST 변환은 +9시간 고정 (한국은 서머타임이 없어 타임존 확장 없이 동일한 결과)
  *  - 방문자 수는 근사치(APPROX_DISTINCT) 대신 정확한 COUNT(DISTINCT)
  *  - split_part가 값이 없을 때 빈 문자열을 주므로 NULLIF로 NULL 처리해 UNKNOWN으로 묶는다
+ *  - 클릭 수는 COUNT(DISTINCT event_id). 클릭은 "최소 한 번" 전달돼 같은 이벤트가 두 번 저장될 수 있다 (#314)
  */
 @Component
 @Profile("batch")
@@ -28,7 +29,7 @@ final class DuckDbQueries implements ClickStatsQueries {
     private static final DateTimeFormatter YMD = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /** 집계에 쓰는 필드만 읽는다. JSON의 나머지 필드는 무시되고, 스키마 1 이벤트에 없는 country·region 은 NULL 이다. */
-    private static final String COLUMNS = "{'link_id': 'BIGINT', 'clicked_at': 'VARCHAR', "
+    private static final String COLUMNS = "{'event_id': 'VARCHAR', 'link_id': 'BIGINT', 'clicked_at': 'VARCHAR', "
             + "'visitor_id': 'VARCHAR', 'language': 'VARCHAR', 'device_type': 'VARCHAR', "
             + "'operating_system': 'VARCHAR', 'browser': 'VARCHAR', "
             + "'country': 'VARCHAR', 'region': 'VARCHAR', "
@@ -59,7 +60,7 @@ final class DuckDbQueries implements ClickStatsQueries {
                 SELECT
                   link_id,
                   CAST(stat_date AS VARCHAR) AS stat_date,
-                  COUNT(*) AS click_count,
+                  COUNT(DISTINCT event_id) AS click_count,
                   %s AS visitor_count
                 FROM events
                 WHERE stat_date = DATE '%s'
@@ -83,7 +84,7 @@ final class DuckDbQueries implements ClickStatsQueries {
                   link_id,
                   CAST(stat_date AS VARCHAR) AS stat_date,
                   dimension_value,
-                  COUNT(*) AS click_count
+                  COUNT(DISTINCT event_id) AS click_count,
                 FROM events
                 WHERE stat_date = DATE '%s'
                 GROUP BY link_id, stat_date, dimension_value
@@ -105,6 +106,7 @@ final class DuckDbQueries implements ClickStatsQueries {
 
         return """
                   SELECT
+                    event_id,
                     link_id,
                     %s,
                     CAST(CAST(left(clicked_at, 26) AS TIMESTAMP) + INTERVAL 9 HOUR AS DATE) AS stat_date
