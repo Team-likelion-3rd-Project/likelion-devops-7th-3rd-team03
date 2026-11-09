@@ -7,6 +7,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import redirect_service.clicklog.processor.ClickPathWarmup;
 import redirect_service.config.WarmupProperties;
 
 import java.io.IOException;
@@ -47,6 +48,7 @@ public class RedirectWarmup implements ApplicationRunner {
     private final RedisRedirectCache redirectCache;
     private final WarmupProperties properties;
     private final Environment environment;
+    private final ClickPathWarmup clickPathWarmup;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -59,6 +61,13 @@ public class RedirectWarmup implements ApplicationRunner {
     }
 
     private void warmUp() {
+        // 클릭 이벤트 경로(UA 분석·직렬화·Firehose 첫 연결)를 먼저 데운다 (#273). 실패해도 302 워밍업은 계속한다
+        try {
+            clickPathWarmup.warmUp(properties.getClickPathIterations());
+        } catch (RuntimeException exception) {
+            log.warn("클릭 경로 워밍업 중 예외가 발생해 건너뜁니다.", exception);
+        }
+
         // 캐시가 없으면 매 요청이 DB 조회(없는 slug)가 되므로, 끝내 준비하지 못하면 건너뛴다
         if (!prepareCacheEntry()) {
             log.warn("워밍업 캐시를 저장하지 못해 워밍업을 건너뜁니다.");

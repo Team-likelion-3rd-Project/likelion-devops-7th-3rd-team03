@@ -21,4 +21,9 @@ public class WarmupProperties {
     private int concurrency = 8;
     /** 넘으면 남은 건수와 상관없이 끝내고 트래픽을 받는다 */
     private Duration maxDuration = Duration.ofSeconds(60);
+    /**
+     * 클릭 경로 워밍업 반복 횟수 (#273). UA 분석기는 preHeat 이 데우고(UserAgentResolver 는 결과를 캐시해 반복해도 분석은 처음 몇 번뿐),
+     * 반복은 봇·유입 판별과 클릭 이벤트 직렬화를 데운다.
+     */
+    private int clickPathIterations = 500;
 }
