@@ -173,6 +173,10 @@ prod(AWS)는 롤링 업데이트 그대로다. 이 설정은 dev overlay 에만 
 ## 8. 되돌리기 (롤링 업데이트로)
 
 dev overlay 에서 해당 서비스의 `*-rollout.yaml`, `*-canary-analysis.yaml`을 빼고 `patch-hpa.yaml`의 `scaleTargetRef`를 Deployment 로 돌린다.
+**`patch-app-resources.yaml`의 Deployment `replicas: 0`도 1 이상으로 되돌린다.**
+카나리를 쓰는 동안 Deployment 는 파드 템플릿 역할만 해서 0 으로 두는데(#321), 0 인 채로 Rollout 을 지우면
+새로 설치하는 클러스터에서는 Deployment 가 0개로 만들어지고, HPA 는 replicas 가 0 이면 조절하지 않아 파드가 뜨지 않는다.
+
 Rollout 을 지우기 전에 Deployment 를 먼저 늘려야 서비스가 끊기지 않는다.
 
 ```bash
