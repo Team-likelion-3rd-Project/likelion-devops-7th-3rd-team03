@@ -1,0 +1,2 @@
+redirect-service-59d5c9dcc8-8gbwt redirect_cache_load_total{result="db"} 1169.0 redirect_cache_load_total{result="joined"} 20.0 redirect_cache_result_total{result="error"} 2.0 redirect_cache_result_total{result="hit"} 3001.0 redirect_cache_result_total{result="miss"} 1187.0 
+redirect-service-59d5c9dcc8-bcf6b redirect_cache_load_total{result="db"} 0.0 redirect_cache_load_total{result="joined"} 0.0 redirect_cache_result_total{result="error"} 0.0 redirect_cache_result_total{result="hit"} 3001.0 redirect_cache_result_total{result="miss"} 0.0 
