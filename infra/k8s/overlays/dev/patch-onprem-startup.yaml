@@ -42,3 +42,10 @@ spec:
         - name: redirect-service
           startupProbe:
             failureThreshold: 60
+          # 워밍업(#264, #273)은 prod 노드 기준(요청 15000, 동시 8)이라, 2코어 워커에서는 60초 동안 노드 CPU 를 다 쓴다.
+          # 같은 노드의 다른 파드·컨트롤러가 probe 에 응답하지 못해 연쇄로 죽어서(11/9) 온프렘은 줄인다.
+          env:
+            - name: REDIRECT_WARMUP_REQUESTS
+              value: "3000"
+            - name: REDIRECT_WARMUP_CONCURRENCY
+              value: "2"

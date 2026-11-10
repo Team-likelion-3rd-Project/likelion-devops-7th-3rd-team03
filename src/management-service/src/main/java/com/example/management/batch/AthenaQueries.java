@@ -33,10 +33,11 @@ final class AthenaQueries implements ClickStatsQueries {
                 SELECT
                   link_id,
                   CAST(stat_date AS VARCHAR) AS stat_date,
-                  COUNT(*) AS click_count,
+                  COUNT(DISTINCT event_id) AS click_count,
                   APPROX_DISTINCT(visitor_id) AS visitor_count
                 FROM (
                   SELECT
+                    event_id,
                     link_id,
                     visitor_id,
                     DATE(from_iso8601_timestamp(clicked_at) AT TIME ZONE 'Asia/Seoul') AS stat_date
@@ -62,9 +63,10 @@ final class AthenaQueries implements ClickStatsQueries {
                   link_id,
                   CAST(stat_date AS VARCHAR) AS stat_date,
                   dimension_value,
-                  COUNT(*) AS click_count
+                  COUNT(DISTINCT event_id) AS click_count
                 FROM (
                   SELECT
+                    event_id,
                     link_id,
                     DATE(from_iso8601_timestamp(clicked_at) AT TIME ZONE 'Asia/Seoul') AS stat_date,
                     COALESCE(%s, 'UNKNOWN') AS dimension_value
