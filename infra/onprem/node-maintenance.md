@@ -1,6 +1,6 @@
 # 온프렘 워커 노드 점검(drain) 절차
 
-> 5.1(w2 drain)은 2026-11-03, 11-05, 11-06에 세 번 시험했고, 같은 날 개선을 적용해 한 번 더 시험했다(5.1.2). 5.2(w1 drain, DB 노드)는 아직 시험하지 않았다. 이슈 #220.
+> 5.1(w2 drain)은 2026-11-03, 11-05, 11-06에 세 번 시험했고, 같은 날 개선을 적용해 한 번 더 시험했다(5.1.2). 11-09에는 워커 메모리를 늘린 뒤 한 번 더 시험했다(5.1.3). 5.2(w1 drain, DB 노드)는 계획한 시험을 하지 않았고, 11-09 메모리 증설 작업 중 본 것만 적었다. 이슈 #220, #295.
 
 워커 노드(w1, w2)를 점검하거나 재부팅할 때 서비스 영향을 줄이는 절차다. M5 ON5의 "노드 점검 절차(drain)"이고, M6 ON6의 워커 노드 다운 시험의 기준이 된다.
 
@@ -73,6 +73,8 @@ kubectl get nodes -o custom-columns=NODE:.metadata.name,MEM:.status.allocatable.
 
 2026-11-05 값(메모리): allocatable은 w1 약 3170Mi, w2 약 3250Mi이고, requests는 w1 1122Mi(35%), w2 2176Mi(66%)다. 그래서 **w2를 비우면** 옮겨 갈 약 2176Mi를 w1에 더해 약 3298Mi가 되어 w1 allocatable을 약 128Mi 넘는다. 그래서 파드 한두 개가 `Insufficient memory`로 Pending이 될 것으로 예상했고, 실제로 2026-11-05 w2 drain에서 management 1개가 Pending이 되었다 (5.1). 몰린 직후에는 w1의 CPU도 87%까지 올랐다.
 
+2026-11-09에 두 워커의 VM 메모리를 늘렸다(#295). Capacity는 w1이 3349088Ki에서 5552724Ki, w2가 5552760Ki가 되었고 allocatable은 둘 다 약 5322Mi다. 늘리기 전에는 requests 합계가 3388Mi(w1 1692Mi, w2 1696Mi)로, 한 노드의 allocatable(약 3170Mi)을 약 218Mi 넘었다. 그래서 한쪽을 비우면 그만큼은 Pending이 될 수 있었다. 점검 전에는 requests 합계가 남는 노드의 allocatable 안에 들어오는지 본다.
+
 ## 2. 점검 전 준비
 
 **가장 먼저** 노드 상태를 본다. 비우지 않을 노드가 모두 `Ready`여야 하고 `SchedulingDisabled`가 붙어 있으면 안 된다. 전에 걸어 둔 cordon을 잊고 있으면 쫓겨난 파드가 갈 곳이 없어 서비스 전체가 멈춘다 (2026-11-05에 실제로 겪었다).
@@ -99,6 +101,11 @@ kubectl get nodes
    ```bash
    while true; do printf "%s " "$(date -u +%T)"; curl -s -o /dev/null -w "%{http_code}\n" --max-time 2 http://<cp1-ip>:30080/; sleep 1; done
    ```
+5. **배포가 진행 중이 아닌지 본다.** 새 버전 롤아웃이 한창일 때 노드를 비우면 한 노드에 몰린 파드 위에 카나리 파드까지 얹혀 포화된다(5.1.3). `develop`에 머지가 들어가면 CI 봇이 이미지 태그를 갱신하고 Argo CD가 롤아웃을 시작하므로, 점검 직전에 확인하고 점검이 끝날 때까지 머지를 미룬다.
+   ```bash
+   kubectl -n snipy get rollout
+   ```
+   DESIRED, CURRENT, UP-TO-DATE, AVAILABLE이 모두 같아야 한다.
 
 ## 3. 절차
 
@@ -175,7 +182,7 @@ kubectl -n snipy delete pod <몰린 워커에 있는 management 파드 하나>
 
 ## 5. 시험 기록
 
-5.1(w2 drain)은 시험했고 5.2(w1 drain)는 아직 시험하지 않았다. 시험 전에는 앱이 `Healthy`여야 한다(Argo CD 동기화 문제 #224, PR #225 머지 후 권장).
+5.1(w2 drain)은 시험했고 5.2(w1 drain)는 계획한 시험은 하지 않았다(11-09에 관찰한 것만 적었다). 시험 전에는 앱이 `Healthy`여야 한다(Argo CD 동기화 문제 #224, PR #225 머지 후 권장).
 
 ### 5.0 시험 방법
 
@@ -222,6 +229,7 @@ kubectl -n snipy delete pod <몰린 워커에 있는 management 파드 하나>
 - ingress controller가 1개라서 그 노드를 점검하면 프론트가 약 20초 끊긴다(1차 20초, 3차 22초). redirect는 별도 NodePort(30081)이고 파드가 두 노드에 나뉘어 있어 영향이 없었다.
 - Argo CD, ingress, sealed-secrets 같은 시스템 파드가 함께 이동하고 자동으로 돌아오지 않아서, 점검 뒤 한쪽으로 몰린 상태가 남는다. 몰린 쪽이 포화되면 Argo CD가 20분 가까이 멈춘다.
 - 2차의 응답 중단은 측정하지 못했다.
+- (11-09 추가) 노드 메모리를 약 5.3GB로 늘린 뒤에는 5.1.3처럼 몇 초 중단으로 끝났지만, 한 노드에 모든 파드가 몰린 상태에서 배포가 겹치면 load가 51까지 올랐다. vCPU는 2개 그대로다.
 
 #### 5.1.1 Argo CD가 멈췄을 때 복구 (3차 시험에서 실행)
 
@@ -274,16 +282,61 @@ kubectl -n snipy delete pod <몰린 워커에 있는 management 파드 하나>
 - 부하를 덜자 풀렸다: w1에 몰린 management 하나를 지워 w2로 옮긴 뒤 `calico-node`가 `1/1`이 되었고, 04:18(약 1시간 20분 뒤) w1은 `sy` 8.3%, 유휴 91.7%, avail 760MB였다. 옮긴 시각과 `calico-node` 회복 시각이 정확히 맞는지는 기록하지 않아서, 옮긴 것이 원인이었다고 단정하지는 못한다.
 - 측정하지 못한 것: `/api` 응답, `snapd`가 CPU를 쓴 이유(메모리 부족의 결과인지 원인인지).
 
+#### 5.1.3 메모리를 늘린 뒤 시험 (2026-11-09, #295)
+
+두 워커 VM의 메모리를 늘린 뒤(Capacity 약 5.3GB, allocatable 약 5322Mi) w2를 비웠다. 측정 방법은 5.0과 같고, 1초 간격 응답은 cp1 주소(`192.168.122.11`)의 프론트(30080), `/api/workspaces`, redirect(30081)와 w1 주소(`192.168.122.21`)의 프론트(30080)로 봤다. **옮긴 파드가 5.1.2보다 적고 Argo CD, ingress가 w2에 없어서 같은 조건의 비교가 아니다.** 메모리 증설의 효과라고 단정하지 않는다.
+
+시작 배치(07:24:31 `state.log`): w2에 frontend 1, management 1, redirect 1, argo-rollouts, calico-typha가 있었다. w2에서 쫓겨난 것은 이 5개다. Argo CD, ingress-nginx, `mysql-0`, `seaweedfs-0`, `redis`는 w2에 없었다.
+
+| 항목 | 5.1.2 (4차, 노드 메모리 약 3.2GB) | 5.1.3 (노드 메모리 약 5.3GB) |
+|---|---|---|
+| drain 시작 | 02:31:06 | 07:24:38 (`state.log`에 `k8s-w2 Ready,SchedulingDisabled`) |
+| 쫓겨난 것 | 시작 배치 기준 9개 이상 (Argo CD 3, ingress 포함) | 5개 |
+| 프론트 응답 (cp1:30080) | 약 1초 중단 | 약 5초 중단 (07:24:39 `000` → 07:24:44 `200`) |
+| `/api` 응답 | 측정하지 못함 | 약 3초 중단 (07:24:41 `000` → 07:24:44 `401`) |
+| redirect 응답 (30081) | 1분 40초 중단 | 약 1초 중단 (07:24:43 `000` → 07:24:44 `404`) |
+| w1 주소의 프론트 | - | 중단 없음 |
+| Pending | redirect 두 번째 파드 10분 23초, Argo CD controller 10분 30초 | 없음 |
+| 새 파드가 Ready | redirect 두 번째 파드는 w2 uncordon 뒤 02:43:01 | frontend 07:25:30, argo-rollouts 07:25:37, management 07:26:23, redirect 07:27:51 (drain 뒤 3분 13초) |
+| w1 CPU (`kubectl top`) | 77~89%가 마지막 기록(02:45:58)까지 | 6%(07:24:30) → 87%(07:25:01) → 91%(07:25:33) → 92%(07:26:04, 최대) → 70%(07:26:35) → 15%(07:28:07). 87% 이상은 약 1~1분 30초 |
+| w1 메모리 | requests 96% | `top` 61%(3270Mi) → 최대 72%(3882Mi, 07:25:33) → 67%(3608Mi, 07:32:12) |
+| w1 available (`free -h`) | 502MB (`top`, uncordon 약 10분 뒤) | 1.4Gi (07:28:15, 07:30:07) |
+
+응답은 1초 간격이지만 2초 제한시간(`--max-time 2`)을 쓰고 상태가 바뀔 때만 기록하므로, 중단 길이에는 ±2초 정도의 오차가 있다.
+
+읽는 법
+- 서비스는 몇 초 끊긴 뒤 돌아왔고 Pending 파드가 없었다. #295의 완료 조건 중 "남은 워커의 파드가 모두 Running/Ready", "프론트·redirect가 수 초 이내", "available 약 1GB 이상"은 만족했다. "커널 CPU(`sy`)가 포화되지 않는다"는 `sy`를 재지 않아 확인하지 못했다. 총 CPU는 최대 92%였다.
+- 끊긴 몇 초의 원인은 확인하지 못했다. w1 주소로 본 프론트는 끊기지 않았고, 끊긴 것은 cp1 주소로 들어오는 연결이었다.
+- frontend 새 파드 하나가 시작 직후 한 번 죽었다. 07:24:57에 `[emerg] host not found in upstream "management-service"`로 종료되어 `CrashLoopBackOff`를 거쳐 07:25:30에 `1/1`이 되었다. nginx가 시작할 때 upstream 이름을 한 번만 해석하는데, 그때 w1 CPU가 87%였다. 다른 frontend 파드가 w1에 있었다.
+
+**한 대에 모든 파드를 올렸을 때 (같은 날 별도 관찰)**
+
+| 시각 (UTC) | 본 것 |
+|---|---|
+| 06:47 | 파드가 모두 w1에 있는 상태. `kubectl top` w1 3685Mi(69%), w2 1223Mi. 비정상 파드 없음 |
+| 06:57:53 | CI 봇이 이미지 태그를 갱신했다. 06:58:36~52에 w2를 비웠다 |
+| 약 07:00:30 | 새 버전 카나리 파드가 생겨 w1에 JVM 파드(management, redirect)가 6개가 되었다 |
+| 07:05:41 | w1 load 51.66 / 30.26 / 13.66 (vCPU 2개) |
+| 07:09:53 | w1 **available 559Mi**, load 45.31. redis `0/1`, `kubectl top`이 `Metrics API not available`, metrics-server 재시작 |
+| 07:14 전후 | argo-rollouts 컨트롤러 `0/1`, 재시작 5회. 롤아웃이 12분 넘게 첫 단계(`Current Step Index: 0`, `more replicas need to be updated`)에서 멈춤 |
+| 약 07:16 | argo-rollouts 컨트롤러와 옛 버전 redirect·management 각 1개를 지워 w2로 옮김 (5.1.1과 같은 방식) |
+| 07:16:47 → 07:18:38 → 07:22:19 | w1 load 23.87 → 5.66 → 0.40 (1분 평균). 컨트롤러가 돌아와 롤아웃이 이어졌다 |
+
+- 한 대에 모든 파드를 올린 정상 상태는 메모리 69%로 버텼다. 새 배포가 겹치자 available이 559Mi까지 내려가고 load가 50 가까이 올랐으며, 롤아웃 컨트롤러까지 죽어 배포가 멈췄다.
+- `sudo dmesg -T`에서 `out of memory` 흔적은 나오지 않았다. 커널이 프로세스를 죽인 기록은 없다.
+- 측정하지 못한 것: `sy`, 포화가 CPU 때문인지 메모리 때문인지의 구분, 같은 상황이 다시 재현되는지.
+
 ### 5.2 w1 drain (DB 노드)
-시험 전에 백업을 만든다(2절 3번).
+계획한 시험은 하지 않았다. 아래는 2026-11-09 워커 메모리 증설(#295) 중 w1을 비우고 VM을 껐다 켜면서 본 값이다. 측정 스크립트는 쓰지 않았고 명령 출력과 `kubectl get pod`의 상태 전이 시각에서 읽었다.
+시험 전에 백업을 만든다(2절 3번). (증설 때도 etcd, MySQL 백업을 먼저 만들었다.)
 
 | 항목 | 기록 |
 |---|---|
-| 시험 일시 | |
-| `mysql-0`, `seaweedfs-0`의 상태 변화 | |
-| DB가 끊긴 구간과 영향받은 기능 | |
-| w1 복귀 후 `mysql-0` 정상화까지 | |
-| 데이터 이상 여부 (행 수 비교 등) | |
+| 시험 일시 | 2026-11-09 약 05:39 UTC에 w1 drain, 이후 VM 종료·메모리 변경·부팅. w1이 다시 스케줄 가능해진 뒤 `mysql-0`이 배정됨(`PodScheduled` 05:47:46) |
+| `mysql-0`, `seaweedfs-0`의 상태 변화 | drain으로 쫓겨난 뒤 둘 다 `Pending`(볼륨이 w1에 묶여 있어서). w1이 돌아온 뒤 배정되어 `Ready`가 되었다 |
+| DB가 끊긴 구간과 영향받은 기능 | 약 05:39 ~ 05:50:11, 약 11분. 대부분이 VM을 끄고 메모리를 바꾸는 사람 작업 시간이다. DB가 없는 동안 redirect-service 파드 1개가 `CrashLoopBackOff`(`1/2`)였다. 사용자 기능별 영향은 측정하지 못했다 |
+| w1 복귀 후 `mysql-0` 정상화까지 | 배정 05:47:46 → `Initialized` 05:49:39 → `Ready` 05:50:11, **2분 25초**. `seaweedfs-0`은 `Ready` 05:50:19, 2분 33초. 늦어진 1분 53초(`Initialized`까지)는 파드 샌드박스 생성 실패 때문이다: calico가 API 서비스(`10.96.0.1:443`)에 `connection refused`(VM 부팅 직후로 추정). 재시도로 저절로 해결되었다 |
+| 데이터 이상 여부 (행 수 비교 등) | 확인하지 못했다. 복원·행 수 비교는 MySQL 복원 시험에서 한다 |
 
 ## 6. 이후 개선 후보
 - ingress-nginx-controller를 2개로 늘리고 서로 다른 노드에 두기 (**적용·검증함**. 5.1.2에서 프론트 중단이 22초에서 1초로 줄었다. 이미 돌고 있는 클러스터에 적용하면 새 파드 2개가 같은 노드에 올라갈 수 있어서, 적용 뒤 `kubectl -n ingress-nginx get pods -o wide`로 확인하고 같으면 한 개를 지워 다시 올린다)
@@ -292,3 +345,7 @@ kubectl -n snipy delete pod <몰린 워커에 있는 management 파드 하나>
 - redirect, management에 PDB를 추가해 동시에 내려가지 않게 하기 (`minAvailable: 1`이면 drain이 한 개씩 순서대로 진행된다)
 - management, redirect, Argo CD 파드를 두 워커에 나눠 놓기 (`topologySpreadConstraints` 또는 파드 반(反)친화성). 한 노드에 몰려 있으면 그 노드 점검이 곧 서비스 중단이다
 - 볼륨이 노드에 묶인 구조(MySQL, SeaweedFS) 때문에 **DB 노드 점검 = DB 중단**임을 감수할지, 복제나 백업 복원 절차로 줄일지 결정하기
+- 워커 VM 메모리를 약 3.2GB에서 약 5.3GB로 늘리기 (**적용·검증함**. 5.1.3, #295). 한 노드에 모든 파드를 올려도 메모리는 69%였고 drain 뒤 available이 1.4Gi였다. 다만 새 배포가 겹치면 부족했다
+- 워커 vCPU를 2개에서 늘리는 것 검토. 5.1.3에서 w1 CPU가 87~92%로 1분 넘게 이어졌고, 배포가 겹치면 load가 51까지 올랐다. 메모리와 달리 아직 손대지 않았다
+- 노드를 비우기 전에 롤아웃이 진행 중이 아닌지 확인하고, 한 노드로 몰려 있는 동안에는 `develop` 머지를 미루기 (2절 5번)
+- frontend의 nginx가 시작할 때 upstream(`management-service`) 이름을 한 번만 해석해서 그 순간 DNS가 안 풀리면 `host not found in upstream`으로 죽고 다시 시작한다(5.1.3, 약 25초). 요청마다 해석하게(`resolver`와 변수 사용) 바꾸는 것을 검토 (프론트 담당)
