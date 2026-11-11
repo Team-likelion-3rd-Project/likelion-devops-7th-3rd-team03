@@ -25,25 +25,12 @@
 |:---:|:---:|:---:|:---:|
 | **한소현**<br>[@hansol-01](https://github.com/hansol-01) | **박장현**<br>[@janghyn97-dotcom](https://github.com/janghyn97-dotcom) | **유승미**<br>[@kubistar](https://github.com/kubistar) | **정예준**<br>[@joon2730](https://github.com/joon2730) |
 | `Cloud` | `On-Prem · Frontend` | `Backend · Data` | `Backend · Docs` |
-| **3차** Terraform·EKS 기반 prod 구축, 배포 자동화, 부하 테스트<br><br>**2차** 로그인, 인프라, 배포 | **3차** kubeadm 클러스터 구축, 백업·노드 장애 대응, 대시보드 화면<br><br>**2차** 통계 API, 대시보드, 화면 | **3차** 클릭 수집·집계 파이프라인, 통계·알림 API, 카나리 배포<br><br>**2차** 통계 API, 배치 | **3차** 워크스페이스 링크 API, 위키·README<br><br>**2차** 링크 CRUD, 리다이렉트, 부하 테스트 |
+
+세부 역할은 [역할 분담](#역할-분담)에 있습니다.
 
 ---
 
-## 프로젝트 일정
-
-| 기간 | 내용 |
-|------|------|
-| ~ 2026-08 | 2차 프로젝트: AWS에서 링크 단축·리다이렉트·통계 구현 |
-| ~ 10/09 | 설계·기획 |
-| ~ 10/23 | 온프렘(dev) 클러스터 구축과 CI/CD |
-| ~ 11/06 | AWS(prod) 구성, Terraform EKS, 운영 첫 배포 (11/06) |
-| ~ 11/13 | 장애·성능 시나리오 검증, 발표 |
-
-마일스톤별 세부 목표는 [기획 배경](../../wiki/기획-배경)에 있습니다.
-
----
-
-## 빠른 심사 흐름 (5분)
+## 빠른 심사 흐름
 
 1. https://app.snipy.life 에 접속해 카카오·구글·네이버 중 하나로 로그인합니다.
 2. 개인 워크스페이스에서 원본 URL을 입력해 단축 URL을 생성합니다.
@@ -53,15 +40,14 @@
 
 ---
 
-## Core Design
+## 주요 기능
 
-| 설계 | 내용 | 2차와 비교 |
-|------|------|-----------|
-| 리다이렉트 응답 속도 | 원본 URL을 Redis에 캐시하고, 클릭 기록은 302 응답 이후 별도 스레드에서 처리합니다. 기록이 밀리거나 실패해도 응답 시간에는 영향이 없습니다. | 유지 |
-| 잠정 통계와 확정 통계 분리 | 오늘 클릭 수는 Redis의 빠른 확인용 값이고, 확정 통계는 다음 날 배치가 원본 클릭 로그 전체를 다시 집계해 만듭니다. | 유지 |
-| 클릭 로그 저장 방식 | 원본 클릭 로그는 S3(prod)·SeaweedFS(dev)에 적재하고, Athena·DuckDB로 집계한 결과만 MySQL에 저장합니다. | dev 환경 추가 |
-| 워크스페이스 단위 링크 소유 | 링크를 사용자가 아닌 워크스페이스가 소유해, 담당자가 바뀌거나 팀을 나가도 링크와 통계가 유지됩니다. | JWT 클레임 기반 소유권 검증에서 워크스페이스 멤버 확인으로 변경 |
-| dev·prod 배포 방식 통일 | 두 환경 모두 같은 이미지를 Argo CD로 동기화하고, 카나리 배포 중 k6 검증에 실패하면 자동 롤백합니다. | 신규 |
+- **리다이렉트**: 단축 URL 접속 시 원본 URL로 이동, 만료·삭제된 링크는 차단 (로그인 불필요)
+- **소셜 로그인**: 카카오·구글·네이버 로그인, 회원 탈퇴
+- **워크스페이스**: 가입 시 개인 워크스페이스 생성, 팀 워크스페이스 생성, 초대 코드로 합류, 관리자·멤버 권한
+- **링크 관리**: 단축 URL 발급, 원본 URL·제목·만료일 수정, 삭제 (워크스페이스당 최대 100개)
+- **링크 통계**: 일별 클릭·방문자, 유입 경로·기기·운영체제·브라우저·국가·지역·시간대 분포, 오늘 실시간 수치
+- **대시보드·알림**: 링크 비교, 만료 임박·방문자 급증 알림
 
 ---
 
@@ -74,8 +60,8 @@
 | Frontend | React 18, Vite, Cloudscape |
 | Backend | Spring Boot 4 (`redirect-service`, `management-service`), JPA |
 | Database | MySQL 8.0 (prod: RDS Multi-AZ), Redis (prod: ElastiCache) |
-| 클릭 로그·집계 | dev: Fluent Bit → SeaweedFS → DuckDB / prod: Firehose → S3 → Athena |
-| Infra | dev: 온프렘 kubeadm 클러스터 / prod: AWS EKS, CloudFront, WAF, ALB, Terraform |
+| 클릭 로그·집계 | dev는 Fluent Bit → SeaweedFS → DuckDB, prod는 Firehose → S3 → Athena |
+| Infra | dev는 온프렘 kubeadm 클러스터, prod는 AWS EKS·CloudFront·WAF·ALB (Terraform) |
 | CI/CD | GitHub Actions, Argo CD (GitOps), Argo Rollouts (카나리) |
 | 모니터링 | Prometheus, Grafana, Alertmanager → Slack |
 | 인증 | 카카오·구글·네이버 OAuth2 + JWT |
@@ -94,18 +80,57 @@
 
 ---
 
-## 주요 기능
+## Core Design
 
-| 기능 | 설명 | 로그인 필요 |
-|------|------|------------|
-| 리다이렉트 | 단축 URL 접속 시 원본 URL로 이동, 만료·삭제된 링크는 차단 | X |
-| 소셜 로그인 | 카카오·구글·네이버 로그인, 회원 탈퇴 | X |
-| 워크스페이스 | 가입 시 개인 워크스페이스 생성, 팀 워크스페이스 생성, 초대 코드로 합류, 관리자·멤버 권한 | O |
-| 링크 관리 | 단축 URL 발급, 원본 URL·제목·만료일 수정, 삭제 (워크스페이스당 최대 100개) | O |
-| 링크 통계 | 일별 클릭·방문자, 유입 경로·기기·운영체제·브라우저·국가·지역·시간대 분포, 오늘 실시간 수치 | O |
-| 대시보드·알림 | 링크 비교, 만료 임박·방문자 급증 알림 | O |
+- **리다이렉트 응답 속도** — 원본 URL을 Redis에 캐시하고, 클릭 기록은 302 응답 이후 별도 스레드에서 처리합니다. 기록이 밀리거나 실패해도 응답 시간에는 영향이 없습니다. (2차부터 유지)
+- **잠정 통계와 확정 통계 분리** — 오늘 클릭 수는 Redis의 빠른 확인용 값이고, 확정 통계는 다음 날 배치가 원본 클릭 로그 전체를 다시 집계해 만듭니다. (2차부터 유지)
+- **클릭 로그 저장 방식** — 원본 클릭 로그는 S3(prod)·SeaweedFS(dev)에 적재하고, Athena·DuckDB로 집계한 결과만 MySQL에 저장합니다.
+- **워크스페이스 단위 링크 소유** — 링크를 사용자가 아닌 워크스페이스가 소유해, 담당자가 바뀌거나 팀을 나가도 링크와 통계가 유지됩니다. 2차의 JWT 클레임 기반 소유권 검증은 워크스페이스 멤버 확인으로 바뀌었습니다.
+- **dev·prod 배포 방식 통일** — 두 환경 모두 같은 이미지를 Argo CD로 동기화하고, 카나리 배포 중 k6 검증에 실패하면 자동 롤백합니다.
 
-화면 구성은 [UI Screens](../../wiki/UI-Screens), API 요청·응답 구조는 [API Specification](../../wiki/API-Specification) 문서에 있습니다.
+---
+
+## 제공 범위
+
+**제공**
+- 카카오·구글·네이버 소셜 로그인과 회원 탈퇴
+- 워크스페이스 기반 링크 공동 관리와 관리자·멤버 권한
+- 단축 URL 발급·수정·삭제와 리다이렉트
+- 오늘 실시간 수치와 전날까지의 확정 통계, 만료 임박·방문자 급증 알림
+
+**미제공**
+- 브랜드 커스텀 도메인 연결, 기업용 단일 로그인(SSO)
+- 악성 URL 자동 차단
+- 시·군·구 단위 상세 지역 분석
+
+---
+
+## 역할 분담
+
+- **한소현** (`Cloud`)
+  - 3차: Terraform·EKS 기반 prod 구축, 배포 자동화, 부하 테스트
+  - 2차: 로그인, 인프라, 배포
+- **박장현** (`On-Prem · Frontend`)
+  - 3차: kubeadm 클러스터 구축, 백업·노드 장애 대응, 대시보드 화면
+  - 2차: 통계 API, 대시보드, 화면
+- **유승미** (`Backend · Data`)
+  - 3차: 클릭 수집·집계 파이프라인, 통계·알림 API, 카나리 배포
+  - 2차: 통계 API, 배치
+- **정예준** (`Backend · Docs`)
+  - 3차: 워크스페이스 링크 API, 위키 문서 작성
+  - 2차: 링크 CRUD, 리다이렉트, 부하 테스트
+
+---
+
+## 프로젝트 일정
+
+| 기간 | 내용 |
+|------|------|
+| ~ 2026-08 | 2차 프로젝트, AWS에서 링크 단축·리다이렉트·통계 구현 |
+| ~ 10/09 | 설계·기획 |
+| ~ 10/23 | 온프렘(dev) 클러스터 구축과 CI/CD |
+| ~ 11/06 | AWS(prod) 구성, Terraform EKS, 운영 첫 배포 (11/06) |
+| ~ 11/13 | 장애·성능 시나리오 검증, 발표 |
 
 ---
 
@@ -113,22 +138,9 @@
 
 상세 설계와 검증 기록은 [GitHub Wiki](../../wiki)에서 관리합니다.
 
-| 분류 | 문서 |
-|------|------|
-| Start Here | [기획 배경](../../wiki/기획-배경) · [User Flows](../../wiki/User-Flows) · [UI Screens](../../wiki/UI-Screens) |
-| 아키텍처·설계 | [System Architecture](../../wiki/System-Architecture) · [ERD](../../wiki/ERD) · [API Specification](../../wiki/API-Specification) |
-| 운영 | [배포 가이드](../../wiki/배포-가이드) · [장애 시나리오](../../wiki/장애-시나리오) · [성능 테스트](../../wiki/성능-테스트) · [트러블슈팅](../../wiki/트러블슈팅) · [회의록](../../wiki/회의록) |
-
----
-
-## 제공 범위
-
-| 구분 | 내용 |
-|------|------|
-| 제공 | 카카오·구글·네이버 소셜 로그인과 회원 탈퇴, 워크스페이스 기반 링크 공동 관리와 관리자·멤버 권한, 단축 URL 발급·수정·삭제와 리다이렉트, 오늘 실시간 수치와 전날까지의 확정 통계, 만료 임박·방문자 급증 알림 |
-| 미제공 | 브랜드 커스텀 도메인 연결, 기업용 단일 로그인(SSO), 악성 URL 자동 차단, 시·군·구 단위 상세 지역 분석 |
-
-바이럴 급증(초당 800건) 때의 클릭 유실과 배포 직후 급증 때의 지연은 수정했지만, 같은 조건으로 재측정하지는 못했습니다. 남은 한계는 [System Architecture](../../wiki/System-Architecture)의 검증 요약에 있습니다.
+- **Start Here**: [기획 배경](../../wiki/기획-배경) · [User Flows](../../wiki/User-Flows) · [UI Screens](../../wiki/UI-Screens)
+- **아키텍처·설계**: [System Architecture](../../wiki/System-Architecture) · [ERD](../../wiki/ERD) · [API Specification](../../wiki/API-Specification)
+- **운영**: [배포 가이드](../../wiki/배포-가이드) · [장애 시나리오](../../wiki/장애-시나리오) · [성능 테스트](../../wiki/성능-테스트) · [트러블슈팅](../../wiki/트러블슈팅) · [회의록](../../wiki/회의록)
 
 ---
 
@@ -147,12 +159,10 @@ MySQL, Redis, 마이그레이션, 두 백엔드 서비스, 프론트엔드, Prom
 docker compose --profile batch run --rm batch
 ```
 
-| 서비스 | 주소 |
-|--------|------|
-| frontend | `http://localhost:3000` |
-| management-service | `http://localhost:8080` |
-| redirect-service (단축 URL) | `http://localhost:8081` |
-| Grafana | `http://localhost:3001` |
+- frontend: `http://localhost:3000`
+- management-service: `http://localhost:8080`
+- redirect-service (단축 URL): `http://localhost:8081`
+- Grafana: `http://localhost:3001`
 
 프론트엔드 코드 검사:
 
