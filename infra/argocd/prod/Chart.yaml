@@ -1,0 +1,6 @@
+# prod 앱 묶음. root Application(terraform modules/gitops의 argocd-apps)이 이 차트를 동기화한다.
+# Helm 차트로 둔 이유: root가 넘기는 targetRevision을 하위 앱에도 그대로 쓰기 위해서다.
+apiVersion: v2
+name: snipy-prod-apps
+description: snipy prod Argo CD Applications (app-of-apps)
+version: 0.1.0

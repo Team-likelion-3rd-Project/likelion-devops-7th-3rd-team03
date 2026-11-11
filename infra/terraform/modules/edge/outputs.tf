@@ -17,16 +17,15 @@ output "origin_verify_secret_arn" {
 }
 
 output "alb_security_group_id" {
-  description = "k8s/ingress-with-origin-verify.yaml의 alb.ingress.kubernetes.io/security-groups 값으로 채우세요"
+  description = "Ingress는 이 SG를 이름(<cluster_name>-alb-sg)으로 지정한다"
   value       = aws_security_group.alb.id
 }
 
-output "cloudfront_domain_name" {
-  description = "origin_alb_domain_name 채운 뒤 apply해야 값이 생김"
-  value       = var.origin_alb_domain_name != "" ? aws_cloudfront_distribution.main[0].domain_name : "Ingress 배포 후 origin_alb_domain_name 채우고 재적용 필요"
+output "alb_acm_certificate_arn" {
+  description = "ALB용 ACM 인증서. Ingress host와 맞으면 AWS Load Balancer Controller가 자동으로 붙인다"
+  value       = aws_acm_certificate_validation.alb.certificate_arn
 }
 
-output "alb_certificate_note" {
-  description = "ap-southeast-1(ALB용) ACM 인증서는 별도로 이미 발급받으셨다고 하셨으니 그 ARN을 Ingress 매니페스트에 채워주세요"
-  value       = "ALB(Ingress)용 ACM 인증서 ARN을 infra/k8s/ingress-with-origin-verify.yaml에 직접 입력하세요"
+output "cloudfront_domain_name" {
+  value = aws_cloudfront_distribution.main.domain_name
 }

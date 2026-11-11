@@ -21,7 +21,8 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "snipy-terraform-state-834922934330"
+    # bucket은 계정마다 달라서 여기 두지 않는다. bootstrap의 output state_bucket_name을 init 때 넘긴다:
+    #   terraform init -backend-config="bucket=snipy-terraform-state-<계정 ID>"
     key          = "env/prod/terraform.tfstate"
     region       = "ap-southeast-1"
     encrypt      = true

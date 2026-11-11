@@ -11,8 +11,8 @@ export default defineConfig({
       '/api': {
         // Compose 컨테이너에서는 localhost가 아니라 서비스명으로 접근해야 한다.
         target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
-        changeOrigin: true,
-      },
-    },
-  },
+        changeOrigin: true
+      }
+    }
+  }
 })

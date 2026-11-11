@@ -13,17 +13,8 @@ resource "aws_secretsmanager_secret_version" "jwt_secret" {
   secret_string = random_password.jwt_secret.result
 }
 
-# Kakao 값은 외부에서 발급받은 실제 값이라 terraform이 생성 못 함 —
-# 빈 placeholder로 만들어두고, apply 후 aws cli로 실제 값 1회 입력 필요
-resource "aws_secretsmanager_secret" "kakao_client_id" {
-  name                    = "${var.cluster_name}/app/kakao-client-id"
-  recovery_window_in_days = 0
-}
-
-resource "aws_secretsmanager_secret" "kakao_client_secret" {
-  name                    = "${var.cluster_name}/app/kakao-client-secret"
-  recovery_window_in_days = 0
-}
+# 소셜 로그인 OAuth 시크릿(snipy-cluster/app/oauth)은 prod를 지워도 남아야 해서 bootstrap이 소유한다 (#156).
+# prod ExternalSecret이 이름으로 읽으므로 여기서는 만들지 않는다.
 
 resource "random_password" "grafana_admin" {
   length  = 24

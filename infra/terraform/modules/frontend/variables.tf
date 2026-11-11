@@ -3,7 +3,7 @@ variable "cluster_name" {
 }
 
 variable "domain_name" {
-  description = "프론트엔드 정적 호스팅 전체 도메인 (예: app.snipy.life, app.dev.snipy.life)"
+  description = "프론트엔드 정적 호스팅 전체 도메인 (예: app.snipy.life)"
   type        = string
 }
 

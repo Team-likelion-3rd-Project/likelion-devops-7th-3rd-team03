@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 
 import java.util.Map;
@@ -29,6 +30,11 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
     }
 
+    @ExceptionHandler(MissingOAuthStateException.class)
+    public ResponseEntity<Map<String, String>> handleMissingOAuthState(MissingOAuthStateException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+    }
+
     /**
      * 가입 토큰 만료·재사용. 입력 오류(400)와 구분해 FE가 안내 후 로그인 화면으로 보낼 수 있게 410으로 응답한다.
      * 401은 FE가 "인증 만료"로 처리하므로 쓰지 않는다.
@@ -47,6 +53,18 @@ public class AuthExceptionHandler {
         log.error("가입 대기 세션 저장소 오류", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("message", "일시적인 오류로 가입을 진행할 수 없습니다. 잠시 후 다시 시도해주세요."));
+    }
+
+    /**
+     * 소셜 provider 가 응답하지 않아 타임아웃·연결 실패가 난 경우 (spring.http.clients 타임아웃).
+     * 인가코드 문제(400)와 구분해 504 로 돌려준다. 사용자 잘못이 아니라 잠시 후 다시 시도하면 되는 상황이다.
+     * ResourceAccessException 은 RestClientException 의 하위라 아래 handleSocialApiFailure 보다 먼저 선택된다.
+     */
+    @ExceptionHandler(ResourceAccessException.class)
+    public ResponseEntity<Map<String, String>> handleSocialApiTimeout(ResourceAccessException e) {
+        log.warn("소셜 로그인 API 응답 없음 (타임아웃·연결 실패): {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(Map.of("message", "소셜 로그인 서비스가 응답하지 않습니다. 잠시 후 다시 시도해 주세요."));
     }
 
     /**

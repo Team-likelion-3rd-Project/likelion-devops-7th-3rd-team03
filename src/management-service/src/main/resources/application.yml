@@ -2,7 +2,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, prometheus
+        include: health, prometheus, info
+  # info.* 설정값을 /actuator/info 에 보여준다 (Spring Boot 기본은 꺼져 있다)
+  info:
+    env:
+      enabled: true
   endpoint:
     health:
       probes:
@@ -41,6 +45,22 @@ spring:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
+      # AWS ElastiCache는 TLS + AUTH 토큰으로 접속한다. 로컬·CI·온프렘은 기본값(비밀번호 없음, TLS 끔)
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      # 명령 응답 대기. 지정하지 않으면 Lettuce 기본 60초를 기다려, Redis 가 응답하지 않을 때 요청 스레드가 묶인다.
+      # 캐시 조회는 실패하면 DB 로 넘어가므로 짧게 끊는다. 평소 응답은 수 ms 다.
+      timeout: ${REDIS_TIMEOUT:500ms}
+      # 연결 맺기 대기. ElastiCache TLS 핸드셰이크를 감안해 명령보다 길게 둔다.
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+
+  http:
+    clients:
+      # 소셜 로그인(카카오·구글·네이버) 호출 타임아웃. 지정하지 않으면 외부 API 가 응답하지 않을 때
+      # 로그인 요청이 오래 묶여 스레드가 쌓인다. Boot 4 는 주입된 RestClient.Builder 에 이 값을 적용한다.
+      connect-timeout: ${HTTP_CLIENT_CONNECT_TIMEOUT:2s}
+      read-timeout: ${HTTP_CLIENT_READ_TIMEOUT:5s}
 
 app:
   redirect-cache:
@@ -64,6 +84,10 @@ google:
   client-secret: ${GOOGLE_CLIENT_SECRET:}
   redirect-uri: ${GOOGLE_REDIRECT_URI:}
 
+naver:
+  client-id: ${NAVER_CLIENT_ID:}
+  client-secret: ${NAVER_CLIENT_SECRET:}
+
 jwt:
   secret: ${JWT_SECRET}
   access-token-validity-seconds: ${JWT_ACCESS_TOKEN_VALIDITY_SECONDS:1800}
@@ -73,6 +97,16 @@ jwt:
 # 예: 로컬 http://localhost:8080, 운영 https://s.short.ly
 short-url:
   base-url: ${SHORT_URL_BASE_URL}
+
+
+# /actuator/info 에 실행 중인 앱의 빌드 커밋을 보여준다.
+# APP_COMMIT 은 CI 가 이미지 빌드 때 넣는다 (Dockerfile 의 GIT_SHA 빌드 인자). 로컬 실행은 unknown.
+# 아래 --- 밑은 batch 프로필 전용이라, 이 블록은 반드시 --- 위에 둔다.
+info:
+  app:
+    name: management-service
+    commit: ${APP_COMMIT:unknown}
+
 
 ---
 # batch 프로필: K8s CronJob 전용. 웹서버 안 띄우고 AthenaBatchRunner만 돌고 종료한다.
@@ -106,7 +140,8 @@ app:
     # 스레드마다 버퍼를 따로 잡으므로 코어 수에 따라 메모리가 달라지지 않게 고정한다
     threads: ${DUCKDB_THREADS:2}
     preserve-insertion-order: ${DUCKDB_PRESERVE_INSERTION_ORDER:false}
-    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:false}
+    # 방문자 수는 정확한 값. 근사치는 방문자가 적은 링크에서 틀린다 (실측: 3명 → 2명)
+    exact-visitor-count: ${DUCKDB_EXACT_VISITOR_COUNT:true}
     # SeaweedFS 접속·IO 오류 재시도
     # SeaweedFS 재기동 후 요청 수신까지 실측 34초 → 최소 대기 합계가 약 2배(60초)가 되도록 설정
     # 대기: 2 → 4 → 8 → 16 → 30 → 30 → 30초 (각각 jitter로 50~100%), 합계 약 60~120초
@@ -114,3 +149,5 @@ app:
       max-attempts: ${DUCKDB_RETRY_MAX_ATTEMPTS:8}
       initial-delay-ms: ${DUCKDB_RETRY_INITIAL_DELAY_MS:2000}
       max-delay-ms: ${DUCKDB_RETRY_MAX_DELAY_MS:30000}
+
+

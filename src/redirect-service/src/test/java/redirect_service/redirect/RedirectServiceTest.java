@@ -61,7 +61,10 @@ class RedirectServiceTest {
     void publishesSnapshotAfterSuccessfulRedirect() {
         RedirectRequest request = new RedirectRequest(
                 "valid", "visitor-id", LocalDateTime.parse("2026-08-12T15:00:00"), "203.0.113.10", null,
-                "Mozilla/5.0", "https://google.com/search", null);
+                "Mozilla/5.0", "https://google.com/search", null,
+                null,   // viewerCountry
+                null    // viewerRegion
+        );
         when(redirectCache.get("valid")).thenReturn(Optional.of(
                 new RedirectCacheEntry(1L, "https://example.com", true, null)));
         RedirectTarget result = redirectService.redirect(request);
@@ -76,6 +79,22 @@ class RedirectServiceTest {
                         event -> event.referrer())
                 .containsExactly("visitor-id", "203.0.113.10", "Mozilla/5.0", "https://google.com/search");
         assertThat(captor.getValue().request().occurredAt()).isEqualTo(request.occurredAt());
+    }
+
+    @Test
+    @DisplayName("워밍업 slug는 리다이렉트하지만 클릭 이벤트를 발행하지 않는다")
+    void doesNotPublishEventForWarmupSlug() {
+        RedirectRequest request = new RedirectRequest(
+                RedirectWarmup.SLUG, "visitor-id", LocalDateTime.parse("2026-08-12T15:00:00"), "127.0.0.1", null,
+                "Java-http-client", null, null, null, null
+        );
+        when(redirectCache.get(RedirectWarmup.SLUG)).thenReturn(Optional.of(
+                new RedirectCacheEntry(0L, "https://example.com", true, null)));
+
+        RedirectTarget result = redirectService.redirect(request);
+
+        assertThat(result.originalUrl()).isEqualTo("https://example.com");
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test

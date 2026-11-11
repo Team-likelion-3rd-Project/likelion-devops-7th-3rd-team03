@@ -1,0 +1,26 @@
+# ingress-nginx(NodePort 30080)로 들어오는 요청을 나눈다. 도메인이 없어 host를 지정하지 않는다.
+#   /api -> management-service, 그 외 -> frontend
+# 단축 URL(/{slug})은 프론트 경로와 겹치므로 여기서 받지 않고 redirect-service NodePort(30081)로 받는다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: snipy-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: management-service
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

@@ -29,8 +29,6 @@ resource "aws_iam_role" "github_actions_ci" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           "token.actions.githubusercontent.com:sub" = [
-            "repo:Team-likelion-2nd-Project@312237597/likelion-devops-7th-team03@1320904339:ref:refs/heads/develop",
-            "repo:Team-likelion-2nd-Project@312237597/likelion-devops-7th-team03@1320904339:ref:refs/heads/main",
             "repo:Team-likelion-3rd-Project@336729042/likelion-devops-7th-3rd-team03@1400844527:ref:refs/heads/develop",
             "repo:Team-likelion-3rd-Project@336729042/likelion-devops-7th-3rd-team03@1400844527:ref:refs/heads/main",
           ]
@@ -100,6 +98,13 @@ resource "aws_iam_role_policy" "github_actions_frontend_deploy" {
         Sid      = "CloudFrontInvalidate"
         Effect   = "Allow"
         Action   = "cloudfront:CreateInvalidation"
+        Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+      },
+      {
+        # 배포 ID가 apply마다 바뀌어서 frontend-ci가 별칭으로 배포를 찾는다. 목록 조회는 리소스를 지정할 수 없다
+        Sid      = "CloudFrontFindDistribution"
+        Effect   = "Allow"
+        Action   = "cloudfront:ListDistributions"
         Resource = "*"
       }
     ]

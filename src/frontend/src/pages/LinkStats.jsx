@@ -1,77 +1,109 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from 'recharts'
+import { useNavigate, useParams } from 'react-router-dom'
+import Alert from '@cloudscape-design/components/alert'
+import Box from '@cloudscape-design/components/box'
+import Button from '@cloudscape-design/components/button'
+import Container from '@cloudscape-design/components/container'
+import ContentLayout from '@cloudscape-design/components/content-layout'
+import Header from '@cloudscape-design/components/header'
+import SegmentedControl from '@cloudscape-design/components/segmented-control'
+import SpaceBetween from '@cloudscape-design/components/space-between'
+import StatusIndicator from '@cloudscape-design/components/status-indicator'
 import { listLinks } from '../api/links'
-import { getDailyStats, getReferrerStats, getDailyChange, getBreakdown, getRealtimeCount } from '../api/stats'
+import {
+  getDailyStats,
+  getReferrerStats,
+  dailyChangeOf,
+  getBreakdown,
+  getRealtimeCount,
+  kstDay
+} from '../api/stats'
 import { ApiError } from '../api/http'
+import { useWorkspace } from '../context/WorkspaceContext'
+import { RequireWorkspace } from '../components/RequireWorkspace'
+import { BreakdownTable, StatGrid, TrendChart } from '../components/StatsParts'
+import { countryName } from '../statsLabels'
 
 const RANGE_OPTIONS = [
-  { label: '7일', days: 7 },
-  { label: '14일', days: 14 },
-  { label: '30일', days: 30 },
+  { id: '7', text: '7일' },
+  { id: '14', text: '14일' },
+  { id: '30', text: '30일' }
 ]
 
-function daysAgoIso(n) {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
+// 팀을 바꾸면 RequireWorkspace가 이 화면을 새로 시작하고, 새 팀의 링크 안에서 다시 찾는다.
+export function LinkStats() {
+  return (
+    <RequireWorkspace>
+      <LinkStatsView />
+    </RequireWorkspace>
+  )
 }
 
-export function LinkStats() {
+function LinkStatsView() {
   const { id: linkId } = useParams()
+  const navigate = useNavigate()
+  const { current } = useWorkspace()
 
   const [link, setLink] = useState(null)
-  const [notFound, setNotFound] = useState(false)
+  const [state, setState] = useState('loading') // loading | ready | notfound | error
   const [days, setDays] = useState(14)
 
   const [daily, setDaily] = useState(null)
   const [referrers, setReferrers] = useState(null)
   const [change, setChange] = useState(null)
   const [deviceBreakdown, setDeviceBreakdown] = useState(null)
-  const [regionBreakdown, setRegionBreakdown] = useState(null)
+  const [countryBreakdown, setCountryBreakdown] = useState(null)
   const [realtime, setRealtime] = useState(null)
   const [realtimeVisitors, setRealtimeVisitors] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  // ponytail: 링크 단건 조회 API가 없어 목록에서 찾는다. 사용자당 링크가 100개를 넘으면 못 찾을 수 있음 — 그때 GET /api/links/{id} 추가.
-  useEffect(() => {
-    listLinks(0, 100).then((res) => {
-      const found = res.links.find((l) => l.linkId === linkId)
-      if (!found) setNotFound(true)
-      else setLink(found)
-    })
-  }, [linkId])
+  // 링크 단건 조회 API가 없어 목록에서 찾는다. 팀당 링크는 100개로 제한되므로(#204) 100개를 불러오면 그 팀의 링크가 모두 들어온다.
+  // 지금 선택한 워크스페이스의 링크 안에서만 찾는다. 다른 팀 링크는 여기에 없으므로 안내 화면이 뜬다.
+  const loadLink = useCallback(() => {
+    if (!current) return
+    listLinks(current, 0, 100)
+      .then((res) => {
+        const found = res.links.find((l) => l.linkId === linkId)
+        if (!found) setState('forbidden')
+        else setLink(found)
+      })
+      .catch((err) => setState(err?.status === 403 ? 'forbidden' : 'error'))
+  }, [linkId, current])
 
-  const from = daysAgoIso(days - 1)
-  const to = daysAgoIso(0)
+  useEffect(() => {
+    loadLink()
+  }, [loadLink])
+
+  const from = kstDay(days - 1)
+  const to = kstDay(0)
 
   const loadStats = useCallback(async () => {
     try {
-      const [dailyRes, referrerRes, changeRes, deviceRes, regionRes] = await Promise.all([
-        getDailyStats(linkId, from, to),
-        getReferrerStats(linkId, from, to),
-        getDailyChange(linkId),
-        getBreakdown(linkId, 'DEVICE', from, to),
-        getBreakdown(linkId, 'REGION', from, to),
+      const [dailyRes, referrerRes, deviceRes, countryRes] = await Promise.all([
+        getDailyStats(current, linkId, from, to),
+        getReferrerStats(current, linkId, from, to),
+        getBreakdown(current, linkId, 'DEVICE', from, to),
+        // REGION은 이제 시·도 코드이고 온프렘에는 값이 없다(항상 UNKNOWN). 국가 단위 분포는 COUNTRY다(#208).
+        getBreakdown(current, linkId, 'COUNTRY', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
-      setChange(changeRes)
+      // 기간(7일 이상)에 어제·그제가 들어 있어서 받은 일별 값으로 계산한다
+      setChange(dailyChangeOf(dailyRes.daily))
       setDeviceBreakdown(deviceRes)
-      setRegionBreakdown(regionRes)
+      setCountryBreakdown(countryRes)
+      setState('ready')
     } catch (err) {
-      if (err instanceof ApiError) setNotFound(true)
+      // 링크 조회에서 이미 "이 팀의 링크가 아님"으로 판단했다면 통계 오류가 그 안내를 덮어쓰지 않게 한다
+      setState((prev) =>
+        prev === 'forbidden' || err?.status === 403
+          ? 'forbidden'
+          : err instanceof ApiError
+            ? 'notfound'
+            : 'error'
+      )
     }
-  }, [linkId, from, to])
+  }, [current, linkId, from, to])
 
   useEffect(() => {
     loadStats()
@@ -86,15 +118,23 @@ export function LinkStats() {
     }
   }
 
+  function retry() {
+    setState('loading')
+    loadLink()
+    loadStats()
+  }
+
   useEffect(() => {
     let cancelled = false
     function poll() {
-      getRealtimeCount(linkId).then((res) => {
-        if (!cancelled) {
-          setRealtime(res.realtimeClickCount)
-          setRealtimeVisitors(res.realtimeUniqueVisitorCount)
-        }
-      })
+      getRealtimeCount(current, linkId)
+        .then((res) => {
+          if (!cancelled) {
+            setRealtime(res.clickCount)
+            setRealtimeVisitors(res.uniqueVisitorCount)
+          }
+        })
+        .catch(() => {})
     }
     poll()
     const timer = setInterval(poll, 10000)
@@ -102,179 +142,125 @@ export function LinkStats() {
       cancelled = true
       clearInterval(timer)
     }
-  }, [linkId])
+  }, [current, linkId])
 
-  if (notFound) {
+  if (state === 'forbidden') {
     return (
-      <div className="page">
-        <p>링크를 찾을 수 없습니다.</p>
-        <Link to="/dashboard">내 링크로 돌아가기</Link>
-      </div>
+      <ContentLayout header={<Header variant="h1">볼 수 없는 링크예요</Header>}>
+        <Alert
+          type="warning"
+          action={<Button onClick={() => navigate('/dashboard')}>링크 목록으로</Button>}
+        >
+          이 링크는 {current?.name ?? '지금 워크스페이스'}에 없어요. 다른 팀의 링크이거나 삭제된
+          링크일 수 있어요. 워크스페이스를 바꾸거나 목록에서 다시 골라 주세요.
+        </Alert>
+      </ContentLayout>
     )
   }
 
-  if (!link || !daily) return <div className="page">불러오는 중...</div>
+  if (state === 'notfound') {
+    return (
+      <ContentLayout header={<Header variant="h1">링크를 찾을 수 없습니다</Header>}>
+        <Button onClick={() => navigate('/dashboard')}>내 링크로 돌아가기</Button>
+      </ContentLayout>
+    )
+  }
+
+  if (state === 'error') {
+    return (
+      <ContentLayout header={<Header variant="h1">통계</Header>}>
+        <Alert
+          type="error"
+          header="통계를 불러오지 못했습니다"
+          action={<Button onClick={retry}>다시 시도</Button>}
+        >
+          잠시 후 다시 시도해 주세요.
+        </Alert>
+      </ContentLayout>
+    )
+  }
+
+  if (!link || !daily) {
+    return (
+      <Box padding="xxl" textAlign="center">
+        <StatusIndicator type="loading">불러오는 중...</StatusIndicator>
+      </Box>
+    )
+  }
+
+  const tiles = [
+    { label: '오늘 클릭 수', value: realtime ?? '-' },
+    { label: '오늘 방문자 수 (UV)', value: realtimeVisitors ?? '-' },
+    ...(change
+      ? [
+          {
+            label: '어제 클릭 (전일 대비)',
+            value: `${change.clicks.base.toLocaleString()} (${formatRate(change.clicks.changeRate)})`
+          },
+          {
+            label: '어제 방문자 (전일 대비)',
+            value: `${change.visitors.base.toLocaleString()} (${formatRate(change.visitors.changeRate)})`
+          }
+        ]
+      : []),
+    // 기간에 오늘(KST)이 들어 있으면 서버가 일별 값과 요약의 오늘 부분을 Redis 실시간 값으로 채운다(#237). realtime을 더하면 이중으로 센다.
+    { label: '총 클릭', value: daily.summary.totalClicks.toLocaleString() }
+  ]
 
   return (
-    <div className="page">
-      <div className="page__header">
-        <div>
-          <h1>{link.title || link.shortUrl}</h1>
-          <p className="hero__sub" title={link.originalUrl}>
-            {link.originalUrl}
-          </p>
-        </div>
-        <div className="page__header-actions">
-          <button className="btn btn--ghost" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? '새로고침 중...' : '새로고침'}
-          </button>
-          <Link to="/dashboard" className="btn btn--ghost">
-            ← 내 링크
-          </Link>
-        </div>
-      </div>
+    <ContentLayout
+      header={
+        <Header
+          variant="h1"
+          description={link.originalUrl}
+          actions={
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button iconName="refresh" loading={refreshing} onClick={handleRefresh}>
+                새로고침
+              </Button>
+              <Button onClick={() => navigate('/dashboard')}>내 링크</Button>
+            </SpaceBetween>
+          }
+        >
+          {link.title || link.shortUrl}
+        </Header>
+      }
+    >
+      <SpaceBetween size="l">
+        <StatGrid items={tiles} columns={3} />
 
-      <div className="stat-tiles">
-        <StatTile label="오늘 클릭 수" value={realtime ?? '-'} />
-        <StatTile label="오늘 방문자 수 (UV)" value={realtimeVisitors ?? '-'} />
-        {change && (
-          <>
-            <StatTile
-              label="어제 클릭 (전일 대비)"
-              value={`${change.clicks.base.toLocaleString()} (${formatRate(change.clicks.changeRate)})`}
-            />
-            <StatTile
-              label="어제 방문자 (전일 대비)"
-              value={`${change.visitors.base.toLocaleString()} (${formatRate(change.visitors.changeRate)})`}
-            />
-          </>
-        )}
-        {/* link_daily_stats는 배치가 어제까지만 채워서 오늘 클릭이 빠져있다. realtime(오늘, Redis)을 더해 보정한다. */}
-        <StatTile label="총 클릭" value={(daily.summary.totalClicks + (realtime ?? 0)).toLocaleString()} />
-      </div>
+        <Container
+          header={
+            <Header
+              variant="h2"
+              actions={
+                <SegmentedControl
+                  selectedId={String(days)}
+                  onChange={({ detail }) => setDays(Number(detail.selectedId))}
+                  options={RANGE_OPTIONS}
+                />
+              }
+            >
+              일별 클릭/방문자 추이
+            </Header>
+          }
+        >
+          <TrendChart daily={daily.daily} />
+        </Container>
 
-      <div className="card chart-card">
-        <div className="chart-card__header">
-          <h2>일별 클릭/방문자 추이</h2>
-          <div className="segmented">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.days}
-                className={`segmented__item ${days === opt.days ? 'is-active' : ''}`}
-                onClick={() => setDays(opt.days)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="viz-root">
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={daily.daily} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="var(--gridline)" />
-              <XAxis
-                dataKey="date"
-                tickFormatter={(d) => d.slice(5)}
-                stroke="var(--muted)"
-                tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                axisLine={{ stroke: 'var(--axis)' }}
-                tickLine={false}
-              />
-              <YAxis
-                allowDecimals={false}
-                stroke="var(--muted)"
-                tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                axisLine={false}
-                tickLine={false}
-                width={32}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'var(--surface-1)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  fontSize: 13,
-                }}
-                labelStyle={{ color: 'var(--text-primary)' }}
-              />
-              <Legend wrapperStyle={{ fontSize: 13 }} />
-              <Line
-                type="monotone"
-                dataKey="clickCount"
-                name="클릭 수"
-                stroke="var(--series-1)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="visitorCount"
-                name="방문자 수"
-                stroke="var(--series-2)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>유입 경로</h2>
-        <BreakdownTable rows={referrers} nameKey="referrerCategory" />
-      </div>
-
-      <div className="card">
-        <h2>디바이스 분포</h2>
-        <BreakdownTable rows={deviceBreakdown?.breakdown} nameKey="value" />
-      </div>
-
-      <div className="card">
-        <h2>접속 지역 분포</h2>
-        <BreakdownTable rows={regionBreakdown?.breakdown} nameKey="value" />
-      </div>
-    </div>
-  )
-}
-
-function BreakdownTable({ rows, nameKey }) {
-  if (!rows) return <p className="empty-state empty-state--inline">불러오는 중...</p>
-  if (rows.length === 0) return <p className="empty-state empty-state--inline">해당 기간에 데이터가 없습니다.</p>
-  return (
-    <table className="table">
-      <thead>
-        <tr>
-          <th>구분</th>
-          <th>클릭 수</th>
-          <th>비율</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r[nameKey]}>
-            <td>{r[nameKey]}</td>
-            <td>{r.clickCount.toLocaleString()}</td>
-            <td>{r.percentage}%</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+        <BreakdownTable title="유입 경로" rows={referrers} nameKey="value" />
+        <BreakdownTable title="디바이스 분포" rows={deviceBreakdown?.breakdown} nameKey="value" />
+        <BreakdownTable
+          title="접속 국가 분포"
+          rows={countryBreakdown?.breakdown.map((r) => ({ ...r, value: countryName(r.value) }))}
+          nameKey="value"
+        />
+      </SpaceBetween>
+    </ContentLayout>
   )
 }
 
 function formatRate(rate) {
   const sign = rate > 0 ? '+' : ''
   return `${sign}${rate}%`
-}
-
-function StatTile({ label, value }) {
-  return (
-    <div className="card stat-tile">
-      <span className="stat-tile__label">{label}</span>
-      <span className="stat-tile__value">{value}</span>
-    </div>
-  )
 }

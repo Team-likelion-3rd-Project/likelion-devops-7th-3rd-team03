@@ -22,9 +22,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 링크 관리 API. @CurrentUser가 JWT subject를 내부 users.id로 변환해 주입한다. */
+/**
+ * 링크 관리 API. @CurrentUser가 JWT subject를 내부 users.id로 변환해 주입한다.
+ * 링크는 워크스페이스가 소유하므로 모든 경로가 워크스페이스 아래에 있다(#204). 경로의 workspaceId는 외부 노출용 UUID다.
+ */
 @RestController
-@RequestMapping("/api/links")
+@RequestMapping("/api/workspaces/{workspaceId}/links")
 @RequiredArgsConstructor
 public class LinkController {
 
@@ -33,37 +36,41 @@ public class LinkController {
     @PostMapping
     public ResponseEntity<ApiResponse<LinkResponse>> create(
             @CurrentUser Long userId,
+            @PathVariable String workspaceId,
             @Valid @RequestBody CreateLinkRequest request
     ) {
-        LinkResponse response = linkService.create(userId, request);
+        LinkResponse response = linkService.create(userId, workspaceId, request);
         return ResponseEntity.ok(ApiResponse.success(200, response, "링크가 생성되었습니다."));
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<LinkListResponse>> getList(
             @CurrentUser Long userId,
+            @PathVariable String workspaceId,
             @Valid @ModelAttribute LinkListQuery query
     ) {
-        LinkListResponse response = linkService.getList(userId, query.page(), query.size());
+        LinkListResponse response = linkService.getList(userId, workspaceId, query.page(), query.size());
         return ResponseEntity.ok(ApiResponse.success(200, response, "링크 목록 조회 성공"));
     }
 
     @PatchMapping("/{linkId}")
     public ResponseEntity<ApiResponse<UpdateLinkResponse>> update(
             @CurrentUser Long userId,
+            @PathVariable String workspaceId,
             @PathVariable String linkId,
             @Valid @RequestBody UpdateLinkRequest request
     ) {
-        UpdateLinkResponse response = linkService.update(userId, linkId, request);
+        UpdateLinkResponse response = linkService.update(userId, workspaceId, linkId, request);
         return ResponseEntity.ok(ApiResponse.success(200, response, "링크가 수정되었습니다."));
     }
 
     @DeleteMapping("/{linkId}")
     public ResponseEntity<ApiResponse<Void>> delete(
             @CurrentUser Long userId,
+            @PathVariable String workspaceId,
             @PathVariable String linkId
     ) {
-        linkService.delete(userId, linkId);
+        linkService.delete(userId, workspaceId, linkId);
         return ResponseEntity.ok(ApiResponse.success(200, null, "링크가 삭제되었습니다."));
     }
 }

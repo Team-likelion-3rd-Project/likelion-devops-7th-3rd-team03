@@ -1,0 +1,8 @@
+# overlays/prod/patch-sa.yaml
+# redirect-service가 Firehose에 쓰기 위한 prod 클러스터 IRSA Role.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redirect-service-sa
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::834922934330:role/snipy-cluster-redirect-service-role

@@ -2,7 +2,7 @@ package redirect_service.clicklog.processor;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import jakarta.annotation.PreDestroy;
+import org.springframework.context.SmartLifecycle;    // 추가
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessException;
@@ -29,10 +29,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * 당일 잠정 통계를 위한 최종 소비자다. 이벤트는 최대 5초간 bounded buffer에 모은 뒤
  * 하나의 Redis pipeline으로 전송한다. 버퍼 포화나 Redis 오류로 누락된 값은 원본 클릭
  * 이벤트 기반 배치 집계로 확정한다.
+ * 종료 시에는 Redis 연결이 닫히기 전에 남은 버퍼를 반영한다 (SmartLifecycle).
  */
 @Slf4j
 @Component
-public class RealtimeStatsRecorder {
+public class RealtimeStatsRecorder implements SmartLifecycle{
 
     static final ZoneId KST = ZoneId.of("Asia/Seoul");
     // Redis 키 형식: stats:{KST 날짜}:link:{내부 linkId}:{clicks|uv}
@@ -119,10 +120,41 @@ public class RealtimeStatsRecorder {
         }
     }
 
-    @PreDestroy
-    void flushBeforeShutdown() {
-        flush();
+
+    @Override
+    public void start() {
+        running = true;
     }
+
+    /** 종료 시 버퍼에 남은 이벤트를 Redis 연결이 닫히기 전에 반영한다. */
+    @Override
+    public void stop() {
+        try {
+            flush();
+        } finally {
+            running = false;
+        }
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    @Override
+    public int getPhase() {
+        return PHASE;
+    }
+
+    /**
+     * 종료 순서: 웹 서버(요청 수신 중단) → 이 기록기(버퍼에 남은 이벤트 flush) → Redis 연결 종료.
+     * SmartLifecycle 은 phase 가 큰 것부터 멈춘다.
+     * Lettuce 연결 팩토리(phase 0)보다 크고, 웹 서버 종료(DEFAULT_PHASE 근처)보다 작게 둔다.
+     * @PreDestroy 는 Redis 연결이 닫힌 뒤에 실행돼 flush 가 실패했다.
+     */
+    private static final int PHASE = 1024;
+
+    private volatile boolean running;
 
     static String clicksKey(LocalDate date, long linkId) {
         return CLICKS_KEY_PATTERN.formatted(date, linkId);

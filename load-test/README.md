@@ -26,6 +26,9 @@ load-test/run-smoke.sh snipy redirect-smoke.js http://redirect-service:8080 test
 # 바이럴 스파이크 시나리오 — 콜드 링크 생성부터 실행/정리까지 원스톱 (base-url 기본값이 이미 내부 DNS)
 load-test/viral-spike-run.sh snipy
 
+# 목표 TPS 지정 (비우면 viral-spike.js 기본값 1600)
+load-test/viral-spike-run.sh snipy http://redirect-service:8080 3 800
+
 # Load/Stress (PEAK_TPS만 다름) — 링크 30만 개 생성부터 실행/정리까지 원스톱
 load-test/normal-traffic-run.sh snipy
 
@@ -47,10 +50,32 @@ kubectl --context <context> port-forward -n monitoring svc/kube-prometheus-grafa
 # http://localhost:3000, admin / (사전 준비 2번에서 조회한 비밀번호)
 ```
 
+- k6 Job은 redirect 파드가 없는 노드에 우선 배치된다(soft anti-affinity). 노드 CPU를 볼 때는 `kubectl get pods -o wide`로 k6와 redirect 파드가 같은 노드에 있는지 먼저 확인한다. HPA가 나중에 늘린 redirect 파드는 k6 노드에 올 수 있다.
+
 ## 정리
 
 - Job/ConfigMap: 다음 실행 시 `run-smoke.sh`가 자동으로 지우고 새로 만듦. 수동 정리는:
   ```bash
   kubectl --context <context> delete job k6-load-test configmap k6-load-test-script
   ```
-- `viral-spike-run.sh`로 만든 콜드 링크는 테스트 종료 시 자동 DELETE됨 (`trap cleanup EXIT` — 중간에 실패해도 실행됨). 클릭 로그(`link_daily_stats`, S3/Athena)는 자동 정리되지 않음.
+- 세 스크립트(`normal-traffic-run.sh`, `breakpoint-run.sh`, `viral-spike-run.sh`)가 만든 테스트 링크는 테스트 종료 시 자동으로 soft delete(`is_visible = FALSE`)된다 (`trap cleanup EXIT` — 중간에 실패해도 실행됨, #251). 링크 행과 클릭 로그(`link_daily_stats`, S3/Athena)는 남는다. 실제로 지우려면 아래 "테스트 링크 정리 (dev)".
+## 테스트 링크 정리 (dev)
+
+스크립트는 끝날 때 테스트 링크를 soft delete(`is_visible = FALSE`)만 한다 (#251).
+링크를 실제로 지우면 S3에 남은 클릭이 집계 외래키에 걸리기 때문이다. 그래서 실행할 때마다 링크 행이 남는다 (normal 30만 행씩).
+
+dev에서 쌓인 테스트 링크를 정말 지우려면, **그날 배치가 끝난 뒤** 통계 행부터 지우고 링크를 지운다.
+링크를 먼저 지우면 통계 행이 외래키에 걸려 지워지지 않는다.
+
+```sql
+-- prefix: 스크립트가 출력한 값 (예: lt123456, bp123456, vs12345678)
+DELETE s FROM link_daily_dimension_stats s JOIN links l ON l.id = s.link_id
+ WHERE l.slug LIKE 'lt123456%' AND l.is_visible = FALSE;
+DELETE s FROM link_daily_stats s JOIN links l ON l.id = s.link_id
+ WHERE l.slug LIKE 'lt123456%' AND l.is_visible = FALSE;
+DELETE FROM links WHERE slug LIKE 'lt123456%' AND is_visible = FALSE;
+```
+
+- 30만 행은 한 번에 지우면 테이블 잠금이 길어진다. 사용이 적은 시간에 하거나 `LIMIT 10000`을 붙여 여러 번 나눠 지운다.
+- 지운 뒤에도 S3에 클릭이 남아 있어, 그 날짜를 다시 집계하면 해당 행은 건너뛴다 (#253, "links 에 없는 링크의 행 N건을 건너뜁니다" 로그).
+- prod(부하 테스트 환경)는 끝나면 destroy 하므로 정리하지 않아도 된다.

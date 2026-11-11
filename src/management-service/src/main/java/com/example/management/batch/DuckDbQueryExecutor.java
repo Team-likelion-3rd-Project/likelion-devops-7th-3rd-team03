@@ -65,7 +65,7 @@ public class DuckDbQueryExecutor implements ClickQueryExecutor {
             @Value("${app.duckdb.s3-secret-key:}") String s3SecretKey,
             @Value("${app.duckdb.s3-region:us-east-1}") String s3Region,
             @Value("${app.duckdb.s3-use-ssl:false}") boolean s3UseSsl,
-            @Value("${app.duckdb.memory-limit:256MB}") String memoryLimit,
+            @Value("${app.duckdb.memory-limit:512MB}") String memoryLimit,
             @Value("${app.duckdb.temp-directory:/tmp/duckdb}") String tempDirectory,
             @Value("${app.duckdb.extension-directory:}") String extensionDirectory,
             @Value("${app.duckdb.threads:2}") int threads,

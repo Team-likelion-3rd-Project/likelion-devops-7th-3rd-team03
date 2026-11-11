@@ -12,7 +12,9 @@ public record ClickRequestSnapshot(
         String forwardedFor,
         String userAgent,
         String referrer,
-        String acceptLanguage
+        String acceptLanguage,
+        String viewerCountry,
+        String viewerRegion
 ) {
     public static ClickRequestSnapshot from(RedirectRequest request) {
         return new ClickRequestSnapshot(
@@ -22,7 +24,9 @@ public record ClickRequestSnapshot(
                 request.forwardedFor(),
                 request.userAgent(),
                 request.referrer(),
-                request.acceptLanguage()
+                request.acceptLanguage(),
+                request.viewerCountry(),
+                request.viewerRegion()
         );
     }
 }

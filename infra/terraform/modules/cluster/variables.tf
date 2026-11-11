@@ -10,7 +10,7 @@ variable "cluster_version" {
 
 variable "cluster_admin_arns" {
   description = "EKS admin IAM user arn list"
-  type = list(string)
+  type        = list(string)
 }
 
 variable "aws_region" {
@@ -41,4 +41,14 @@ variable "node_max_size" {
 
 variable "node_desired_size" {
   type = number
+}
+
+variable "domain_name" {
+  description = "external-dns가 관리할 도메인 (이 도메인 아래 레코드만 만든다)"
+  type        = string
+}
+
+variable "route53_zone_id" {
+  description = "external-dns가 레코드를 쓸 수 있는 유일한 호스팅 존"
+  type        = string
 }

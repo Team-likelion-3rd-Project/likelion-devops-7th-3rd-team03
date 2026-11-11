@@ -21,11 +21,15 @@ export function clearPendingSignup() {
 //  - 가입된 회원: { signupRequired:false, accessToken, refreshToken } -> 토큰 저장
 //  - 미가입:      { signupRequired:true, signupToken, prefill } -> 토큰 없이 가입 대기 정보만 저장
 export async function socialLogin(provider, code, state) {
-  const data = await apiFetch(`/auth/${provider}/login`, { method: 'POST', body: { code, state }, auth: false })
+  const data = await apiFetch(`/auth/${provider}/login`, {
+    method: 'POST',
+    body: { code, state },
+    auth: false
+  })
   if (data.signupRequired) {
     sessionStorage.setItem(
       PENDING_SIGNUP_KEY,
-      JSON.stringify({ provider, signupToken: data.signupToken, prefill: data.prefill || {} }),
+      JSON.stringify({ provider, signupToken: data.signupToken, prefill: data.prefill || {} })
     )
     return data
   }
@@ -39,7 +43,7 @@ export async function completeSignup({ signupToken, nickname, email, profileImag
   const data = await apiFetch('/auth/signup', {
     method: 'POST',
     body: { signupToken, nickname, email, profileImageUrl },
-    auth: false,
+    auth: false
   })
   setTokens(data)
   clearPendingSignup()
@@ -50,13 +54,27 @@ export async function logout() {
   const refreshToken = getRefreshToken()
   clearTokens()
   if (!refreshToken) return
-  await apiFetch('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(() => {})
+  await apiFetch('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }).catch(
+    () => {}
+  )
+}
+
+// 회원 탈퇴. 성공하면 서버가 워크스페이스를 정리하고 refresh token을 지운다(204, 본문 없음).
+// 호출한 쪽이 이어서 토큰을 지우고 로그인 화면으로 보낸다.
+export async function withdraw() {
+  // 개발용 테스트 계정(auth/devLogin.js)의 토큰은 백엔드가 받지 않으니 화면 흐름만 확인할 수 있게 넘어간다.
+  if (import.meta.env.DEV && getRefreshToken() === 'dev') return
+  await apiFetch('/users/me', { method: 'DELETE' })
 }
 
 export async function reissue() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) throw new Error('저장된 refresh token이 없습니다.')
-  const data = await apiFetch('/auth/reissue', { method: 'POST', body: { refreshToken }, auth: false })
+  const data = await apiFetch('/auth/reissue', {
+    method: 'POST',
+    body: { refreshToken },
+    auth: false
+  })
   setTokens(data)
   return data
 }

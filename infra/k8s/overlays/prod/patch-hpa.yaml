@@ -1,0 +1,26 @@
+# 카나리 배포라 HPA가 Deployment 대신 Rollout의 파드 수를 조절한다 (Deployment를 보면 Rollout과 파드 수를 서로 뺏는다).
+# HPA는 Rollout(wave 0) 다음에 만든다. 같은 wave면 새 클러스터에서 Rollout이 없어 HPA가 Degraded가 될 수 있다 (#224).
+# min·max는 base(운영값) 그대로 둔다.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: management-service-hpa
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: management-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: redirect-service-hpa
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: redirect-service

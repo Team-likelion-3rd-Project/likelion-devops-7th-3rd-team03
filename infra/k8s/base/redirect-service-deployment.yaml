@@ -28,6 +28,10 @@ spec:
           image: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service:latest
           ports:
             - containerPort: 8080
+          env:
+            # 트래픽을 받기 전에 JIT를 데운다 (#264). 최대 60초 동안 readiness가 DOWN으로 유지된다
+            - name: REDIRECT_WARMUP_ENABLED
+              value: "true"
           envFrom:
             - configMapRef: { name: redirect-service-config }
             - secretRef: { name: redirect-service-secrets }
@@ -38,9 +42,15 @@ spec:
           livenessProbe:
             httpGet: { path: /actuator/health/liveness, port: 8080 }
             periodSeconds: 10
+            # 부하 중에는 요청 처리와 같은 스레드 풀에서 응답해서 기본 1초를 넘길 수 있다.
+            # 과부하를 재시작으로 풀려 하면 남은 파드에 부하가 몰려 연쇄 재시작된다 (prod 바이럴 테스트, #260).
+            # 1분 동안 계속 응답이 없을 때만 재시작한다.
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             httpGet: { path: /actuator/health/readiness, port: 8080 }
             periodSeconds: 10
+            timeoutSeconds: 3
           resources:
             # request 250m가 너무 낮아서 스케줄러가 파드를 한 노드(t3.medium, 2vCPU)에
             # 3개까지 욱여넣었고, 부하 중 그 노드 자체가 CPU 100%까지 참 — limit을

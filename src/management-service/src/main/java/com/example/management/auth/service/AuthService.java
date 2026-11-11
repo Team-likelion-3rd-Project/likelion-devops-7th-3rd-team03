@@ -43,6 +43,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
     private final SignupSessionStore signupSessionStore;
+    private final UserRegistrar userRegistrar;
 
     /**
      * 가입된 회원이면 토큰을 발급한다. 소셜 프로필로 기존 회원 정보를 덮어쓰지 않는다.
@@ -83,7 +84,7 @@ public class AuthService {
      * 가입 대기 세션을 소비해 회원을 만들고 토큰을 발급한다. 입력값은 컨트롤러에서 검증을 마친 상태로 들어온다.
      * provider·socialId는 세션 값만 쓰고, 닉네임·이메일·이미지는 사용자가 입력한 값을 쓴다.
      * 유니크 위반 뒤에는 같은 트랜잭션에서 다시 조회할 수 없으므로 메서드 전체를 트랜잭션으로 묶지 않는다
-     * (저장·조회·토큰 저장은 각각 리포지토리 트랜잭션으로 실행된다).
+     * (회원·개인 워크스페이스 저장은 UserRegistrar 트랜잭션, 조회·토큰 저장은 각각 리포지토리 트랜잭션으로 실행된다).
      */
     public AuthTokens signup(String signupToken, String nickname, String email, String profileImageUrl) {
         SignupSession session = signupSessionStore.consume(signupToken)
@@ -106,7 +107,7 @@ public class AuthService {
                 .profileImageUrl(StringUtils.hasLength(profileImageUrl) ? profileImageUrl : null)
                 .build();
         try {
-            return userRepository.saveAndFlush(newUser);
+            return userRegistrar.register(newUser);
         } catch (DataIntegrityViolationException e) {
             // 다른 탭에서 같은 소셜 계정으로 먼저 가입이 끝난 경우: 먼저 가입된 회원으로 로그인 처리한다
             return userRepository.findByProviderAndSocialId(session.provider(), session.socialId())

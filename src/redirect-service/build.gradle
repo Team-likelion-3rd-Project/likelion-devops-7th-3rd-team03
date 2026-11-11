@@ -1,8 +1,18 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '4.1.0'
+	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
+
+// CVE-2026-75595 (netty-handler, CRITICAL) 대응.
+// Spring Boot가 관리하는 netty 버전(4.2.15)을 패치 버전으로 올린다.
+// Spring Boot를 올렸을 때 기본 netty가 4.2.17 이상이면 이 줄은 지운다.
+ext['netty.version'] = '4.2.17.Final'
+
+// CVE-2026-65182, CVE-2026-65905, CVE-2026-68525 (tomcat-embed-core, CRITICAL) 대응.
+// Spring Boot가 관리하는 Tomcat(11.0.24)을 패치 버전으로 올린다.
+// Spring Boot를 올렸을 때 기본 Tomcat이 11.0.25 이상이면 이 줄은 지운다.
+ext['tomcat.version'] = '11.0.25'
 
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'

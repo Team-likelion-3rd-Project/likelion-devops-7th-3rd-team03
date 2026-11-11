@@ -5,22 +5,27 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 const ACCESS_TOKEN_KEY = 'linkshortener_access_token'
 const REFRESH_TOKEN_KEY = 'linkshortener_refresh_token'
 
+// 토큰은 localStorage(모든 탭이 공유)에 둔다. 개발용 테스트 계정(auth/devLogin.js)만 sessionStorage(탭마다 따로)에
+// 둬서, 탭 하나는 관리자로 다른 탭은 멤버로 로그인해 두 계정을 나란히 시험할 수 있다. sessionStorage에 있으면 그쪽이 우선이다.
 export function getAccessToken() {
-  return localStorage.getItem(ACCESS_TOKEN_KEY)
+  return sessionStorage.getItem(ACCESS_TOKEN_KEY) ?? localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
 export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_TOKEN_KEY)
+  return sessionStorage.getItem(REFRESH_TOKEN_KEY) ?? localStorage.getItem(REFRESH_TOKEN_KEY)
 }
 
-export function setTokens({ accessToken, refreshToken }) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+export function setTokens({ accessToken, refreshToken }, { perTab = false } = {}) {
+  const storage = perTab ? sessionStorage : localStorage
+  storage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  storage.setItem(REFRESH_TOKEN_KEY, refreshToken)
 }
 
 export function clearTokens() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  // 이 탭이 테스트 계정이면 그 탭의 로그인만 끊고, 다른 탭의 실제 로그인은 건드리지 않는다
+  const storage = sessionStorage.getItem(ACCESS_TOKEN_KEY) ? sessionStorage : localStorage
+  storage.removeItem(ACCESS_TOKEN_KEY)
+  storage.removeItem(REFRESH_TOKEN_KEY)
 }
 
 export class ApiError extends Error {
@@ -51,10 +56,18 @@ export async function apiFetch(path, { method = 'GET', body, auth = true } = {})
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined
   })
 
   if (res.status === 401) {
+    // 개발용 테스트 계정(auth/devLogin.js)의 토큰은 서명이 없어 백엔드가 항상 거절한다.
+    // 토큰을 지우면 로그아웃되고 팀 mock 시험이 끊기므로, 오류만 돌려준다.
+    if (import.meta.env.DEV && getRefreshToken() === 'dev') {
+      throw new ApiError(
+        401,
+        '테스트 계정은 백엔드 API를 쓸 수 없어요. 실제 로그인으로 확인해 주세요.'
+      )
+    }
     clearTokens()
     throw new ApiError(401, '인증이 만료되었습니다. 다시 로그인해주세요.')
   }

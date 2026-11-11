@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { getAccessToken, getRefreshToken, clearTokens } from '../api/http'
 import * as authApi from '../api/auth'
 import { getStoredProvider, setStoredProvider, clearStoredProvider } from '../auth/providers'
+import { devLogin } from '../auth/devLogin'
 
 const AuthContext = createContext(null)
 const KAKAO_CLIENT_ID = import.meta.env.VITE_KAKAO_CLIENT_ID
@@ -48,7 +49,12 @@ export function AuthProvider({ children }) {
   const signup = useCallback(async ({ nickname, email, profileImageUrl }) => {
     const pending = authApi.loadPendingSignup()
     if (!pending) throw new Error('가입 정보가 없습니다. 다시 로그인해주세요.')
-    await authApi.completeSignup({ signupToken: pending.signupToken, nickname, email, profileImageUrl })
+    await authApi.completeSignup({
+      signupToken: pending.signupToken,
+      nickname,
+      email,
+      profileImageUrl
+    })
     setStoredProvider(pending.provider)
     setPendingSignup(null)
     setUser(userFromStoredToken())
@@ -57,6 +63,12 @@ export function AuthProvider({ children }) {
   const cancelSignup = useCallback(() => {
     authApi.clearPendingSignup()
     setPendingSignup(null)
+  }, [])
+
+  // 개발 서버 전용 테스트 계정 로그인. Login.jsx가 import.meta.env.DEV일 때만 부른다.
+  const loginAsDev = useCallback((account) => {
+    devLogin(account)
+    setUser(userFromStoredToken())
   }, [])
 
   const logout = useCallback(async () => {
@@ -79,6 +91,17 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // 탈퇴가 성공하면 저장한 토큰을 지우고 로그아웃 상태로 만든다. 서버가 이미 refresh token을 지웠으니
+  // 로그아웃 API는 부르지 않고, 카카오 세션은 건드리지 않는다. 실패하면 로그인 상태를 그대로 둔다.
+  const withdraw = useCallback(async () => {
+    await authApi.withdraw()
+    clearTokens()
+    authApi.clearPendingSignup()
+    clearStoredProvider()
+    setPendingSignup(null)
+    setUser(null)
+  }, [])
+
   // access token이 없지만 refresh token은 남아있는 경우 (새로고침 등) 조용히 재발급 시도
   useEffect(() => {
     if (!getAccessToken() && getRefreshToken()) {
@@ -90,7 +113,19 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, pendingSignup, loginWithSocial, signup, cancelSignup, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        pendingSignup,
+        loginWithSocial,
+        loginAsDev,
+        signup,
+        cancelSignup,
+        logout,
+        withdraw
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

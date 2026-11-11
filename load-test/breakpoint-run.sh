@@ -86,33 +86,42 @@ run_sql() {
 }
 
 echo ">> [$CONTEXT] 기존 user id 조회"
-USER_ID=$(run_sql "SELECT id FROM users ORDER BY id LIMIT 1;" | tr -d '\r' | head -n1)
+# 탈퇴한 회원(#202)은 개인 워크스페이스가 DELETED라 활성 회원만 고른다
+USER_ID=$(run_sql "SELECT id FROM users WHERE status = 'ACTIVE' ORDER BY id LIMIT 1;" | tr -d '\r' | head -n1)
 if [[ -z "$USER_ID" ]]; then
-  echo "!! users 테이블이 비어있음 — 카카오 로그인을 한 번이라도 한 계정이 있어야 합니다." >&2
+  echo "!! 활성 회원이 없음 — 소셜 로그인으로 가입한 계정이 하나 이상 있어야 합니다." >&2
+  exit 1
+fi
+
+# 링크는 워크스페이스 소유다(links.workspace_id NOT NULL, #206). 그 사용자의 개인 워크스페이스에 만든다
+WORKSPACE_ID=$(run_sql "SELECT id FROM workspaces WHERE personal_owner_id = ${USER_ID} AND status = 'ACTIVE';" | tr -d '\r' | head -n1)
+if [[ -z "$WORKSPACE_ID" ]]; then
+  echo "!! user_id=${USER_ID}의 개인 워크스페이스가 없음 — 마이그레이션(V10~V12)이 적용됐는지 확인하세요." >&2
   exit 1
 fi
 
 TS=$(date +%s)
 SLUG_PREFIX="bp${TS: -6}"
 
-# 스크립트 비정상 종료(Ctrl+C, Error 등) 시에도 테스트 링크를 반드시 삭제하도록 trap 설정
+# SQL 로 바로 바꿔서 리다이렉트 캐시(Redis)는 지우지 않는다. 캐시에 남은 slug 는 TTL(기본 10분) 동안 계속 리다이렉트된다
 cleanup() {
   echo ">> [$CONTEXT] 테스트 링크 정리 (prefix=${SLUG_PREFIX}*)"
-  run_sql "DELETE FROM links WHERE slug LIKE '${SLUG_PREFIX}%';" || \
-    echo "!! 자동 정리 실패 — 수동 삭제 필요: DELETE FROM links WHERE slug LIKE '${SLUG_PREFIX}%';" >&2
+  # 앱의 링크 삭제와 같은 soft delete. 실제로 지우면 S3에 남은 클릭이 집계 외래키(1452)에 걸린다 (#251)
+  run_sql "UPDATE links SET is_visible = FALSE WHERE slug LIKE '${SLUG_PREFIX}%' AND is_visible = TRUE;" || \
+    echo "!! 자동 정리 실패 — 수동 정리 필요: UPDATE links SET is_visible = FALSE WHERE slug LIKE '${SLUG_PREFIX}%';" >&2
 }
 trap cleanup EXIT
 
 echo ">> [$CONTEXT] 링크 ${NUM_LINKS}개 (prefix=$SLUG_PREFIX) INSERT"
 run_sql "
   SET SESSION cte_max_recursion_depth = $((NUM_LINKS + 10));
-  INSERT INTO links (link_id, user_id, slug, original_url, is_visible, expires_at)
+  INSERT INTO links (link_id, user_id, workspace_id, slug, original_url, is_visible, expires_at)
   WITH RECURSIVE seq AS (
     SELECT 1 AS n
     UNION ALL
     SELECT n + 1 FROM seq WHERE n < ${NUM_LINKS}
   )
-  SELECT UUID(), ${USER_ID}, CONCAT('${SLUG_PREFIX}', n), 'https://example.com/breakpoint-test', TRUE, NULL
+  SELECT UUID(), ${USER_ID}, ${WORKSPACE_ID}, CONCAT('${SLUG_PREFIX}', n), 'https://example.com/breakpoint-test', TRUE, NULL
   FROM seq;
 "
 

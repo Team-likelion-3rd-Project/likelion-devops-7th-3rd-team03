@@ -11,7 +11,7 @@ module "vpc" {
   database_subnets = var.database_subnets
 
   # NAT Gateway: single_nat_gateway=false일 때만 one_nat_gateway_per_az가 적용됨
-  # (prod 기본값 = AZ당 1개로 가용성 우선, dev는 var로 1개 공유해 비용 절감)
+  # (prod 기본값 = AZ당 1개로 가용성 우선, 테스트용은 var로 1개 공유해 비용 절감)
   enable_nat_gateway     = true
   single_nat_gateway     = var.single_nat_gateway
   one_nat_gateway_per_az = true

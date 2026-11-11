@@ -10,7 +10,7 @@ module "network" {
   single_nat_gateway = var.single_nat_gateway
 }
 
-# ECR은 bootstrap이 소유 (dev와 공유, prod를 destroy해도 이미지가 사라지지 않도록)
+# ECR은 bootstrap이 소유 (prod를 destroy해도 이미지가 사라지지 않도록)
 data "aws_ecr_repository" "management_service" {
   name = "management-service"
 }
@@ -32,6 +32,10 @@ module "cluster" {
   node_max_size      = var.node_max_size
   node_desired_size  = var.node_desired_size
   cluster_admin_arns = var.cluster_admin_arns
+
+  # external-dns가 Ingress의 alb.<도메인> 레코드를 만들 호스팅 존
+  domain_name     = var.domain_name
+  route53_zone_id = module.edge.route53_zone_id
 }
 
 module "database" {
@@ -45,6 +49,9 @@ module "database" {
   elasticache_node_type                  = var.elasticache_node_type
   rds_instance_class                     = var.rds_instance_class
   rds_multi_az                           = var.rds_multi_az
+  rds_backup_retention_period            = var.rds_backup_retention_period
+  rds_deletion_protection                = var.rds_deletion_protection
+  rds_skip_final_snapshot                = var.rds_skip_final_snapshot
   elasticache_num_cache_clusters         = var.elasticache_num_cache_clusters
   elasticache_automatic_failover_enabled = var.elasticache_automatic_failover_enabled
   elasticache_multi_az_enabled           = var.elasticache_multi_az_enabled
@@ -64,14 +71,13 @@ module "edge" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  route53_zone_name      = "snipy.life" # dev/prod 공통 — 실제 등록된 apex 도메인
+  route53_zone_name      = "snipy.life" # 실제 등록된 apex 도메인
   cluster_name           = var.cluster_name
   domain_name            = var.domain_name
   vpc_id                 = module.network.vpc_id
   node_security_group_id = module.cluster.node_security_group_id
   waf_geo_match_enabled  = var.waf_geo_match_enabled
   waf_allowed_countries  = var.waf_allowed_countries
-  origin_alb_domain_name = var.origin_alb_domain_name
 }
 
 module "frontend" {
@@ -82,7 +88,7 @@ module "frontend" {
 
   cluster_name      = var.cluster_name
   domain_name       = "app.${var.domain_name}"
-  route53_zone_name = "snipy.life" # dev/prod 공통 — 실제 등록된 apex 도메인 (modules/edge와 동일)
+  route53_zone_name = "snipy.life" # 실제 등록된 apex 도메인 (modules/edge와 동일)
 }
 
 module "gitops" {
@@ -92,6 +98,8 @@ module "gitops" {
   aws_region        = var.aws_region
   oidc_provider_arn = module.cluster.oidc_provider_arn
   oidc_provider     = module.cluster.oidc_provider
+
+  argocd_target_revision = var.argocd_target_revision
 
   depends_on = [module.cluster]
 }
@@ -115,15 +123,18 @@ resource "kubernetes_config_map" "management_service_config" {
     DB_APP_USER                        = "shortlink_app"
     REDIS_HOST                         = module.database.elasticache_primary_endpoint
     REDIS_PORT                         = "6379"
+    REDIS_SSL_ENABLED                  = "true"
     REDIRECT_CACHE_TTL                 = "10m"
     KAKAO_REDIRECT_URI                 = "https://app.${var.domain_name}/auth/kakao/callback"
+    GOOGLE_REDIRECT_URI                = "https://app.${var.domain_name}/auth/google/callback"
     JWT_ACCESS_TOKEN_VALIDITY_SECONDS  = "1800"
     JWT_REFRESH_TOKEN_VALIDITY_SECONDS = "1209600"
     SHORT_URL_BASE_URL                 = "https://${var.domain_name}"
     CORS_ALLOWED_ORIGINS               = "https://app.${var.domain_name}"
   }
 
-  depends_on = [module.database]
+  # 클러스터 관리자 권한(access entry)이 연결된 뒤에 만든다. 없으면 apply 역할이 forbidden으로 실패한다
+  depends_on = [module.database, module.cluster]
 }
 
 resource "kubernetes_config_map" "redirect_service_config" {
@@ -133,15 +144,22 @@ resource "kubernetes_config_map" "redirect_service_config" {
   }
 
   data = {
-    DB_HOST     = split(":", module.database.rds_endpoint)[0]
-    DB_PORT     = split(":", module.database.rds_endpoint)[1]
-    DB_NAME     = module.database.rds_db_name
-    DB_APP_USER = "shortlink_app"
-    REDIS_HOST  = module.database.elasticache_primary_endpoint
-    REDIS_PORT  = "6379"
+    DB_HOST              = split(":", module.database.rds_endpoint)[0]
+    DB_PORT              = split(":", module.database.rds_endpoint)[1]
+    DB_NAME              = module.database.rds_db_name
+    DB_APP_USER          = "shortlink_app"
+    REDIS_HOST           = module.database.elasticache_primary_endpoint
+    REDIS_PORT           = "6379"
+    REDIS_SSL_ENABLED    = "true"
     FIREHOSE_STREAM_NAME = module.streaming.firehose_delivery_stream_name
     AWS_REGION           = var.aws_region
+
+    # 컨테이너 메모리 limit 대비 %가 아니라 절대값 고정 — 리소스 사이징 계산이
+    # 절대 힙 크기(MB) 기준이라 컨테이너 limit을 바꿔도 힙이 같이 흔들리면 안 됨.
+    # (부하테스트로 맞춘 값. 없으면 JVM 기본값인 limit 1Gi의 25%만 힙으로 잡힌다)
+    JAVA_TOOL_OPTIONS = "-Xms512m -Xmx512m"
   }
 
-  depends_on = [module.database]
+  # 클러스터 관리자 권한(access entry)이 연결된 뒤에 만든다. 없으면 apply 역할이 forbidden으로 실패한다
+  depends_on = [module.database, module.cluster]
 }

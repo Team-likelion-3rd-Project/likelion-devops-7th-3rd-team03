@@ -19,7 +19,7 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.31"
+  default     = "1.35" # 1.31은 표준 지원 종료(연장 지원 요금 6배). 1.35 표준 지원은 2027-03까지
 }
 
 variable "cluster_admin_arns" {
@@ -86,8 +86,8 @@ variable "elasticache_node_type" {
 
 variable "rds_instance_class" {
   description = "RDS 인스턴스 타입"
-  type = string
-  default = "dbb.t3.micro"
+  type        = string
+  default     = "db.t3.micro"
 }
 
 variable "domain_name" {
@@ -108,14 +108,8 @@ variable "waf_allowed_countries" {
   default     = ["KR"]
 }
 
-variable "origin_alb_domain_name" {
-  description = "AWS Load Balancer Controller가 생성한 ALB의 DNS 이름 (Ingress 배포 후 확인하여 입력)"
-  type        = string
-  default     = "" # Ingress 배포 후 채워서 재적용
-}
-
 variable "single_nat_gateway" {
-  description = "true면 NAT Gateway 1개를 모든 AZ가 공유 (dev용 비용 절감). prod 기본값은 false(AZ당 1개)"
+  description = "true면 NAT Gateway 1개를 모든 AZ가 공유 (테스트용 비용 절감). prod 기본값은 false(AZ당 1개)"
   type        = bool
   default     = false
 }
@@ -125,8 +119,26 @@ variable "rds_multi_az" {
   default = true
 }
 
+variable "rds_backup_retention_period" {
+  description = "RDS 자동 백업 보관 일수 (PITR 가능 기간). 운영 7, 부하 테스트 1"
+  type        = number
+  default     = 7
+}
+
+variable "rds_deletion_protection" {
+  description = "true면 RDS를 삭제할 수 없다 (destroy도 실패). 운영은 true"
+  type        = bool
+  default     = true
+}
+
+variable "rds_skip_final_snapshot" {
+  description = "false면 RDS가 삭제·교체될 때 최종 스냅샷을 남긴다. 운영은 false"
+  type        = bool
+  default     = false
+}
+
 variable "elasticache_num_cache_clusters" {
-  description = "1이면 단일 노드(dev용 비용 절감), 2 이상이면 Primary+Replica"
+  description = "1이면 단일 노드(테스트용 비용 절감), 2 이상이면 Primary+Replica"
   type        = number
   default     = 2
 }
@@ -139,4 +151,10 @@ variable "elasticache_automatic_failover_enabled" {
 variable "elasticache_multi_az_enabled" {
   type    = bool
   default = true
+}
+
+variable "argocd_target_revision" {
+  description = "ArgoCD가 prod 앱을 가져올 브랜치. 머지 전 검증할 때만 -var=\"argocd_target_revision=develop\""
+  type        = string
+  default     = "main"
 }

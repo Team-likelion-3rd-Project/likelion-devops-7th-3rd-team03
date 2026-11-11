@@ -1,14 +1,41 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# base가 prod 값을 그대로 담고 있어서 패치 없음 — kubectl apply -k overlays/prod는
-# 지금까지의 kubectl apply -f infra/k8s/ 와 결과가 동일하다.
+# 공통 리소스는 base, AWS 전용 리소스는 components/aws에서 가져오고 prod 값은 아래 patch로 채운다.
 resources:
   - ../../base
   - external-secrets.yaml
+  - migration-job.yaml
+  - pdb.yaml
+  - redirect-rollout.yaml
+  - redirect-canary-analysis.yaml
+  - management-rollout.yaml
+  - management-canary-analysis.yaml
+
+components:
+  - ../../components/aws
+  - ../../components/monitoring
 
 patches:
+  - path: patch-sa.yaml
   - path: patch-athena-configmap.yaml
   - path: patch-athena-sa.yaml
   - path: patch-ingress.yaml
   - path: patch-athena-cronjob.yaml
+  - path: patch-zone-spread.yaml
+  - path: patch-redirect-env.yaml
+  - path: patch-hpa.yaml
+
+# 이미지는 온프렘 CI(onprem-backend-ci)가 GHCR에 한 번 빌드·스캔해 올린 것을 dev와 같이 쓴다 (#105).
+# 그 CI가 dev overlay와 이 파일의 태그를 같은 SHA로 develop에 커밋하고, 릴리스 PR이 main에 머지되면 prod에 배포된다.
+# name은 base 매니페스트에 적힌 이미지 이름이다 (dev overlay와 같은 규칙).
+images:
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
+    newTag: d01b71006c9ee509870b58f229c9b45fd53ee8dc
+  - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/redirect-service
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-redirect-service
+    newTag: d01b71006c9ee509870b58f229c9b45fd53ee8dc
+  - name: db-migration
+    newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-db-migration
+    newTag: d01b71006c9ee509870b58f229c9b45fd53ee8dc

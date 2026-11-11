@@ -8,21 +8,21 @@ const PROVIDERS = {
     label: '카카오',
     clientId: env.VITE_KAKAO_CLIENT_ID,
     redirectUri: env.VITE_KAKAO_REDIRECT_URI,
-    authorizeUrl: 'https://kauth.kakao.com/oauth/authorize',
+    authorizeUrl: 'https://kauth.kakao.com/oauth/authorize'
   },
   google: {
     label: '구글',
     clientId: env.VITE_GOOGLE_CLIENT_ID,
     redirectUri: env.VITE_GOOGLE_REDIRECT_URI,
     authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-    scope: 'openid email profile',
+    scope: 'openid email profile'
   },
   naver: {
     label: '네이버',
     clientId: env.VITE_NAVER_CLIENT_ID,
     redirectUri: env.VITE_NAVER_REDIRECT_URI,
-    authorizeUrl: 'https://nid.naver.com/oauth2.0/authorize',
-  },
+    authorizeUrl: 'https://nid.naver.com/oauth2.0/authorize'
+  }
 }
 
 export function enabledProviders() {

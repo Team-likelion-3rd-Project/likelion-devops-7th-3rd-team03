@@ -47,8 +47,7 @@ snipy는 URL 단축 + 클릭 분석 서비스. 타겟 고객은 자체 인프라
 
 앱 API로는 클릭 로그 파이프라인(redirect-service → Kinesis Firehose → S3 → Athena) 자체가 정상 동작하는지 확인할 방법이 없어서, Athena 쿼리로 직접 본다. `normal-traffic.js`는 VU(가상 사용자)마다 User-Agent/Referer/`visitor_id` 쿠키 조합을 고정 배정해서 보내므로(같은 방문자는 항상 같은 조합 — 실제 세션처럼), UA 파싱(yauaa)/referrer 분류/visitor 식별이 정확히 됐는지 사후 검증이 가능하다.
 
-**주의**: `viral-spike-run.sh`/`normal-traffic-run.sh`는 테스트 직후 `trap cleanup EXIT`로 링크를 바로 지운다. click 이벤트 자체는 MySQL 행과 무관하게 이미 Kinesis로 나간 상태라 상관없지만, **Athena 배치(`link_daily_stats` 집계)가 나중에 도는 경우 이미 삭제된 `link_id`를 참조하게 되어 FK 위반으로 실패한다.** 파이프라인을 raw click_events(S3/Athena) 레벨까지만 볼 거면 cleanup 그대로 둬도 되고, `link_daily_stats` 집계까지 보고 싶으면 이번 실행만 cleanup을 건너뛰고 나중에 수동으로 지워야 한다.
-
+**참고**: 스크립트는 테스트 직후 `trap cleanup EXIT`로 링크를 soft delete(`is_visible = FALSE`)만 한다 (#251). 링크 행이 남아 있어서, Athena 배치가 나중에 돌아도 `link_daily_stats` 집계가 외래키에 걸리지 않고 정상으로 된다. 예전에는 링크를 실제로 지워서, 늦게 도는 배치가 이미 삭제된 `link_id`를 참조해 외래키 위반으로 실패했다. 링크가 실제로 지워진 경우에도 배치는 그 행을 건너뛴다 (#253).
 **격리 기준**: 다른(실제) 트래픽과 섞여도 결과가 헷갈리지 않으려면 `visitor_id`나 `referrer`가 아니라 **`link_id`(테스트 전용 slug)로 필터링**하는 게 안전하다 — referrer(Instagram 등)나 visitor_id는 실제 방문자 값과 이론상 겹칠 수 있지만, 테스트 전용 slug는 실제 트래픽이 절대 안 침. `visitor_id`는 대신 "이 세션에 보낸 헤더가 정확히 파싱됐는지" 세션 단위로 대조하는 용도로 쓴다.
 
 **일관성 자체 검증 쿼리** (기대값을 몰라도 됨 — 같은 visitor_id가 요청마다 다른 파싱 결과를 냈다면 버그):
@@ -95,13 +94,13 @@ herd 크기는 "첫 DB 조회+캐시 write-back 왕복시간" 동안 도착하�
 - 프로파일: 0 → 800 TPS를 10초 만에 램프업(바이럴의 "갑자기 몰림" 표현) → 4분 30초 유지 → 20초 램프다운. 총 5분
 - 대상: 사전 캐싱되지 않은 콜드 링크. herd를 더 크고 뚜렷하게 보고 싶으면 콤마로 여러 개(3~5개) 동시 지정 가능
 - 대상 URL: 클러스터 내부 Service DNS(`http://redirect-service:8080`, 기본값). 공개 도메인은 WAF geo-match(KR만 허용) 때문에 클러스터(ap-southeast-1) 안에서 치면 CloudFront가 403으로 막는다 — 실제로 겪은 문제. 이 테스트 대상은 애초에 CDN이 아니라 redirect-service 백엔드라서 내부 DNS가 더 맞기도 함
-- 실행(원스톱): `load-test/viral-spike-run.sh <context> [base-url] [num-slugs]`
+- 실행(원스톱): `load-test/viral-spike-run.sh <context> [base-url] [num-slugs] [spike-tps]` (spike-tps를 비우면 기본값 1600)
 
 ### 콜드 링크는 어떻게 만드나
 
 management-service API로는 못 만든다 — API로 생성하면 트랜잭션 커밋 직후 바로 Redis에 캐시가 써져서(`RedirectCacheRefreshEventListener`, `AFTER_COMMIT`) 처음부터 웜 상태가 되고, slug도 서버가 SecureRandom으로 자동 생성해서 원하는 값을 못 지정하며, API 호출 자체에 카카오 OAuth 로그인이 필요해 자동화하기 번거롭다.
 
-그래서 `load-test/viral-spike-run.sh`가 MySQL에 **직접 INSERT**해서 콜드 링크를 만든다 (캐시 이벤트를 타지 않아 자연히 콜드 상태, slug도 원하는 대로, 로그인 불필요). RDS는 노드 보안그룹에서만 열려있어 로컬에서 직접 접속은 안 되고, 클러스터 안에 `kubectl run`으로 임시 mysql 클라이언트 파드를 띄워 실행한다. 테스트 후 INSERT한 링크는 자동으로 DELETE된다 (`trap cleanup EXIT`).
+그래서 `load-test/viral-spike-run.sh`가 MySQL에 **직접 INSERT**해서 콜드 링크를 만든다 (캐시 이벤트를 타지 않아 자연히 콜드 상태, slug도 원하는 대로, 로그인 불필요). RDS는 노드 보안그룹에서만 열려있어 로컬에서 직접 접속은 안 되고, 클러스터 안에 `kubectl run`으로 임시 mysql 클라이언트 파드를 띄워 실행한다. 테스트 후 INSERT한 링크는 자동으로 soft delete(`is_visible = FALSE`)된다 (`trap cleanup EXIT`, #251). SQL로 바로 바꾸므로 리다이렉트 캐시는 지우지 않고, 캐시에 남은 slug는 TTL(기본 10분) 동안 계속 리다이렉트된다.
 
 ### 사전 준비 (실행 전 체크리스트)
 

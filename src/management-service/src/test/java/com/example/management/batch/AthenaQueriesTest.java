@@ -26,7 +26,7 @@ class AthenaQueriesTest {
 
     @Test
     void dimensionStats_봇_필터가_두_파티션_모두에_적용된다() {
-        for (String dimensionType : new String[]{"REFERRER", "DEVICE", "REGION"}) {
+        for (String dimensionType : new String[]{"REFERRER", "DEVICE", "REGION", "COUNTRY", "OS", "BROWSER", "HOUR"}) {
             String sql = normalize(queries.dimensionStats(TARGET, dimensionType));
 
             assertThat(sql)

@@ -8,7 +8,14 @@ module "eks" {
   vpc_id     = var.vpc_id
   subnet_ids = var.subnet_ids # 노드는 프라이빗 서브넷에 배치
 
-  cluster_endpoint_public_access           = true # access_entries 로 권한 관리
+  cluster_endpoint_public_access = true # access_entries 로 권한 관리
+  # 관리자는 cluster_admin_arns에만 둔다. "apply를 실행한 주체"를 자동으로 넣으면 CI 역할이 만든
+  # 클러스터에 사람이 로컬에서 apply할 때 관리자가 바뀌거나 중복돼 실패한다.
+  # apply를 실행하는 주체(terraform CI 역할, 로컬 예비 실행자)는 반드시 cluster_admin_arns에 있어야 한다.
+  # 같은 apply 안에서 helm/kubernetes provider가 클러스터에 접근하기 때문이다.
+  # 클러스터가 떠 있을 때 이 값을 true → false로 바꾸면, 자동으로 붙었던 생성자 access entry 삭제와
+  # cluster_admin_arns의 같은 주체 entry 생성이 한 번에 일어나 중복 오류나 권한 상실이 날 수 있다.
+  # 그래서 클러스터가 내려가 있을 때 적용했다 (#157). 떠 있다면 destroy 후 적용한다.
   enable_cluster_creator_admin_permissions = false
 
   access_entries = {
@@ -72,6 +79,7 @@ resource "helm_release" "metrics_server" {
   name       = "metrics-server"
   repository = "https://kubernetes-sigs.github.io/metrics-server/"
   chart      = "metrics-server"
+  version    = "3.14.0"
   namespace  = "kube-system"
 
   depends_on = [module.eks]
@@ -97,14 +105,15 @@ module "irsa_cluster_autoscaler" {
 }
 
 # ── Cluster Autoscaler (Helm) ─────────────────
-# 이미지 태그를 cluster_version(1.31)에 맞춰 고정한다. 버전을 안 박으면 차트가
-# 항상 최신 CA를 끌어오는데, 최신 CA(1.35+)는 EKS 1.31에 없는 DRA 리소스
+# 이미지 태그를 cluster_version에 맞춰 고정한다. 버전을 안 박으면 차트가
+# 항상 최신 CA를 끌어오는데, 2차 때 최신 CA(1.35+)가 EKS 1.31에 없는 DRA 리소스
 # (ResourceClaim/ResourceSlice/DeviceClass)를 watch하려다 계속 실패해서
 # informer sync가 안 끝나고 스케일업 로직 자체가 안 도는 문제가 있었다.
 resource "helm_release" "cluster_autoscaler" {
   name       = "cluster-autoscaler"
   repository = "https://kubernetes.github.io/autoscaler"
   chart      = "cluster-autoscaler"
+  version    = "9.59.0"
   namespace  = "kube-system"
 
   set {
@@ -161,6 +170,7 @@ resource "helm_release" "aws_load_balancer_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
+  version    = "3.6.1"
   namespace  = "kube-system"
 
   set {
@@ -189,6 +199,56 @@ resource "helm_release" "aws_load_balancer_controller" {
   }
 
   depends_on = [module.eks, module.irsa_aws_load_balancer_controller]
+}
+
+# ══════════════════════════════════════════════════
+# external-dns
+# ══════════════════════════════════════════════════
+# (external-dns v0.22부터 접두사가 external-dns.alpha.kubernetes.io/에서 바뀜. 옛 접두사는 읽지 않는다)
+# Ingress의 external-dns.kubernetes.io/hostname 어노테이션(alb.<도메인>)을 보고
+# Route53에 ALB를 가리키는 레코드를 만든다. CloudFront 오리진이 이 이름을 쓴다(modules/edge).
+module "irsa_external_dns" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.39"
+
+  role_name = "${var.cluster_name}-external-dns"
+
+  attach_external_dns_policy    = true
+  external_dns_hosted_zone_arns = ["arn:aws:route53:::hostedzone/${var.route53_zone_id}"]
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:external-dns"]
+    }
+  }
+}
+
+resource "helm_release" "external_dns" {
+  name       = "external-dns"
+  repository = "https://kubernetes-sigs.github.io/external-dns/"
+  chart      = "external-dns"
+  version    = "1.23.0"
+  namespace  = "kube-system"
+
+  values = [yamlencode({
+    provider   = { name = "aws" }
+    sources    = ["ingress"]
+    policy     = "sync" # Ingress를 지우면 레코드도 지운다 (destroy 전 정리)
+    txtOwnerId = var.cluster_name
+    # 이 도메인 아래, 어노테이션에 적은 이름만 만든다. Ingress rules의 host(<도메인>)는
+    # CloudFront를 가리키는 terraform 레코드라 건드리지 않게 무시한다.
+    domainFilters = [var.domain_name]
+    extraArgs     = ["--ignore-ingress-rules-spec"]
+    serviceAccount = {
+      name = "external-dns"
+      annotations = {
+        "eks.amazonaws.com/role-arn" = module.irsa_external_dns.iam_role_arn
+      }
+    }
+  })]
+
+  depends_on = [module.eks, module.irsa_external_dns]
 }
 
 # ══════════════════════════════════════════════════

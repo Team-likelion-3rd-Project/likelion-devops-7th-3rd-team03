@@ -1,312 +1,369 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import Alert from '@cloudscape-design/components/alert'
+import BarChart from '@cloudscape-design/components/bar-chart'
+import Box from '@cloudscape-design/components/box'
+import Button from '@cloudscape-design/components/button'
+import ColumnLayout from '@cloudscape-design/components/column-layout'
+import Container from '@cloudscape-design/components/container'
+import ContentLayout from '@cloudscape-design/components/content-layout'
+import DatePicker from '@cloudscape-design/components/date-picker'
+import FormField from '@cloudscape-design/components/form-field'
+import Header from '@cloudscape-design/components/header'
+import Multiselect from '@cloudscape-design/components/multiselect'
+import Select from '@cloudscape-design/components/select'
+import SpaceBetween from '@cloudscape-design/components/space-between'
+import Table from '@cloudscape-design/components/table'
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from 'recharts'
-import { getDailyStats, compareLinks, getReferrerStats } from '../api/stats'
+  getDailyStats,
+  compareLinks,
+  getReferrerStats,
+  getBreakdown,
+  hourlyClicks,
+  kstDay
+} from '../api/stats'
 import { listLinks } from '../api/links'
 import { ApiError } from '../api/http'
+import { useWorkspace } from '../context/WorkspaceContext'
+import { RequireWorkspace } from '../components/RequireWorkspace'
+import { StatGrid, TrendChart } from '../components/StatsParts'
 import { toast } from '../components/Toast'
+import { dimensionName, mergeByName, osName } from '../statsLabels'
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+const linkOption = (l) => ({
+  label: l.title || l.shortUrl,
+  value: l.linkId,
+  description: l.shortUrl
+})
+
+const wholeNumbers = { yTickFormatter: (y) => (Number.isInteger(y) ? y.toLocaleString() : '') }
+
+const dateProps = {
+  locale: 'ko',
+  placeholder: 'YYYY/MM/DD',
+  todayAriaLabel: '오늘',
+  nextMonthAriaLabel: '다음 달',
+  previousMonthAriaLabel: '이전 달'
 }
 
-function daysAgoIso(n) {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
-}
-
-// 백엔드(StatsController)에 실제로 붙는 통계 대시보드. 단건 통계는 대시보드의
+// 백엔드(워크스페이스 통계 API)에 실제로 붙는 통계 대시보드. 단건 통계는 링크 화면의
 // '통계' 버튼(/links/:id/stats)을 쓰고, 여기는 여러 링크를 골라 직접 비교할 때 쓴다.
 export function StatsDashboard() {
+  return (
+    <RequireWorkspace>
+      <StatsView />
+    </RequireWorkspace>
+  )
+}
+
+function StatsView() {
+  const { current } = useWorkspace()
   const [links, setLinks] = useState([])
+  const [linksState, setLinksState] = useState('loading') // loading | ready | error
   const [linkId, setLinkId] = useState('')
   const [compareIds, setCompareIds] = useState([])
-  const [from, setFrom] = useState(daysAgoIso(13))
-  const [to, setTo] = useState(todayIso())
+  const [from, setFrom] = useState(kstDay(13))
+  const [to, setTo] = useState(kstDay(0))
 
   const [daily, setDaily] = useState(null)
   const [referrers, setReferrers] = useState(null)
+  const [dist, setDist] = useState(null) // { os, browser, hours }
   const [compareRows, setCompareRows] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  // ponytail: 목록 API가 페이지네이션이라 최근 100개만 불러옴. 그 이상이면 페이지 넘김 UI 추가 필요.
-  useEffect(() => {
-    listLinks(0, 100)
-      .then((res) => setLinks(res.links))
-      .catch(() => toast('링크 목록을 불러오지 못했습니다.', 'error'))
-  }, [])
+  // 팀당 링크는 100개로 제한되므로(#204) 한 번에 100개를 불러오면 그 팀의 링크가 모두 들어온다.
+  const loadLinks = useCallback(() => {
+    setLinksState('loading')
+    listLinks(current, 0, 100)
+      .then((res) => {
+        setLinks(res.links)
+        setLinksState('ready')
+      })
+      .catch(() => {
+        setLinksState('error')
+        toast('링크 목록을 불러오지 못했습니다.', 'error')
+      })
+  }, [current])
 
-  async function handleLoad(e) {
-    e.preventDefault()
+  useEffect(() => {
+    loadLinks()
+  }, [loadLinks])
+
+  async function handleLoad() {
     if (!linkId) {
       toast('조회할 링크를 선택해주세요.', 'error')
       return
     }
+    if (!from || !to || from > to) {
+      toast('시작일과 종료일을 확인해주세요.', 'error')
+      return
+    }
+    // 서버 제한(WorkspaceStatsService): 기간은 90일 미만, 비교 대상은 20개까지. 넘으면 400이라 미리 알려 준다.
+    if ((Date.parse(to) - Date.parse(from)) / 86_400_000 >= 90) {
+      toast('조회 기간은 90일 미만으로 선택해주세요.', 'error')
+      return
+    }
+    if (compareIds.length > 20) {
+      toast('비교할 링크는 20개까지 고를 수 있습니다.', 'error')
+      return
+    }
     setLoading(true)
     try {
-      const [dailyRes, referrerRes] = await Promise.all([
-        getDailyStats(linkId, from, to),
-        getReferrerStats(linkId, from, to),
+      const [dailyRes, referrerRes, osRes, browserRes, hourRes] = await Promise.all([
+        getDailyStats(current, linkId, from, to),
+        getReferrerStats(current, linkId, from, to),
+        getBreakdown(current, linkId, 'OS', from, to),
+        getBreakdown(current, linkId, 'BROWSER', from, to),
+        getBreakdown(current, linkId, 'HOUR', from, to)
       ])
       setDaily(dailyRes)
       setReferrers(referrerRes)
-      setCompareRows(compareIds.length > 0 ? await compareLinks(compareIds, from, to) : null)
+      setDist({
+        os: mergeByName(osRes.breakdown, osName),
+        browser: mergeByName(browserRes.breakdown, dimensionName),
+        hours: hourlyClicks(hourRes.breakdown)
+      })
+      setCompareRows(
+        compareIds.length > 0
+          ? withLinkInfo(await compareLinks(current, compareIds, from, to))
+          : null
+      )
     } catch (err) {
       const message = err instanceof ApiError ? err.message : '통계를 불러오지 못했습니다.'
       toast(message, 'error')
       setDaily(null)
       setReferrers(null)
+      setDist(null)
       setCompareRows(null)
     } finally {
       setLoading(false)
     }
   }
 
+  // 비교 응답에는 슬러그·제목이 없어서 불러와 둔 링크 목록에서 붙인다
+  const withLinkInfo = (rows) =>
+    rows.map((r) => {
+      const link = links.find((l) => l.linkId === r.linkId)
+      return { ...r, slug: link?.shortUrl?.split('/').pop() ?? '', title: link?.title }
+    })
+
+  const options = links.map(linkOption)
+
   return (
-    <div className="page">
-      <div className="page__header">
-        <div>
-          <h1>통계 대시보드</h1>
-          <p className="hero__sub">실제 백엔드(StatsController)에서 조회한 통계입니다.</p>
-        </div>
-      </div>
+    <ContentLayout
+      header={
+        <Header variant="h1" description="링크별 클릭 통계를 확인합니다.">
+          분석
+        </Header>
+      }
+    >
+      <SpaceBetween size="l">
+        {linksState === 'error' && (
+          <Alert
+            type="error"
+            header="링크 목록을 불러오지 못했습니다"
+            action={<Button onClick={loadLinks}>다시 시도</Button>}
+          />
+        )}
 
-      <form className="card" onSubmit={handleLoad} style={{ display: 'grid', gap: 16 }}>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-          <label className="field">
-            <span>링크</span>
-            <select value={linkId} onChange={(e) => setLinkId(e.target.value)}>
-              <option value="">링크를 선택하세요</option>
-              {links.map((l) => (
-                <option key={l.linkId} value={l.linkId}>
-                  {l.title || l.shortUrl}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>시작일</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
-          </label>
-          <label className="field">
-            <span>종료일</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} required />
-          </label>
-        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleLoad()
+          }}
+        >
+          <Container header={<Header variant="h2">조회 조건</Header>}>
+            <SpaceBetween size="l">
+              <ColumnLayout columns={3}>
+                <FormField label="링크">
+                  <Select
+                    selectedOption={options.find((o) => o.value === linkId) ?? null}
+                    onChange={({ detail }) => setLinkId(detail.selectedOption.value)}
+                    options={options}
+                    placeholder="링크를 선택하세요"
+                    statusType={linksState === 'loading' ? 'loading' : 'finished'}
+                    loadingText="불러오는 중"
+                    empty="링크가 없습니다"
+                    filteringType="auto"
+                  />
+                </FormField>
+                <FormField label="시작일">
+                  <DatePicker
+                    {...dateProps}
+                    value={from}
+                    onChange={({ detail }) => setFrom(detail.value)}
+                  />
+                </FormField>
+                <FormField label="종료일">
+                  <DatePicker
+                    {...dateProps}
+                    value={to}
+                    onChange={({ detail }) => setTo(detail.value)}
+                  />
+                </FormField>
+              </ColumnLayout>
 
-        <div className="field">
-          <span>비교할 링크 (선택, 클릭해서 토글)</span>
-          <div className="chip-group">
-            {links.length === 0 && <span className="form-hint">비교할 링크가 없습니다.</span>}
-            {links.map((l) => {
-              const active = compareIds.includes(l.linkId)
-              return (
-                <button
-                  key={l.linkId}
-                  type="button"
-                  className={`chip ${active ? 'chip--active' : ''}`}
-                  onClick={() =>
-                    setCompareIds((prev) =>
-                      active ? prev.filter((id) => id !== l.linkId) : [...prev, l.linkId]
-                    )
+              <FormField label="비교할 링크" constraintText="선택">
+                <Multiselect
+                  selectedOptions={options.filter((o) => compareIds.includes(o.value))}
+                  onChange={({ detail }) =>
+                    setCompareIds(detail.selectedOptions.map((o) => o.value))
                   }
-                >
-                  {l.title || l.shortUrl}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+                  options={options}
+                  placeholder="비교할 링크를 고르세요"
+                  deselectAriaLabel={(o) => `${o.label} 제거`}
+                  empty="비교할 링크가 없습니다"
+                  filteringType="auto"
+                />
+              </FormField>
 
-        <button className="btn btn--primary" disabled={loading} style={{ justifySelf: 'start' }}>
-          {loading ? '조회 중...' : '조회'}
-        </button>
-      </form>
+              <Button variant="primary" formAction="submit" loading={loading}>
+                조회
+              </Button>
+            </SpaceBetween>
+          </Container>
+        </form>
 
-      {daily && (
-        <>
-          <div className="stat-tiles">
-            <StatTile label="총 클릭" value={daily.summary.totalClicks.toLocaleString()} />
-            <StatTile label="일별 방문자 합계" value={daily.summary.sumOfDailyVisitors.toLocaleString()} />
-            <StatTile label="일평균 클릭" value={daily.summary.avgDailyClicks.toLocaleString()} />
-            <StatTile label="최고 클릭일" value={daily.summary.peakClicks.toLocaleString()} />
-            <StatTile label="활동일 수" value={daily.summary.activeDays.toLocaleString()} />
-          </div>
+        {!daily && !loading && (
+          <Box textAlign="center" color="text-body-secondary" padding="l">
+            링크를 고르고 조회를 눌러 주세요.
+          </Box>
+        )}
 
-          <div className="card chart-card">
-            <div className="chart-card__header">
-              <h2>일별 클릭/방문자 추이</h2>
-            </div>
-            <div className="viz-root">
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={daily.daily} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="var(--gridline)" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(d) => d.slice(5)}
-                    stroke="var(--muted)"
-                    tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                    axisLine={{ stroke: 'var(--axis)' }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    stroke="var(--muted)"
-                    tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={32}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--surface-1)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 13,
-                    }}
-                    labelStyle={{ color: 'var(--text-primary)' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 13 }} />
-                  <Line
-                    type="monotone"
-                    dataKey="clickCount"
-                    name="클릭 수"
-                    stroke="var(--series-1)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="visitorCount"
-                    name="방문자 수"
-                    stroke="var(--series-2)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </>
-      )}
+        {daily && (
+          <>
+            <StatGrid
+              columns={5}
+              items={[
+                { label: '총 클릭', value: daily.summary.totalClicks.toLocaleString() },
+                {
+                  label: '일별 방문자 합계',
+                  value: daily.summary.sumOfDailyVisitors.toLocaleString()
+                },
+                { label: '일평균 클릭', value: daily.summary.avgDailyClicks.toLocaleString() },
+                { label: '최고 클릭일', value: daily.summary.peakClicks.toLocaleString() },
+                { label: '활동일 수', value: daily.summary.activeDays.toLocaleString() }
+              ]}
+            />
 
-      {referrers && (
-        <div className="card chart-card">
-          <div className="chart-card__header">
-            <h2>유입 경로</h2>
-          </div>
-          {referrers.length === 0 ? (
-            <p className="empty-state empty-state--inline">해당 기간에 클릭 기록이 없습니다.</p>
-          ) : (
-            <>
-              <div className="viz-root">
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={referrers} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="var(--gridline)" />
-                    <XAxis
-                      dataKey="referrerCategory"
-                      stroke="var(--muted)"
-                      tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                      axisLine={{ stroke: 'var(--axis)' }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      stroke="var(--muted)"
-                      tick={{ fontSize: 12, fill: 'var(--muted)' }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={32}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: 'var(--surface-1)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 13,
-                      }}
-                      labelStyle={{ color: 'var(--text-primary)' }}
-                    />
-                    <Bar dataKey="clickCount" name="클릭 수" fill="var(--series-1)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>유입 경로</th>
-                    <th>클릭 수</th>
-                    <th>비율</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {referrers.map((r) => (
-                    <tr key={r.referrerCategory}>
-                      <td>{r.referrerCategory}</td>
-                      <td>{r.clickCount.toLocaleString()}</td>
-                      <td>{r.percentage}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
-      )}
+            <Container header={<Header variant="h2">일별 클릭/방문자 추이</Header>}>
+              <TrendChart daily={daily.daily} />
+            </Container>
+          </>
+        )}
 
-      {compareRows && (
-        <div className="card">
-          <h2>링크 비교</h2>
-          {compareRows.length === 0 ? (
-            <p className="empty-state empty-state--inline">비교할 링크를 찾을 수 없습니다.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>슬러그</th>
-                  <th>제목</th>
-                  <th>총 클릭</th>
-                  <th>일별 방문자 합계</th>
-                  <th>최고 일 클릭</th>
-                </tr>
-              </thead>
-              <tbody>
-                {compareRows.map((r) => (
-                  <tr key={r.linkId}>
-                    <td>/{r.slug}</td>
-                    <td>{r.title || '-'}</td>
-                    <td>{r.totalClicks.toLocaleString()}</td>
-                    <td>{r.sumOfDailyVisitors.toLocaleString()}</td>
-                    <td>{r.peakDailyClicks.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
+        {referrers && (
+          <Box color="text-body-secondary" fontSize="body-s">
+            유입 경로·운영체제·브라우저·시간대 분포는 어제까지 집계예요. 시간대는 한국 시간(KST)
+            기준이에요.
+          </Box>
+        )}
+
+        {referrers && <BreakdownCard title="유입 경로" rows={referrers} />}
+
+        {dist && (
+          <>
+            <BreakdownCard title="운영체제(OS)" rows={dist.os} />
+            <BreakdownCard title="브라우저" rows={dist.browser} />
+            <Container header={<Header variant="h2">시간대별 클릭</Header>}>
+              {dist.hours.some((h) => h.clickCount > 0) ? (
+                <BarChart
+                  series={[
+                    {
+                      title: '클릭 수',
+                      type: 'bar',
+                      data: dist.hours.map((h) => ({ x: `${h.hour}시`, y: h.clickCount }))
+                    }
+                  ]}
+                  xScaleType="categorical"
+                  i18nStrings={wholeNumbers}
+                  height={240}
+                  hideFilter
+                  hideLegend
+                  ariaLabel="시간대별 클릭 수"
+                />
+              ) : (
+                <Box textAlign="center" color="text-body-secondary" padding="l">
+                  해당 기간에 클릭 기록이 없습니다.
+                </Box>
+              )}
+            </Container>
+          </>
+        )}
+
+        {compareRows && (
+          <Table
+            variant="container"
+            header={<Header variant="h2">링크 비교</Header>}
+            items={compareRows}
+            trackBy="linkId"
+            empty={
+              <Box textAlign="center" color="text-body-secondary">
+                비교할 링크를 찾을 수 없습니다.
+              </Box>
+            }
+            columnDefinitions={[
+              { id: 'slug', header: '슬러그', cell: (r) => `/${r.slug}`, isRowHeader: true },
+              { id: 'title', header: '제목', cell: (r) => r.title || '-' },
+              { id: 'total', header: '총 클릭', cell: (r) => r.totalClicks.toLocaleString() },
+              {
+                id: 'visitors',
+                header: '일별 방문자 합계',
+                cell: (r) => r.sumOfDailyVisitors.toLocaleString()
+              },
+              {
+                id: 'peak',
+                header: '최고 일 클릭',
+                cell: (r) => r.peakDailyClicks.toLocaleString()
+              }
+            ]}
+          />
+        )}
+      </SpaceBetween>
+    </ContentLayout>
   )
 }
 
-function StatTile({ label, value }) {
+// 분포 하나(막대 그래프 + 표). rows: [{ value, clickCount, percentage }]
+function BreakdownCard({ title, rows }) {
   return (
-    <div className="card stat-tile">
-      <span className="stat-tile__label">{label}</span>
-      <span className="stat-tile__value">{value}</span>
-    </div>
+    <Container header={<Header variant="h2">{title}</Header>}>
+      <SpaceBetween size="l">
+        <BarChart
+          series={[
+            {
+              title: '클릭 수',
+              type: 'bar',
+              data: rows.map((r) => ({ x: r.value, y: r.clickCount }))
+            }
+          ]}
+          xScaleType="categorical"
+          i18nStrings={wholeNumbers}
+          height={240}
+          hideFilter
+          hideLegend
+          ariaLabel={`${title}별 클릭 수`}
+          empty={
+            <Box textAlign="center" color="inherit">
+              <b>해당 기간에 클릭 기록이 없습니다.</b>
+            </Box>
+          }
+        />
+        <Table
+          variant="embedded"
+          items={rows}
+          trackBy="value"
+          columnDefinitions={[
+            { id: 'name', header: title, cell: (r) => r.value, isRowHeader: true },
+            { id: 'clicks', header: '클릭 수', cell: (r) => r.clickCount.toLocaleString() },
+            { id: 'rate', header: '비율', cell: (r) => `${r.percentage}%` }
+          ]}
+          empty={
+            <Box textAlign="center" color="text-body-secondary">
+              해당 기간에 클릭 기록이 없습니다.
+            </Box>
+          }
+        />
+      </SpaceBetween>
+    </Container>
   )
 }

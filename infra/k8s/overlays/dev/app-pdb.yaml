@@ -1,0 +1,26 @@
+# 노드 드레인(점검, 재부팅) 때 management·redirect 를 동시에 내리지 않는다. 2개 중 최소 1개는 유지한다.
+# frontend-pdb.yaml 과 같은 방식이다. HPA 가 2개로 고정(patch-hpa.yaml)이라 minAvailable: 1 이 항상 지켜질 수 있다.
+# 파드가 한 개뿐이면(롤아웃 중 등) drain 이 그 파드를 못 내려서 기다린다. 점검이 오래 걸리면 이 PDB 를 의심한다.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: management-service
+  labels:
+    app: management-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: management-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redirect-service
+  labels:
+    app: redirect-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: redirect-service

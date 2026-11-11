@@ -2,7 +2,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, prometheus
+        include: health, prometheus, info
+  # info.* 설정값을 /actuator/info 에 보여준다 (Spring Boot 기본은 꺼져 있다)
+  info:
+    env:
+      enabled: true
   endpoint:
     health:
       probes:
@@ -38,6 +42,15 @@ spring:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
+      # AWS ElastiCache는 TLS + AUTH 토큰으로 접속한다. 로컬·CI·온프렘은 기본값(비밀번호 없음, TLS 끔)
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      # 명령 응답 대기. 지정하지 않으면 Lettuce 기본 60초를 기다려, Redis 가 응답하지 않을 때 요청 스레드가 묶인다.
+      # 캐시 조회는 실패하면 DB 로 넘어가므로 짧게 끊는다. 평소 응답은 수 ms 다.
+      timeout: ${REDIS_TIMEOUT:500ms}
+      # 연결 맺기 대기. ElastiCache TLS 핸드셰이크를 감안해 명령보다 길게 둔다.
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
 
 app:
   redirect:
@@ -53,6 +66,29 @@ app:
     # infra/terraform/streaming.tf의 aws_kinesis_firehose_delivery_stream.click_events.name
     firehose-stream-name: ${FIREHOSE_STREAM_NAME:}
     aws-region: ${AWS_REGION:ap-southeast-1}
+    firehose:
+      # Firehose 호출 타임아웃 (한 번 시도 / 재시도 포함 전체)
+      attempt-timeout: ${FIREHOSE_ATTEMPT_TIMEOUT:2s}
+      call-timeout: ${FIREHOSE_CALL_TIMEOUT:5s}
+      # 배치 전송 (#263). 큐가 가득 차면 버리고 click_event_firehose_records_total{result="dropped_queue_full"}로 센다
+      queue-capacity: ${FIREHOSE_QUEUE_CAPACITY:50000}
+      # 첫 레코드를 이만큼 기다린 뒤 쌓여 있는 것을 최대 500건까지 한 번에 보낸다
+      linger: ${FIREHOSE_LINGER:200ms}
+      max-attempts: ${FIREHOSE_MAX_ATTEMPTS:3}
+      # 종료 때 큐를 비우는 최대 시간. graceful 30초 + 실행기 5초 × 2 + 이 값이 terminationGracePeriodSeconds(60) 안이어야 한다
+      shutdown-timeout: ${FIREHOSE_SHUTDOWN_TIMEOUT:10s}
+    # 클릭마다 콘솔에 JSON 로그를 남길지 (관측용). prod 는 Firehose 로 보내므로 false (#274)
+    console-log:
+      enabled: ${CLICK_EVENT_CONSOLE_LOG_ENABLED:true}
+
+  warmup:
+    # 기동 직후 트래픽을 받기 전에 자기 자신에게 요청을 보내 JIT를 데운다 (#264, RedirectWarmup)
+    enabled: ${REDIRECT_WARMUP_ENABLED:false}
+    requests: ${REDIRECT_WARMUP_REQUESTS:15000}
+    concurrency: ${REDIRECT_WARMUP_CONCURRENCY:8}
+    max-duration: ${REDIRECT_WARMUP_MAX_DURATION:60s}
+    # 클릭 경로 워밍업 반복 횟수 (#273). UA 분석기는 preHeat 이 데우고, 반복은 봇·유입 판별·직렬화를 데운다
+    click-path-iterations: ${REDIRECT_WARMUP_CLICK_PATH_ITERATIONS:500}
 
   realtime-stats:
     # Redis는 당일 잠정 통계만 보관한다. 원본 클릭 이벤트가 최종 집계의 기준이다.
@@ -63,3 +99,11 @@ app:
 logging:
   level:
     redirect_service.redirect: ${REDIRECT_LOG_LEVEL:INFO}
+
+
+# /actuator/info 에 실행 중인 앱의 빌드 커밋을 보여준다.
+# APP_COMMIT 은 CI 가 이미지 빌드 때 넣는다 (Dockerfile 의 GIT_SHA 빌드 인자). 로컬 실행은 unknown.
+info:
+  app:
+    name: redirect-service
+    commit: ${APP_COMMIT:unknown}
