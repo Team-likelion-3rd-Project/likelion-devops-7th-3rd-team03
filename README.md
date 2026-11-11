@@ -23,7 +23,7 @@
 
 | <img src="https://github.com/hansol-01.png" width="100"> | <img src="https://github.com/janghyn97-dotcom.png" width="100"> | <img src="https://github.com/kubistar.png" width="100"> | <img src="https://github.com/joon2730.png" width="100"> |
 |:---:|:---:|:---:|:---:|
-| **한소현**<br>[@hansol-01](https://github.com/hansol-01) | **박장현**<br>[@janghyn97-dotcom](https://github.com/janghyn97-dotcom) | **유승미**<br>[@kubistar](https://github.com/kubistar) | **정예준**<br>[@joon2730](https://github.com/joon2730) |
+| **한소현**<br>[@hansol-01](https://github.com/hansol-01)<br>gksthgus2022@gmail.com | **박장현**<br>[@janghyn97-dotcom](https://github.com/janghyn97-dotcom)<br>janghyn97@gmail.com | **유승미**<br>[@kubistar](https://github.com/kubistar)<br>dbtmdal0205@gmail.com | **정예준**<br>[@joon2730](https://github.com/joon2730)<br>jungyejoon2730@gmail.com |
 | `Cloud` | `On-Prem · Frontend` | `Backend · Data` | `Backend · Docs` |
 
 세부 역할은 [역할 분담](#역할-분담)에 있습니다.
@@ -140,7 +140,7 @@
 
 - **Start Here**: [기획 배경](../../wiki/기획-배경) · [User Flows](../../wiki/User-Flows) · [UI Screens](../../wiki/UI-Screens)
 - **아키텍처·설계**: [System Architecture](../../wiki/System-Architecture) · [ERD](../../wiki/ERD) · [API Specification](../../wiki/API-Specification)
-- **운영**: [배포 가이드](../../wiki/배포-가이드) · [장애 시나리오](../../wiki/장애-시나리오) · [성능 테스트](../../wiki/성능-테스트) · [트러블슈팅](../../wiki/트러블슈팅) · [회의록](../../wiki/회의록)
+- **운영**: [배포 가이드](../../wiki/배포-가이드) · [장애 시나리오](../../wiki/장애-시나리오) · [성능 테스트](../../wiki/성능-테스트) · [트러블슈팅](../../wiki/트러블슈팅)
 
 ---
 
