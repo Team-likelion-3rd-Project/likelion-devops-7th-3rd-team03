@@ -493,7 +493,7 @@ function WithdrawModal({ workspaces, onDismiss }) {
               취소
             </Button>
             <Button variant="primary" loading={busy} onClick={confirm}>
-              탈퇴
+              탈퇴하기
             </Button>
           </SpaceBetween>
         </Box>
@@ -501,10 +501,17 @@ function WithdrawModal({ workspaces, onDismiss }) {
     >
       <SpaceBetween size="m">
         {error && <Alert type="error">{error}</Alert>}
-        <Alert type="warning">탈퇴하면 같은 계정으로 다시 로그인할 수 없어요.</Alert>
+        <Alert type="warning">
+          탈퇴하면 되돌릴 수 없어요. 다시 가입은 할 수 있지만 기존 데이터는 복구되지 않아요.
+        </Alert>
         <Box>
           <ul>
-            {hasPersonal && <li>내 개인 워크스페이스와 그 링크는 삭제돼요.</li>}
+            {hasPersonal && (
+              <li>
+                내 개인 워크스페이스와 그 링크는 삭제돼요. 초대한 멤버가 만든 링크도 함께 열리지
+                않게 돼요.
+              </li>
+            )}
             <li>혼자 남은 팀은 삭제되고, 그 팀의 링크도 비활성화돼요.</li>
             <li>내가 유일한 관리자인 팀은 가장 먼저 합류한 멤버에게 관리자가 자동으로 넘어가요.</li>
             <li>
