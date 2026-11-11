@@ -50,7 +50,7 @@ configMapGenerator:
 images:
   - name: snipy-frontend
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-frontend
-    newTag: 6ca1059ff2e04860d23e044dc2b349e4d2555b96
+    newTag: ecaed49f4f94d0736e696ab09faad17ffb1959bd
   - name: 834922934330.dkr.ecr.ap-southeast-1.amazonaws.com/management-service
     newName: ghcr.io/team-likelion-3rd-project/likelion-devops-7th-3rd-team03-management-service
     newTag: d01b71006c9ee509870b58f229c9b45fd53ee8dc
