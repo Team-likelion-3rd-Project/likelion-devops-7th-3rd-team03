@@ -529,7 +529,7 @@ function WithdrawModal({ workspaces, onDismiss }) {
           </Alert>
         )}
         {impact && impact.removed.length > 0 && (
-          <Alert type="error" header="삭제되는 팀">
+          <Alert type="warning" header="삭제되는 팀">
             {impact.removed.join(', ')}
           </Alert>
         )}
