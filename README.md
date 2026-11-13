@@ -16,6 +16,7 @@
 [2차 프로젝트](https://github.com/Team-likelion-2nd-Project/likelion-devops-7th-team03)의 Snipy에 워크스페이스 기능을 추가하고, 온프렘(dev)과 AWS(prod) 두 환경을 GitOps로 운영하도록 확장했습니다.
 
 - 배포 주소: https://app.snipy.life
+- 데모 영상: https://drive.google.com/drive/folders/1TecY9uHobhIzqGk5vAdyPqDVvU1VL9_K?usp=sharing
 
 ---
 
